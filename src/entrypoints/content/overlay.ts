@@ -89,10 +89,12 @@ export async function drawOverlay(): Promise<CoordinateEntry[]> {
     ctx.textBaseline = 'middle';
     ctx.fillText(label, badgeX + 4, Math.max(badgeH / 2, badgeY + badgeH / 2));
 
+    const tag = el.tagName.toLowerCase();
     coordinateMap.push({
       id,
-      tag: el.tagName.toLowerCase(),
+      tag,
       text: getLabel(el),
+      ...(tag === 'input' && { inputType: ((el as HTMLInputElement).type || 'text').toLowerCase() }),
       rect: {
         x: Math.round(x + w / 2),
         y: Math.round(y + h / 2),

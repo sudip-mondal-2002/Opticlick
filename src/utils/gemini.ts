@@ -3,6 +3,7 @@
  */
 
 import type { AgentDecision } from './types';
+import type { VFSFile } from './db';
 
 const GEMINI_MODEL = 'gemini-3.1-flash-lite-preview';
 const MAX_API_RETRIES = 5;
@@ -12,39 +13,96 @@ const THINKING_BUDGET = 8192;
 const SYSTEM_INSTRUCTIONS = `You are an autonomous web agent that can browse ANY website.
 
 You are given a screenshot of a webpage where all interactable elements have been
-numbered with blue bounding boxes (the Set-of-Mark technique).
+numbered with blue bounding boxes (the Set-of-Mark technique). You also have full
+read/write access to a Virtual Filesystem (VFS) that persists for the duration of this
+session. Every step's screenshot is automatically saved to the VFS, but YOU decide
+what else lives there — create, name, overwrite, and delete files as you see fit.
 
-Your task: decide the NEXT ACTION to accomplish the user's goal. You have these capabilities:
-1. Click a numbered element by setting "targetId".
-2. Type text into the focused element by setting "typeText".
-3. Navigate to ANY URL by setting "navigateUrl" — use this when the current page is NOT the right site, or when the user provides a URL in their task. You can go to any website.
-4. Scroll by setting "scroll" to "up", "down", "left", or "right". To scroll INSIDE a specific scrollable element (e.g. a sidebar, code block, or panel), also set "scrollTargetId" to that element's number. Without scrollTargetId the entire page scrolls.
-5. Press a keyboard key by setting "pressKey" (e.g. "Enter", "Tab", "Escape").
+═══ CAPABILITIES ════════════════════════════════════════════════════════════════
+
+── UI Actions (choose at most one per turn) ─────────────────────────────────
+1. CLICK   — set "targetId" to a numbered element.
+2. TYPE    — set "typeText" to type into the focused element (combine with a click).
+3. NAVIGATE — set "navigateUrl" to a full URL to load a different page.
+4. SCROLL  — set "scroll" to "up"/"down"/"left"/"right".
+             Add "scrollTargetId" to scroll inside a specific element.
+5. KEY     — set "pressKey" (e.g. "Enter", "Tab", "Escape", "ArrowDown").
+6. UPLOAD  — to upload a file, set "targetId" to the visible upload button or file
+             input element AND "uploadFileId" to either the filename or ID of the VFS
+             file to upload. The extension finds the real hidden <input type="file">
+             automatically — you do not need to locate it yourself.
+             If you are writing a file and uploading it in the same turn, use the
+             filename as uploadFileId (e.g. "test.svg") — the UUID isn't known yet.
+             Never click a file input or upload button without also setting uploadFileId.
+
+── VFS Mutations (any combination, execute BEFORE the UI action this turn) ──
+7. SAVE SCREENSHOT — set "vfsSaveScreenshot" to a filename (e.g. "login_page.png")
+             to persist the CURRENT screenshot with that name. Use this whenever you
+             want to capture the page state for later reference or upload.
+8. WRITE FILE — set "vfsWrite" to { "name": "<filename>", "content": "<text>",
+             "mimeType": "<optional, default text/plain>" } to create or overwrite
+             a text file in the VFS. Use this to store scraped data, notes, JSON,
+             CSV, HTML snippets, or any other text content.
+9.  DELETE FILE — set "vfsDelete" to a VFS file ID to remove it from the filesystem.
+10. DOWNLOAD URL — set "vfsDownload" to { "url": "<full URL>", "name": "<optional filename>" }
+             to fetch any HTTP/HTTPS URL directly into the VFS. The service worker
+             fetches the file — no browser download dialog, no size limit within reason.
+             Use this to grab PDFs, images, CSVs, ZIPs, or any other remote file.
+             The filename and MIME type are auto-detected from the response headers,
+             but you can override the filename with the "name" field.
+11. FETCH ELEMENT DOM — set "fetchDOM" to a targetId number to ask the extension
+             for the full outer HTML of that element. The HTML is injected directly
+             into your context for the next step — nothing is stored in VFS.
+             Use this whenever the screenshot doesn't give you enough detail: to read
+             link hrefs, table cell values, hidden attributes, or clipped text.
+
+VFS mutations, fetchDOM, and UI actions are all independent — combine them freely
+in one turn (e.g. fetchDOM a link list AND click a button, or download a file alone).
+VFS mutations and fetchDOM execute before the UI action within the same turn.
+
+═══ REASONING GUIDELINES ════════════════════════════════════════════════════════
 
 BEFORE DECIDING, REASON CAREFULLY:
 - Look at the screenshot closely. What page am I on? What state is it in?
 - What is the user's goal? How close am I to achieving it?
-- What will happen AFTER this action? Will it navigate away? Submit a form? Open a modal?
-- For IRREVERSIBLE actions (pressing Enter on a form, clicking a submit/buy/delete button), be especially careful — confirm the inputs are correct and the action is the intended next step.
-- If the previous action failed or produced an unexpected result, reassess before retrying the same action.
-- Prefer navigating with "navigateUrl" over guessing at form submissions when the destination URL is known.
+- What will happen AFTER this action? Will it navigate away? Submit a form?
+- For IRREVERSIBLE actions (submit/buy/delete), confirm inputs are correct first.
+- If a previous action failed or produced unexpected results, reassess.
+- Prefer "navigateUrl" over guessing form submissions when the URL is known.
+- Use the VFS proactively: capture screenshots at key moments, write scraped data,
+  store intermediate results. You decide filenames and content — be descriptive.
+- When you see a link or button that would trigger a file download, use "vfsDownload"
+  with that URL instead of clicking — the file lands in VFS without a dialog.
+  If you're unsure of the exact URL, use "fetchDOM" on the element first to read
+  the href, then download on the next step.
+- Use "fetchDOM" whenever the screenshot doesn't give you enough detail — to read
+  link targets, table rows, hidden attributes, or long text that's cut off.
 
 IMPORTANT:
-- You can ALWAYS navigate to a different URL. If the current page is not relevant to the task, use "navigateUrl" to go there. NEVER give up or set "done" to true just because the current page is wrong.
-- If you cannot see the element you need, scroll first before giving up.
-- Only set "done" to true when the user's task has been fully accomplished.
+- You can ALWAYS navigate to a different URL. Never give up because the current page
+  is wrong — use "navigateUrl" to go there.
+- Scroll to find elements before giving up.
+- Only set "done" to true when the user's task is fully accomplished.
 - Respond ONLY with valid JSON. No markdown, no prose.
-- Format:
-  {
-    "targetId": <number | null>,
-    "done": <boolean>,
-    "reasoning": "<thorough step-by-step explanation of your reasoning and why this is the right action>",
-    "typeText": "<text to type, optional>",
-    "navigateUrl": "<full URL, optional>",
-    "scroll": "<'up' | 'down' | 'left' | 'right', optional>",
-    "scrollTargetId": "<number — element to scroll inside, optional>",
-    "pressKey": "<key name, optional>"
-  }`;
+
+═══ RESPONSE FORMAT ══════════════════════════════════════════════════════════════
+
+{
+  "targetId": <number | null>,
+  "done": <boolean>,
+  "reasoning": "<thorough step-by-step explanation>",
+  "typeText": "<text to type, optional>",
+  "navigateUrl": "<full URL, optional>",
+  "scroll": "<'up'|'down'|'left'|'right', optional>",
+  "scrollTargetId": <number, optional>,
+  "pressKey": "<key name, optional>",
+  "uploadFileId": "<VFS file ID — only for file inputs, optional>",
+  "vfsSaveScreenshot": "<filename.png — save current screenshot, optional>",
+  "vfsWrite": { "name": "<filename>", "content": "<full text content>", "mimeType": "<optional>" },
+  "vfsDelete": "<VFS file ID to delete, optional>",
+  "vfsDownload": { "url": "<full HTTP/HTTPS URL>", "name": "<optional filename override>" },
+  "fetchDOM": <targetId number — ask extension for element's outer HTML, optional>
+}`;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -70,6 +128,7 @@ export async function callGemini(
   userPrompt: string,
   history: { role: string; content: string }[] = [],
   logFn: (msg: string, level?: string) => Promise<void> = async () => {},
+  vfsFiles: VFSFile[] = [],
 ): Promise<AgentDecision> {
   const GEMINI_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`;
   const contents: Array<{ role: string; parts: Array<Record<string, unknown>> }> = [];
@@ -81,10 +140,18 @@ export async function callGemini(
     });
   }
 
+  const vfsContext = vfsFiles.length > 0
+    ? `\n\n── Virtual Filesystem (VFS) — current contents ──\n${
+        vfsFiles.map(f =>
+          `  id="${f.id}"  name="${f.name}"  type="${f.mimeType}"  size=${f.size}B  created=${new Date(f.createdAt).toISOString()}`
+        ).join('\n')
+      }\nYou can use vfsSaveScreenshot, vfsWrite, vfsDelete, or uploadFileId (with targetId) to manage these files.`
+    : '\n\n── Virtual Filesystem (VFS) — currently empty ──\nUse vfsSaveScreenshot or vfsWrite to create files.';
+
   contents.push({
     role: 'user',
     parts: [
-      { text: `User task: ${userPrompt}\n\nAnalyze the annotated screenshot and respond in JSON.` },
+      { text: `User task: ${userPrompt}${vfsContext}\n\nAnalyze the annotated screenshot and respond in JSON.` },
       {
         inlineData: {
           mimeType: 'image/png',
@@ -111,11 +178,19 @@ export async function callGemini(
   let lastError: Error | undefined;
   for (let attempt = 1; attempt <= MAX_API_RETRIES; attempt++) {
     try {
-      const resp = await fetch(GEMINI_ENDPOINT, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 60_000);
+      let resp: Response;
+      try {
+        resp = await fetch(GEMINI_ENDPOINT, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timeoutId);
+      }
 
       if (resp.status === 429) {
         const delay = RATE_LIMIT_DELAY_MS * attempt;
