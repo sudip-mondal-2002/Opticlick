@@ -1,12 +1,20 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type { AgentState, LogEntry } from '@/utils/types';
+import { ThemeProvider } from './context/ThemeContext';
+import { ApiKeySetup } from './components/ApiKeySetup';
+import { Header } from './components/Header';
+import { PromptSection } from './components/PromptSection';
+import { ControlButtons } from './components/ControlButtons';
+import { ActivityLog } from './components/ActivityLog';
+import { StepFooter } from './components/StepFooter';
+import { ApiKeyFooter } from './components/ApiKeyFooter';
 
 interface LogItem {
   message: string;
   level: string;
 }
 
-export default function App() {
+function AgentUI() {
   const [apiKey, setApiKey] = useState<string | null>(null);
   const [keyInput, setKeyInput] = useState('');
   const [keyLoading, setKeyLoading] = useState(true);
@@ -59,8 +67,7 @@ export default function App() {
       agentState?: AgentState;
     };
     if (!agentState) return;
-    const running = agentState.status === 'running';
-    setIsRunning(running);
+    setIsRunning(agentState.status === 'running');
     setIsError(agentState.status === 'error');
     if (agentState.step > 0) setStep(agentState.step);
   }, []);
@@ -107,104 +114,43 @@ export default function App() {
 
   if (keyLoading) return null;
 
-  const statusClass = isRunning ? 'running' : isError ? 'error' : '';
-
-  // No key set → setup screen
   if (!apiKey) {
     return (
-      <div className="key-setup">
-        <div className="key-setup-logo" />
-        <h2 className="key-setup-title">Opticlick Engine</h2>
-        <p className="key-setup-desc">
-          Enter your <strong>Gemini API key</strong> to get started.
-          Get one free at <span className="key-setup-link">aistudio.google.com</span>
-        </p>
-        <input
-          className="key-input"
-          type="password"
-          placeholder="AIza…"
-          value={keyInput}
-          onChange={(e) => setKeyInput(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && saveKey()}
-          autoFocus
-        />
-        <button className="key-save-btn" disabled={!keyInput.trim()} onClick={saveKey}>
-          Save &amp; Continue
-        </button>
-      </div>
+      <ApiKeySetup
+        keyInput={keyInput}
+        onKeyInputChange={setKeyInput}
+        onSave={saveKey}
+      />
     );
   }
 
-  // Key set → main agent UI
   const maskedKey = apiKey.slice(0, 8) + '••••••••••••';
 
   return (
-    <>
-      <header>
-        <div className="logo" />
-        <h1>Opticlick</h1>
-        <span className="ai-badge">AI Agent</span>
-        <div className={`status-dot ${statusClass}`} />
-      </header>
+    <div className="flex flex-col bg-sky-50 dark:bg-slate-950">
+      <Header isRunning={isRunning} isError={isError} />
+      <PromptSection prompt={prompt} onPromptChange={setPrompt} disabled={isRunning} />
+      <ControlButtons isRunning={isRunning} onRun={handleRun} onStop={handleStop} />
+      <ActivityLog logs={logs} logRef={logRef} />
+      {isRunning && step > 0 && <StepFooter step={step} />}
+      <ApiKeyFooter
+        maskedKey={maskedKey}
+        showEdit={showKeyEdit}
+        keyInput={keyInput}
+        onKeyInputChange={setKeyInput}
+        onShowEdit={() => setShowKeyEdit(true)}
+        onSave={saveKey}
+        onClear={clearKey}
+        onCancel={() => { setShowKeyEdit(false); setKeyInput(''); }}
+      />
+    </div>
+  );
+}
 
-      <div className="prompt-section">
-        <textarea
-          value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
-          disabled={isRunning}
-          placeholder="Describe the task… e.g. 'Create a GitHub issue titled Bug: login fails'"
-        />
-      </div>
-
-      <div className="controls">
-        <button className="btn-run" disabled={isRunning} onClick={handleRun}>
-          &#9654;&nbsp; Run Agent
-        </button>
-        <button className="btn-stop" disabled={!isRunning} onClick={handleStop}>
-          &#9632;&nbsp; Stop
-        </button>
-      </div>
-
-      <div className="log-section">
-        <div className="log-label">Activity Log</div>
-        <div className="log-output" ref={logRef}>
-          {logs.map((entry, i) => (
-            <div key={i} className={`entry ${entry.level}`}>{entry.message}</div>
-          ))}
-        </div>
-      </div>
-
-      {isRunning && step > 0 && (
-        <div className="step-footer">
-          <div className="step-pip" />
-          <span className="step-text">Step {step} of 20</span>
-        </div>
-      )}
-
-      {/* API key footer */}
-      <div className="api-key-footer">
-        {showKeyEdit ? (
-          <>
-            <input
-              className="key-input-inline"
-              type="password"
-              placeholder="New API key…"
-              value={keyInput}
-              onChange={(e) => setKeyInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && saveKey()}
-              autoFocus
-            />
-            <button className="key-action-btn save" onClick={saveKey} disabled={!keyInput.trim()}>Save</button>
-            <button className="key-action-btn danger" onClick={clearKey}>Remove</button>
-            <button className="key-action-btn" onClick={() => { setShowKeyEdit(false); setKeyInput(''); }}>Cancel</button>
-          </>
-        ) : (
-          <>
-            <span className="key-masked">{maskedKey}</span>
-            <button className="key-action-btn" onClick={() => setShowKeyEdit(true)}>Change key</button>
-          </>
-        )}
-      </div>
-    </>
+export default function App() {
+  return (
+    <ThemeProvider>
+      <AgentUI />
+    </ThemeProvider>
   );
 }
