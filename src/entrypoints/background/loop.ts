@@ -43,7 +43,7 @@ function filenameFromResponse(response: Response, url: string, override?: string
   return 'download';
 }
 
-const MAX_STEPS = 20;
+const MAX_STEPS = 500;
 const STEP_DELAY_MS = 800;
 const RATE_LIMIT_DELAY_MS = 10_000;
 const MAX_EMPTY_RETRIES = 3;
