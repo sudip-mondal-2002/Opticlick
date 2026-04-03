@@ -17,6 +17,15 @@
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { chromium, type BrowserContext, type Page } from '@playwright/test';
+
+declare global {
+  interface Window {
+    _clicks: number;
+    _dynamicUploadCount: number;
+    _multiChangeCount: number;
+    _resetUploadCount: number;
+  }
+}
 import * as path from 'path';
 import * as os from 'os';
 import * as fs from 'fs';
@@ -33,6 +42,15 @@ function makeTempFile(name: string, content = 'opticlick e2e test content'): str
   const p = path.join(os.tmpdir(), name);
   fs.writeFileSync(p, content);
   return p;
+}
+
+/**
+ * Read trimmed text content of a DOM element.
+ * DOM.setFileInputFiles fires the change event synchronously before the CDP
+ * call returns, so the status text is always up-to-date by assertion time.
+ */
+async function getText(page: Page, selector: string): Promise<string> {
+  return (await page.locator(selector).textContent())?.trim() ?? '';
 }
 
 /** Use CDP to set file(s) on an input matched by CSS selector. */
@@ -99,7 +117,7 @@ describe('Case 1 — plain visible input', () => {
     await page.goto(FIXTURE_URL);
     const tmp = makeTempFile('plain.txt');
     await cdpSetFiles(page, '#plain-input', [tmp]);
-    await expect(page.locator('#plain-status')).toHaveText('plain.txt');
+    expect(await getText(page, '#plain-status')).toBe('plain.txt');
     fs.unlinkSync(tmp);
     await page.close();
   });
@@ -115,7 +133,7 @@ describe('Case 2 — hidden input (display:none / off-screen)', () => {
     // The input is position:absolute left:-9999px — invisible but present.
     // DOM.setFileInputFiles doesn't need the element to be visible.
     await cdpSetFiles(page, '#hidden-input', [tmp]);
-    await expect(page.locator('#hidden-status')).toHaveText('hidden.pdf');
+    expect(await getText(page, '#hidden-status')).toBe('hidden.pdf');
     fs.unlinkSync(tmp);
     await page.close();
   });
@@ -125,7 +143,7 @@ describe('Case 2 — hidden input (display:none / off-screen)', () => {
     await page.goto(FIXTURE_URL);
     const tmp = makeTempFile('offscreen-check.docx');
     await cdpSetFiles(page, '#hidden-input', [tmp]);
-    const status = await page.locator('#hidden-status').textContent();
+    const status = await getText(page, '#hidden-status');
     expect(status).not.toBe('no file selected');
     expect(status).toBe('offscreen-check.docx');
     fs.unlinkSync(tmp);
@@ -147,7 +165,7 @@ describe('Case 3 — dynamic input (created on button click)', () => {
     // Step 2: CDP sets the file on the freshly created input
     const tmp = makeTempFile('dynamic-upload.csv');
     await cdpSetFiles(page, '#dynamic-input', [tmp]);
-    await expect(page.locator('#dynamic-status')).toHaveText('dynamic-upload.csv');
+    expect(await getText(page, '#dynamic-status')).toBe('dynamic-upload.csv');
     fs.unlinkSync(tmp);
     await page.close();
   });
@@ -176,7 +194,7 @@ describe('Case 3 — dynamic input (created on button click)', () => {
 
     const tmp = makeTempFile('recreated.txt');
     await cdpSetFiles(page, '#dynamic-input', [tmp]);
-    await expect(page.locator('#dynamic-status')).toHaveText('recreated.txt');
+    expect(await getText(page, '#dynamic-status')).toBe('recreated.txt');
     fs.unlinkSync(tmp);
     await page.close();
   });
@@ -190,9 +208,9 @@ describe('Case 4 — multiple inputs (avatar + document)', () => {
     await page.goto(FIXTURE_URL);
     const avatarFile = makeTempFile('avatar.png');
     await cdpSetFiles(page, '#avatar-input', [avatarFile]);
-    await expect(page.locator('#avatar-status')).toHaveText('avatar.png');
+    expect(await getText(page, '#avatar-status')).toBe('avatar.png');
     // doc input should be untouched
-    await expect(page.locator('#doc-status')).toHaveText('no document');
+    expect(await getText(page, '#doc-status')).toBe('no document');
     fs.unlinkSync(avatarFile);
     await page.close();
   });
@@ -202,8 +220,8 @@ describe('Case 4 — multiple inputs (avatar + document)', () => {
     await page.goto(FIXTURE_URL);
     const docFile = makeTempFile('contract.pdf');
     await cdpSetFiles(page, '#doc-input', [docFile]);
-    await expect(page.locator('#doc-status')).toHaveText('contract.pdf');
-    await expect(page.locator('#avatar-status')).toHaveText('no avatar');
+    expect(await getText(page, '#doc-status')).toBe('contract.pdf');
+    expect(await getText(page, '#avatar-status')).toBe('no avatar');
     fs.unlinkSync(docFile);
     await page.close();
   });
@@ -215,8 +233,8 @@ describe('Case 4 — multiple inputs (avatar + document)', () => {
     const docFile = makeTempFile('report.pdf');
     await cdpSetFiles(page, '#avatar-input', [avatarFile]);
     await cdpSetFiles(page, '#doc-input', [docFile]);
-    await expect(page.locator('#avatar-status')).toHaveText('face.jpg');
-    await expect(page.locator('#doc-status')).toHaveText('report.pdf');
+    expect(await getText(page, '#avatar-status')).toBe('face.jpg');
+    expect(await getText(page, '#doc-status')).toBe('report.pdf');
     fs.unlinkSync(avatarFile);
     fs.unlinkSync(docFile);
     await page.close();
@@ -231,7 +249,7 @@ describe('Case 5 — Shadow DOM input', () => {
     await page.goto(FIXTURE_URL);
     const tmp = makeTempFile('shadow-upload.png');
     await cdpSetFilesInShadow(page, '#shadow-host', 'shadow-input', [tmp]);
-    await expect(page.locator('#shadow-status')).toHaveText('shadow-upload.png');
+    expect(await getText(page, '#shadow-status')).toBe('shadow-upload.png');
     fs.unlinkSync(tmp);
     await page.close();
   });
@@ -241,8 +259,7 @@ describe('Case 5 — Shadow DOM input', () => {
     await page.goto(FIXTURE_URL);
     const tmp = makeTempFile('shadow-outer.txt');
     await cdpSetFilesInShadow(page, '#shadow-host', 'shadow-input', [tmp]);
-    const status = await page.locator('#shadow-status').textContent();
-    expect(status).toBe('shadow-outer.txt');
+    expect(await getText(page, '#shadow-status')).toBe('shadow-outer.txt');
     fs.unlinkSync(tmp);
     await page.close();
   });
@@ -256,7 +273,7 @@ describe('Case 6 — drag-and-drop zone (hidden input fallback)', () => {
     await page.goto(FIXTURE_URL);
     const tmp = makeTempFile('dropped.zip');
     await cdpSetFiles(page, '#dropzone-input', [tmp]);
-    await expect(page.locator('#dropzone-status')).toHaveText('dropped.zip');
+    expect(await getText(page, '#dropzone-status')).toBe('dropped.zip');
     fs.unlinkSync(tmp);
     await page.close();
   });
@@ -267,7 +284,7 @@ describe('Case 6 — drag-and-drop zone (hidden input fallback)', () => {
     const f1 = makeTempFile('file-a.txt', 'a');
     const f2 = makeTempFile('file-b.txt', 'b');
     await cdpSetFiles(page, '#dropzone-input', [f1, f2]);
-    const status = await page.locator('#dropzone-status').textContent();
+    const status = await getText(page, '#dropzone-status');
     expect(status).toContain('file-a.txt');
     expect(status).toContain('file-b.txt');
     fs.unlinkSync(f1);
@@ -283,10 +300,12 @@ describe('Case 7 — modal dialog (input hidden until dialog opened)', () => {
     const page = await context.newPage();
     await page.goto(FIXTURE_URL);
     await page.click('#open-modal-btn');
-    await expect(page.locator('#modal-status')).toHaveText('dialog open');
+    // waitForSelector with a text match ensures the click handler ran before we proceed
+    await page.waitForSelector('#modal-status:not(:empty)');
+    expect(await getText(page, '#modal-status')).toBe('dialog open');
     const tmp = makeTempFile('contract-modal.pdf');
     await cdpSetFiles(page, '#modal-input', [tmp]);
-    await expect(page.locator('#modal-status')).toContainText('contract-modal.pdf');
+    expect(await getText(page, '#modal-status')).toContain('contract-modal.pdf');
     fs.unlinkSync(tmp);
     await page.close();
   });
@@ -319,7 +338,7 @@ describe('Case 8 — multi-file input', () => {
       makeTempFile(n, n),
     );
     await cdpSetFiles(page, '#multi-input', files);
-    const status = await page.locator('#multi-status').textContent();
+    const status = await getText(page, '#multi-status');
     expect(status).toContain('batch-1.txt');
     expect(status).toContain('batch-2.txt');
     expect(status).toContain('batch-3.txt');
@@ -349,7 +368,7 @@ describe('Case 9 — auto-reset pattern (value cleared after each upload)', () =
     await page.goto(FIXTURE_URL);
     const tmp = makeTempFile('first-upload.txt');
     await cdpSetFiles(page, '#reset-input', [tmp]);
-    await expect(page.locator('#reset-status')).toHaveText('last uploaded: first-upload.txt');
+    expect(await getText(page, '#reset-status')).toBe('last uploaded: first-upload.txt');
     fs.unlinkSync(tmp);
     await page.close();
   });
@@ -375,19 +394,26 @@ describe('dispatchHardwareClick (CDP)', () => {
     const page = await context.newPage();
     await page.goto(FIXTURE_URL);
 
-    const btnRect = await page.evaluate(() => {
-      const btn = document.getElementById('counter-btn')!;
-      const r = btn.getBoundingClientRect();
-      return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
-    });
+    // The fixture page is long — the counter button may be below the fold.
+    // scrollIntoViewIfNeeded + boundingBox() gives viewport-relative CSS
+    // coordinates AFTER the element is scrolled into view, which is what
+    // Input.dispatchMouseEvent expects.
+    const btn = page.locator('#counter-btn');
+    await btn.scrollIntoViewIfNeeded();
+    const bbox = await btn.boundingBox();
+    if (!bbox) throw new Error('#counter-btn bounding box not found');
+
+    const x = bbox.x + bbox.width / 2;
+    const y = bbox.y + bbox.height / 2;
 
     const session = await context.newCDPSession(page);
-    const { x, y } = btnRect;
     await session.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y, button: 'none', clickCount: 0 });
     await session.send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', buttons: 1, clickCount: 1 });
     await session.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', buttons: 0, clickCount: 1 });
     await session.detach();
 
+    // Wait for the browser to process the click event before reading the counter
+    await page.waitForFunction(() => (window._clicks ?? 0) > 0);
     const clicks = await page.evaluate(() => window._clicks);
     expect(clicks).toBeGreaterThan(0);
     await page.close();
