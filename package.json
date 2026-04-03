@@ -10,6 +10,8 @@
     "postinstall": "wxt prepare"
   },
   "dependencies": {
+    "@langchain/core": "^1.1.38",
+    "@langchain/google-genai": "^2.1.26",
     "@tailwindcss/vite": "^4.2.2",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

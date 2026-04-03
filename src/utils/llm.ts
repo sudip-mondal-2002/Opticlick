@@ -1,7 +1,9 @@
 /**
- * Gemini API integration for the Opticlick agent.
+ * LLM integration for the Opticlick agent.
  */
 
+import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
+import { HumanMessage, SystemMessage, AIMessage, type BaseMessage } from '@langchain/core/messages';
 import type { AgentDecision } from './types';
 import type { VFSFile } from './db';
 
@@ -113,7 +115,6 @@ function sleep(ms: number): Promise<void> {
  * so the popup log stays concise.
  */
 function summariseThinking(raw: string): string {
-  // Collapse whitespace, split on sentence boundaries
   const clean = raw.replace(/\s+/g, ' ').trim();
   const sentences = clean.split(/(?<=\.)\s+/);
   const first = sentences.find((s) => s.length > 30) ?? clean;
@@ -129,8 +130,21 @@ export interface InlineImage {
   data: string;
 }
 
-export async function callGemini(
-  apiKey: string,
+/**
+ * Creates a configured ChatGoogleGenerativeAI model instance.
+ */
+export function createModel(apiKey: string): ChatGoogleGenerativeAI {
+  return new ChatGoogleGenerativeAI({
+    model: GEMINI_MODEL,
+    apiKey,
+    temperature: 0.1,
+    maxRetries: 0, // Retry loop in callModel handles backoff and rate-limit delays.
+    thinkingConfig: { thinkingBudget: THINKING_BUDGET },
+  });
+}
+
+export async function callModel(
+  model: ChatGoogleGenerativeAI,
   base64Image: string,
   userPrompt: string,
   history: { role: string; content: string }[] = [],
@@ -138,118 +152,83 @@ export async function callGemini(
   vfsFiles: VFSFile[] = [],
   inlineImages: InlineImage[] = [],
 ): Promise<AgentDecision> {
-  const GEMINI_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`;
-  const contents: Array<{ role: string; parts: Array<Record<string, unknown>> }> = [];
+
+  const messages: BaseMessage[] = [new SystemMessage(SYSTEM_INSTRUCTIONS)];
 
   for (const turn of history) {
-    contents.push({
-      role: turn.role,
-      parts: [{ text: turn.content }],
-    });
+    messages.push(turn.role === 'user' ? new HumanMessage(turn.content) : new AIMessage(turn.content));
   }
 
-  const vfsContext = vfsFiles.length > 0
-    ? `\n\n── Virtual Filesystem (VFS) — current contents ──\n${
-        vfsFiles.map(f =>
-          `  id="${f.id}"  name="${f.name}"  type="${f.mimeType}"  size=${f.size}B  created=${new Date(f.createdAt).toISOString()}`
-        ).join('\n')
-      }\nYou can use vfsSaveScreenshot, vfsWrite, vfsDelete, or uploadFileId (with targetId) to manage these files.`
-    : '\n\n── Virtual Filesystem (VFS) — currently empty ──\nUse vfsSaveScreenshot or vfsWrite to create files.';
+  const vfsContext =
+    vfsFiles.length > 0
+      ? `\n\n── Virtual Filesystem (VFS) — current contents ──\n${vfsFiles
+          .map(
+            (f) =>
+              `  id="${f.id}"  name="${f.name}"  type="${f.mimeType}"  size=${f.size}B  created=${new Date(f.createdAt).toISOString()}`,
+          )
+          .join('\n')}\nYou can use vfsSaveScreenshot, vfsWrite, vfsDelete, or uploadFileId (with targetId) to manage these files.`
+      : '\n\n── Virtual Filesystem (VFS) — currently empty ──\nUse vfsSaveScreenshot or vfsWrite to create files.';
 
-  const userParts: Array<Record<string, unknown>> = [
-    { text: `User task: ${userPrompt}${vfsContext}` },
+  const userContent: Array<{ type: string; text?: string; url?: string }> = [
+    { type: 'text', text: `User task: ${userPrompt}${vfsContext}` },
   ];
 
-  // Attach user-provided reference images before the page screenshot
   if (inlineImages.length > 0) {
-    userParts.push({
+    userContent.push({
+      type: 'text',
       text: `\n\n── User-provided reference images (${inlineImages.length}) ──\nThe user attached the following images as context for this task:`,
     });
     for (const img of inlineImages) {
-      userParts.push({ text: `[${img.name}]` });
-      userParts.push({ inlineData: { mimeType: img.mimeType, data: img.data } });
+      userContent.push({ type: 'text', text: `[${img.name}]` });
+      userContent.push({ type: 'image', url: `data:${img.mimeType};base64,${img.data}` });
     }
   }
 
-  userParts.push({ text: '\n\nAnalyze the annotated screenshot below and respond in JSON.' });
-  userParts.push({ inlineData: { mimeType: 'image/png', data: base64Image } });
+  userContent.push({ type: 'text', text: '\n\nAnalyze the annotated screenshot below and respond in JSON.' });
+  userContent.push({ type: 'image', url: `data:image/png;base64,${base64Image}` });
 
-  contents.push({ role: 'user', parts: userParts });
-
-  const body = {
-    system_instruction: {
-      parts: [{ text: SYSTEM_INSTRUCTIONS }],
-    },
-    contents,
-    generationConfig: {
-      temperature: 0.1,
-      responseMimeType: 'application/json',
-      thinkingConfig: {
-        thinkingBudget: THINKING_BUDGET,
-      },
-    },
-  };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  messages.push(new HumanMessage({ content: userContent as any }));
 
   let lastError: Error | undefined;
   for (let attempt = 1; attempt <= MAX_API_RETRIES; attempt++) {
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 60_000);
-      let resp: Response;
-      try {
-        resp = await fetch(GEMINI_ENDPOINT, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-          signal: controller.signal,
-        });
-      } finally {
-        clearTimeout(timeoutId);
+      const response = await model.invoke(messages);
+
+      // Log thinking tokens when the model surfaces them.
+      const thinking = response.additional_kwargs?.thinking as string | undefined;
+      if (thinking?.trim()) {
+        await logFn(summariseThinking(thinking), 'think');
       }
 
-      if (resp.status === 429) {
-        const delay = RATE_LIMIT_DELAY_MS * attempt;
-        lastError = new Error(`Gemini rate limit (429) after ${attempt} attempts`);
-        await logFn(
-          `Rate limited by Gemini (attempt ${attempt}/${MAX_API_RETRIES}). Waiting ${delay / 1000}s…`,
-          'warn',
-        );
-        await sleep(delay);
-        continue;
-      }
+      // Content may be a plain string or an array of content blocks.
+      const rawText =
+        typeof response.content === 'string'
+          ? response.content
+          : (response.content as Array<{ type: string; text?: string }>)
+              .filter((p) => p.type === 'text')
+              .map((p) => p.text ?? '')
+              .join('');
 
-      if (!resp.ok) {
-        const errText = await resp.text();
-        throw new Error(`Gemini API error ${resp.status}: ${errText.slice(0, 200)}`);
-      }
-
-      const data = await resp.json();
-      const parts: Array<{ thought?: boolean; text: string }> =
-        data?.candidates?.[0]?.content?.parts ?? [];
-
-      // Log LLM thinking tokens as [THINK] entries
-      const thoughtText = parts
-        .filter((p) => p.thought)
-        .map((p) => p.text)
-        .join(' ');
-      if (thoughtText.trim()) {
-        await logFn(summariseThinking(thoughtText), 'think');
-      }
-
-      // The answer is in the non-thought parts
-      const rawText = parts
-        .filter((p) => !p.thought)
-        .map((p) => p.text)
-        .join('');
-
-      if (!rawText) throw new Error('Empty response from Gemini.');
-
+      if (!rawText) throw new Error('Empty response from LLM.');
       return JSON.parse(rawText) as AgentDecision;
     } catch (err) {
       lastError = err as Error;
+      const isRateLimit =
+        lastError.message.includes('429') || lastError.message.toLowerCase().includes('rate limit');
+
       if (attempt < MAX_API_RETRIES) {
-        await logFn(`API attempt ${attempt} failed: ${lastError.message}. Retrying…`, 'warn');
-        await sleep(1500 * attempt);
+        if (isRateLimit) {
+          const delay = RATE_LIMIT_DELAY_MS * attempt;
+          await logFn(
+            `Rate limited (attempt ${attempt}/${MAX_API_RETRIES}). Waiting ${delay / 1000}s…`,
+            'warn',
+          );
+          await sleep(delay);
+        } else {
+          await logFn(`API attempt ${attempt} failed: ${lastError.message}. Retrying…`, 'warn');
+          await sleep(1500 * attempt);
+        }
       }
     }
   }

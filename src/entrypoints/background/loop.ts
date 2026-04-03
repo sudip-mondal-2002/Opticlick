@@ -3,8 +3,8 @@
  */
 
 import { appendConversationTurn, createSession, getConversationHistory, touchSession, saveVFSFile, writeVFSFile, listVFSFiles, clearVFSFiles, getVFSFile, deleteVFSFile } from '@/utils/db';
-import { callGemini } from '@/utils/gemini';
-import type { InlineImage } from '@/utils/gemini';
+import { callModel, createModel } from '@/utils/llm';
+import type { InlineImage } from '@/utils/llm';
 import { attachDebugger, detachDebugger, dispatchHardwareClick, getKeyCode, writeTempFile, cleanupTempFile } from '@/utils/cdp';
 import { log } from '@/utils/agent-log';
 import { getAgentState, setAgentState } from '@/utils/agent-state';
@@ -89,6 +89,7 @@ export async function runAgentLoop(tabId: number, userPrompt: string, existingSe
       await setAgentState({ status: 'error' });
       return;
     }
+    const model = createModel(geminiApiKey as string);
 
     // If the active tab is on a restricted page, try to extract a URL from the prompt
     if (!(await isTabInjectable(tabId))) {
@@ -236,12 +237,12 @@ export async function runAgentLoop(tabId: number, userPrompt: string, existingSe
 
         const historyForEmpty = await getConversationHistory(sessionId);
         const vfsFilesForEmpty = await listVFSFiles(sessionId);
-        await log('Sending to Gemini…', 'observe');
+        await log('Sending to LLM…', 'observe');
 
         let emptyDecision;
         try {
-          emptyDecision = await callGemini(
-            geminiApiKey as string,
+          emptyDecision = await callModel(
+            model,
             plainScreenshot,
             `${userPrompt}\n\n[SYSTEM NOTE: No interactable elements were detected on the current page after repeated attempts. Decide whether to navigate to a different URL, scroll to reveal content, press a key, or mark the task as done if the goal is already achieved. Do NOT set targetId — there are no annotated elements.]`,
             historyForEmpty,
@@ -249,7 +250,7 @@ export async function runAgentLoop(tabId: number, userPrompt: string, existingSe
             vfsFilesForEmpty,
           );
         } catch (err) {
-          await log(`Gemini call failed: ${(err as Error).message}. Giving up.`, 'error');
+          await log(`LLM call failed: ${(err as Error).message}. Giving up.`, 'error');
           break;
         }
 
@@ -354,8 +355,8 @@ export async function runAgentLoop(tabId: number, userPrompt: string, existingSe
       // 5. Fetch conversation history for this session
       const history = await getConversationHistory(sessionId);
 
-      // 6. Call Gemini — thinking tokens are logged as [THINK] inside callGemini
-      await log('Sending to Gemini…', 'observe');
+      // 6. Call LLM — thinking tokens are logged as [THINK] inside callModel
+      await log('Sending to LLM…', 'observe');
       const vfsFiles = await listVFSFiles(sessionId);
 
       // On the first step, pass user-attached images inline so Gemini can see them
@@ -367,10 +368,10 @@ export async function runAgentLoop(tabId: number, userPrompt: string, existingSe
 
       let decision;
       try {
-        decision = await callGemini(geminiApiKey as string, base64Image, userPrompt, history, log, vfsFiles, inlineImages);
+        decision = await callModel(model, base64Image, userPrompt, history, log, vfsFiles, inlineImages);
       } catch (err) {
         await log(
-          `Gemini call failed: ${(err as Error).message}. Will retry step.`,
+          `LLM call failed: ${(err as Error).message}. Will retry step.`,
           'error',
         );
         await sleep(RATE_LIMIT_DELAY_MS);
