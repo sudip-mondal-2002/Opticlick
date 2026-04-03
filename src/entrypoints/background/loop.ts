@@ -5,6 +5,8 @@
 import { appendConversationTurn, createSession, getConversationHistory, touchSession, saveVFSFile, writeVFSFile, listVFSFiles, clearVFSFiles, getVFSFile, deleteVFSFile } from '@/utils/db';
 import { callModel, createModel } from '@/utils/llm';
 import type { InlineImage } from '@/utils/llm';
+import { loadTodoFromVFS, saveTodoToVFS, applyTodoUpdates, TODO_VFS_FILENAME } from '@/utils/todo';
+import type { TodoItem } from '@/utils/types';
 import { attachDebugger, detachDebugger, dispatchHardwareClick, getKeyCode, writeTempFile, cleanupTempFile } from '@/utils/cdp';
 import { log } from '@/utils/agent-log';
 import { getAgentState, setAgentState } from '@/utils/agent-state';
@@ -61,6 +63,13 @@ export async function runAgentLoop(tabId: number, userPrompt: string, existingSe
     }
     await log(`Loaded ${attachments.length} attached file(s) into VFS`, 'info');
   }
+
+  // Load existing todo list when resuming an interrupted session.
+  let currentTodo: TodoItem[] = (await loadTodoFromVFS(sessionId)) ?? [];
+  if (currentTodo.length > 0) {
+    await log(`Resumed todo list: ${currentTodo.length} item(s) loaded from VFS`, 'info');
+  }
+
   await log(`Agent started`, 'observe');
 
   // ── File chooser guard ──────────────────────────────────────────────────────
@@ -368,7 +377,7 @@ export async function runAgentLoop(tabId: number, userPrompt: string, existingSe
 
       let decision;
       try {
-        decision = await callModel(model, base64Image, userPrompt, history, log, vfsFiles, inlineImages);
+        decision = await callModel(model, base64Image, userPrompt, history, log, vfsFiles, inlineImages, currentTodo);
       } catch (err) {
         await log(
           `LLM call failed: ${(err as Error).message}. Will retry step.`,
@@ -425,6 +434,21 @@ export async function runAgentLoop(tabId: number, userPrompt: string, existingSe
           vfsMutations.push(`Download failed: ${msg}`);
           await log(`VFS: download failed — ${msg}`, 'warn');
         }
+      }
+
+      // 7b. Process todo mutations (create / update)
+      if (decision.todoCreate?.length) {
+        currentTodo = decision.todoCreate;
+        await saveTodoToVFS(sessionId, currentTodo);
+        await log(`Todo: created plan with ${currentTodo.length} item(s)`, 'info');
+      }
+      if (decision.todoUpdate?.length) {
+        currentTodo = applyTodoUpdates(currentTodo, decision.todoUpdate);
+        await saveTodoToVFS(sessionId, currentTodo);
+        const summary = decision.todoUpdate
+          .map((u) => `${u.id}→${u.status ?? 'note'}`)
+          .join(', ');
+        await log(`Todo updated: ${summary}`, 'info');
       }
 
       // DOM inspection — Gemini asked for the outer HTML of a specific element
@@ -838,8 +862,9 @@ export async function runAgentLoop(tabId: number, userPrompt: string, existingSe
       );
     } catch { /* */ }
     await detachDebugger(tabId);
-    // Garbage-collect all VFS files created during this session
-    try { await clearVFSFiles(sessionId); } catch { /* */ }
+    // Garbage-collect all VFS files created during this session.
+    // Preserve __todo.json so interrupted sessions can resume with the original plan.
+    try { await clearVFSFiles(sessionId, [TODO_VFS_FILENAME]); } catch { /* */ }
     chrome.runtime.sendMessage({ type: 'AGENT_STATE_CHANGE' }).catch(() => {});
   }
 }

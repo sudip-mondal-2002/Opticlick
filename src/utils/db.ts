@@ -195,7 +195,7 @@ export async function writeVFSFile(
   return saveVFSFile(sessionId, name, base64Data, mimeType);
 }
 
-export async function clearVFSFiles(sessionId: number): Promise<void> {
+export async function clearVFSFiles(sessionId: number, excludeNames: string[] = []): Promise<void> {
   const db = await openDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(VFS_STORE, 'readwrite');
@@ -203,7 +203,11 @@ export async function clearVFSFiles(sessionId: number): Promise<void> {
     const req = index.openCursor(IDBKeyRange.only(sessionId));
     req.onsuccess = (e) => {
       const cursor = (e.target as IDBRequest).result as IDBCursorWithValue | null;
-      if (cursor) { cursor.delete(); cursor.continue(); }
+      if (cursor) {
+        const file = cursor.value as VFSFile;
+        if (!excludeNames.includes(file.name)) cursor.delete();
+        cursor.continue();
+      }
     };
     tx.oncomplete = () => resolve();
     tx.onerror = (e) => reject((e.target as IDBTransaction).error);

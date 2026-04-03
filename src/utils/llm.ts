@@ -4,8 +4,9 @@
 
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { HumanMessage, SystemMessage, AIMessage, type BaseMessage } from '@langchain/core/messages';
-import type { AgentDecision } from './types';
+import type { AgentDecision, TodoItem } from './types';
 import type { VFSFile } from './db';
+import { formatTodoForPrompt } from './todo';
 
 const GEMINI_MODEL = 'gemini-3.1-flash-lite-preview';
 const MAX_API_RETRIES = 5;
@@ -58,9 +59,25 @@ what else lives there — create, name, overwrite, and delete files as you see f
              Use this whenever the screenshot doesn't give you enough detail: to read
              link hrefs, table cell values, hidden attributes, or clipped text.
 
-VFS mutations, fetchDOM, and UI actions are all independent — combine them freely
-in one turn (e.g. fetchDOM a link list AND click a button, or download a file alone).
-VFS mutations and fetchDOM execute before the UI action within the same turn.
+── Todo List Management (persisted in VFS across sessions) ───────────────
+12. TODO CREATE — set "todoCreate" to an array of TodoItem objects to establish
+             the session plan. MANDATORY on step 1 when no todo list exists yet.
+             Break the user's goal into concrete, ordered sub-tasks.
+             Use short kebab-case IDs (e.g. "navigate-to-login", "fill-form").
+             Set the first item you are about to work on to "in_progress";
+             all others should be "pending".
+             You can also use todoCreate mid-session to replace the list entirely
+             if the plan needs a significant revision.
+13. TODO UPDATE — set "todoUpdate" to an array of { id, status?, notes? } patches.
+             Use this every turn to keep the todo list accurate:
+             - Mark an item "done" as soon as you complete it.
+             - Mark the next item "in_progress" before starting it.
+             - Add "notes" to record key observations (e.g. URL found, error seen).
+             - Mark items "skipped" if they turn out to be unnecessary.
+             Combine todoUpdate freely with any UI action in the same turn.
+
+VFS mutations, fetchDOM, todo mutations, and UI actions are all independent — combine
+them freely in one turn. VFS/todo mutations and fetchDOM execute before the UI action.
 
 ═══ REASONING GUIDELINES ════════════════════════════════════════════════════════
 
@@ -103,7 +120,9 @@ IMPORTANT:
   "vfsWrite": { "name": "<filename>", "content": "<full text content>", "mimeType": "<optional>" },
   "vfsDelete": "<VFS file ID to delete, optional>",
   "vfsDownload": { "url": "<full HTTP/HTTPS URL>", "name": "<optional filename override>" },
-  "fetchDOM": <targetId number — ask extension for element's outer HTML, optional>
+  "fetchDOM": <targetId number — ask extension for element's outer HTML, optional>,
+  "todoCreate": [{ "id": "kebab-id", "title": "Task title", "status": "pending|in_progress", "notes": "optional" }],
+  "todoUpdate": [{ "id": "kebab-id", "status": "in_progress|done|skipped", "notes": "optional observation" }]
 }`;
 
 function sleep(ms: number): Promise<void> {
@@ -151,6 +170,7 @@ export async function callModel(
   logFn: (msg: string, level?: string) => Promise<void> = async () => {},
   vfsFiles: VFSFile[] = [],
   inlineImages: InlineImage[] = [],
+  currentTodo: TodoItem[] = [],
 ): Promise<AgentDecision> {
 
   const messages: BaseMessage[] = [new SystemMessage(SYSTEM_INSTRUCTIONS)];
@@ -169,8 +189,12 @@ export async function callModel(
           .join('\n')}\nYou can use vfsSaveScreenshot, vfsWrite, vfsDelete, or uploadFileId (with targetId) to manage these files.`
       : '\n\n── Virtual Filesystem (VFS) — currently empty ──\nUse vfsSaveScreenshot or vfsWrite to create files.';
 
+  const todoContext = currentTodo.length > 0
+    ? `\n\n── Todo List — current state ──\n${formatTodoForPrompt(currentTodo)}\nUpdate items via "todoUpdate". Use "todoCreate" only to replace the entire plan.`
+    : `\n\n── Todo List — not created yet ──\nYou MUST set "todoCreate" this turn to establish the task plan before taking any action.`;
+
   const userContent: Array<{ type: string; text?: string; url?: string }> = [
-    { type: 'text', text: `User task: ${userPrompt}${vfsContext}` },
+    { type: 'text', text: `User task: ${userPrompt}${vfsContext}${todoContext}` },
   ];
 
   if (inlineImages.length > 0) {

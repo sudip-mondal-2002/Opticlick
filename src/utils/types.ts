@@ -22,6 +22,24 @@ export interface DrawMarksResult {
   dpr: number;
 }
 
+/** A single item in the agent's task todo list. */
+export interface TodoItem {
+  /** Short kebab-case identifier, e.g. "navigate-to-login". */
+  id: string;
+  /** Human-readable task title. */
+  title: string;
+  status: 'pending' | 'in_progress' | 'done' | 'skipped';
+  /** Optional observation or note the agent adds when working on this item. */
+  notes?: string;
+}
+
+/** A partial update to apply to an existing TodoItem. */
+export interface TodoUpdate {
+  id: string;
+  status?: TodoItem['status'];
+  notes?: string;
+}
+
 /** A text file Gemini wants to write into the VFS. */
 export interface VFSWriteOp {
   /** Filename including extension (e.g. "notes.txt", "data.json"). */
@@ -67,6 +85,19 @@ export interface AgentDecision {
    * link hrefs, table rows, form fields, etc. on the next step.
    */
   fetchDOM?: number;
+
+  // ── Todo list management ─────────────────────────────────────────────────
+  /**
+   * Create (or fully replace) the session todo list.
+   * MUST be set on step 1 when no todo list exists yet.
+   * Set the first item you are about to work on to "in_progress"; all others "pending".
+   */
+  todoCreate?: TodoItem[];
+  /**
+   * Apply partial updates to existing todo items.
+   * Combine with any UI action — e.g. mark previous item "done" and next "in_progress".
+   */
+  todoUpdate?: TodoUpdate[];
 }
 
 /** Persisted agent state in chrome.storage.session. */
