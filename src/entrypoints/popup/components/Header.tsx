@@ -57,7 +57,7 @@ export function Header({ isRunning, isError }: Props) {
       </div>
 
       {/* Agent badge */}
-      <span className="text-[8px] font-bold tracking-[1.2px] uppercase text-sky-400 bg-sky-950/60 border border-sky-800 rounded px-[6px] py-[2px]">
+      <span className="text-[8px] font-bold tracking-[1.2px] uppercase text-sky-600 dark:text-sky-400 bg-sky-100 dark:bg-sky-950/60 border border-sky-300 dark:border-sky-800 rounded px-[6px] py-[2px]">
         Agent
       </span>
 
