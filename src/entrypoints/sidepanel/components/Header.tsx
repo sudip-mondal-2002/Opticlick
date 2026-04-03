@@ -46,7 +46,7 @@ export function Header({ isRunning, isError, sessionCount, onShowSessions }: Pro
       <div className="absolute bottom-0 left-0 right-0 h-[1px] bg-gradient-to-r from-sky-600 via-sky-400 to-transparent opacity-60 pointer-events-none" />
 
       {/* Logo mark */}
-      <div className="w-[28px] h-[28px] shrink-0 rounded-[8px] bg-gradient-to-br from-sky-600 to-sky-400 shadow-[0_0_12px_rgba(14,165,233,0.4)]" />
+      <img src="/icon.svg" width={28} height={28} className="shrink-0 rounded-[8px]" alt="Opticlick" />
 
       {/* Title */}
       <div className="flex flex-col leading-none">
