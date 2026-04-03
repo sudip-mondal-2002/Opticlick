@@ -7,7 +7,7 @@ import type { AgentDecision } from './types';
 const GEMINI_MODEL = 'gemini-3.1-flash-lite-preview';
 const MAX_API_RETRIES = 5;
 const RATE_LIMIT_DELAY_MS = 10_000;
-const THINKING_BUDGET = 4096;
+const THINKING_BUDGET = 8192;
 
 const SYSTEM_INSTRUCTIONS = `You are an autonomous web agent that can browse ANY website.
 
@@ -21,6 +21,14 @@ Your task: decide the NEXT ACTION to accomplish the user's goal. You have these 
 4. Scroll by setting "scroll" to "up", "down", "left", or "right". To scroll INSIDE a specific scrollable element (e.g. a sidebar, code block, or panel), also set "scrollTargetId" to that element's number. Without scrollTargetId the entire page scrolls.
 5. Press a keyboard key by setting "pressKey" (e.g. "Enter", "Tab", "Escape").
 
+BEFORE DECIDING, REASON CAREFULLY:
+- Look at the screenshot closely. What page am I on? What state is it in?
+- What is the user's goal? How close am I to achieving it?
+- What will happen AFTER this action? Will it navigate away? Submit a form? Open a modal?
+- For IRREVERSIBLE actions (pressing Enter on a form, clicking a submit/buy/delete button), be especially careful — confirm the inputs are correct and the action is the intended next step.
+- If the previous action failed or produced an unexpected result, reassess before retrying the same action.
+- Prefer navigating with "navigateUrl" over guessing at form submissions when the destination URL is known.
+
 IMPORTANT:
 - You can ALWAYS navigate to a different URL. If the current page is not relevant to the task, use "navigateUrl" to go there. NEVER give up or set "done" to true just because the current page is wrong.
 - If you cannot see the element you need, scroll first before giving up.
@@ -30,7 +38,7 @@ IMPORTANT:
   {
     "targetId": <number | null>,
     "done": <boolean>,
-    "reasoning": "<brief explanation>",
+    "reasoning": "<thorough step-by-step explanation of your reasoning and why this is the right action>",
     "typeText": "<text to type, optional>",
     "navigateUrl": "<full URL, optional>",
     "scroll": "<'up' | 'down' | 'left' | 'right', optional>",

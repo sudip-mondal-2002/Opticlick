@@ -18,9 +18,9 @@ export default defineBackground(() => {
         sendResponse({ started: false, reason: 'already_running' });
         return true;
       }
-      const { tabId, prompt } = msg as { tabId: number; prompt: string };
+      const { tabId, prompt, sessionId } = msg as { tabId: number; prompt: string; sessionId?: number };
       loopRunning = true;
-      runAgentLoop(tabId, prompt)
+      runAgentLoop(tabId, prompt, sessionId)
         .catch(async (err) => {
           await log(`Fatal: ${(err as Error).message}`, 'error');
         })

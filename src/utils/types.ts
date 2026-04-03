@@ -38,6 +38,15 @@ export interface AgentState {
   tabId?: number;
   step: number;
   prompt?: string;
+  sessionId?: number;
+}
+
+/** A stored chat session. */
+export interface Session {
+  id?: number;
+  title: string;
+  createdAt: number;
+  updatedAt: number;
 }
 
 /** Log entry stored in chrome.storage.session. */
@@ -49,7 +58,7 @@ export interface LogEntry {
 
 /** Messages flowing between popup / background / content. */
 export type Message =
-  | { type: 'START_AGENT'; tabId: number; prompt: string }
+  | { type: 'START_AGENT'; tabId: number; prompt: string; sessionId?: number }
   | { type: 'STOP_AGENT' }
   | { type: 'AGENT_LOG'; message: string; level: string }
   | { type: 'AGENT_STATE_CHANGE' }

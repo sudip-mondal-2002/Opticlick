@@ -14,7 +14,7 @@ export default defineConfig({
       'Autonomous web agent using Set-of-Mark visual prompting and Gemini 3.1 Pro.',
     permissions: ['activeTab', 'scripting', 'debugger', 'storage'],
     host_permissions: ['<all_urls>'],
-    icons: { 128: 'icon.svg' },
-    action: { default_icon: 'icon.svg' },
+    icons: { 16: 'icon-16.png', 32: 'icon-32.png', 48: 'icon-48.png', 128: 'icon-128.png' },
+    action: { default_icon: { 16: 'icon-16.png', 32: 'icon-32.png', 48: 'icon-48.png', 128: 'icon-128.png' } },
   },
 });

@@ -2,7 +2,7 @@
  * Main agent loop — Think → Annotate → Capture → Reason → Act.
  */
 
-import { appendConversationTurn, getConversationHistory } from '@/utils/db';
+import { appendConversationTurn, createSession, getConversationHistory, touchSession } from '@/utils/db';
 import { callGemini } from '@/utils/gemini';
 import { attachDebugger, detachDebugger, dispatchHardwareClick, getKeyCode } from '@/utils/cdp';
 import { log } from '@/utils/agent-log';
@@ -23,8 +23,10 @@ const STEP_DELAY_MS = 800;
 const RATE_LIMIT_DELAY_MS = 10_000;
 const MAX_EMPTY_RETRIES = 3;
 
-export async function runAgentLoop(tabId: number, userPrompt: string): Promise<void> {
-  await setAgentState({ status: 'running', tabId, step: 0, prompt: userPrompt });
+export async function runAgentLoop(tabId: number, userPrompt: string, existingSessionId?: number): Promise<void> {
+  // Create a new session or reuse an existing one for context continuity.
+  const sessionId = existingSessionId ?? await createSession(userPrompt);
+  await setAgentState({ status: 'running', tabId, step: 0, prompt: userPrompt, sessionId });
   await log(`Agent started`, 'observe');
 
   try {
@@ -108,8 +110,8 @@ export async function runAgentLoop(tabId: number, userPrompt: string): Promise<v
       // 4. Destroy overlay
       await sendToTab(tabId, { type: 'DESTROY_MARKS' });
 
-      // 5. Fetch conversation history
-      const history = await getConversationHistory(tabId);
+      // 5. Fetch conversation history for this session
+      const history = await getConversationHistory(sessionId);
 
       // 6. Call Gemini — thinking tokens are logged as [THINK] inside callGemini
       await log('Sending to Gemini…', 'observe');
@@ -127,7 +129,8 @@ export async function runAgentLoop(tabId: number, userPrompt: string): Promise<v
 
       // Log the model's reasoning conclusion
       await log(decision.reasoning, 'think');
-      await appendConversationTurn(tabId, 'model', JSON.stringify(decision));
+      await appendConversationTurn(sessionId, 'model', JSON.stringify(decision));
+      await touchSession(sessionId);
 
       // 7. If done with no final action, finish
       const hasFinalAction =
@@ -144,17 +147,29 @@ export async function runAgentLoop(tabId: number, userPrompt: string): Promise<v
       // 8a. Handle URL navigation
       if (decision.navigateUrl) {
         await log(`Navigating to: ${decision.navigateUrl}`, 'act');
-        try { await sendToTab(tabId, { type: 'UNBLOCK_INPUT' }); } catch { /* */ }
-        await detachDebugger(tabId);
-        await chrome.tabs.update(tabId, { url: decision.navigateUrl });
-        await waitForTabLoad(tabId, 15_000, true);
-        await ensureContentScript(tabId);
-        await sendToTab(tabId, { type: 'BLOCK_INPUT' });
-        await appendConversationTurn(
-          tabId,
-          'user',
-          `[Step ${step}] Navigated to ${decision.navigateUrl}. Task: ${userPrompt}`,
-        );
+        try {
+          try { await sendToTab(tabId, { type: 'UNBLOCK_INPUT' }); } catch { /* */ }
+          await detachDebugger(tabId);
+          await chrome.tabs.update(tabId, { url: decision.navigateUrl });
+          await waitForTabLoad(tabId, 15_000, true);
+          await ensureContentScript(tabId);
+          await sendToTab(tabId, { type: 'BLOCK_INPUT' });
+          await appendConversationTurn(
+            sessionId,
+            'user',
+            `[Step ${step}] Navigated to ${decision.navigateUrl}. Task: ${userPrompt}`,
+          );
+        } catch (actErr) {
+          const errMsg = (actErr as Error).message;
+          await log(`Navigation to ${decision.navigateUrl} failed: ${errMsg}`, 'warn');
+          await appendConversationTurn(
+            sessionId,
+            'user',
+            `[ACTION FAILED - Step ${step}] Navigation to "${decision.navigateUrl}" failed with error: "${errMsg}". The page state is unknown. Look at the new screenshot carefully and decide on a different approach. Task: ${userPrompt}`,
+          );
+          try { await ensureContentScript(tabId); } catch { /* */ }
+          try { await sendToTab(tabId, { type: 'BLOCK_INPUT' }); } catch { /* */ }
+        }
         await sleep(STEP_DELAY_MS);
         continue;
       }
@@ -184,22 +199,34 @@ export async function runAgentLoop(tabId: number, userPrompt: string): Promise<v
           : `Scrolling page ${decision.scroll}`;
         await log(`${label}`, 'act');
 
-        await sendToTab(tabId, { type: 'UNBLOCK_INPUT' });
-        await attachDebugger(tabId);
-        await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchMouseEvent', {
-          type: 'mouseWheel',
-          x: scrollX,
-          y: scrollY,
-          deltaX,
-          deltaY,
-        });
-        await sleep(300);
-        try { await sendToTab(tabId, { type: 'BLOCK_INPUT' }); } catch { /* */ }
-        await appendConversationTurn(
-          tabId,
-          'user',
-          `[Step ${step}] ${label}. Task: ${userPrompt}`,
-        );
+        try {
+          await sendToTab(tabId, { type: 'UNBLOCK_INPUT' });
+          await attachDebugger(tabId);
+          await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchMouseEvent', {
+            type: 'mouseWheel',
+            x: scrollX,
+            y: scrollY,
+            deltaX,
+            deltaY,
+          });
+          await sleep(300);
+          try { await sendToTab(tabId, { type: 'BLOCK_INPUT' }); } catch { /* */ }
+          await appendConversationTurn(
+            sessionId,
+            'user',
+            `[Step ${step}] ${label}. Task: ${userPrompt}`,
+          );
+        } catch (actErr) {
+          const errMsg = (actErr as Error).message;
+          await log(`Scroll failed: ${errMsg}`, 'warn');
+          await appendConversationTurn(
+            sessionId,
+            'user',
+            `[ACTION FAILED - Step ${step}] Scroll action ("${label}") failed with error: "${errMsg}". Look at the new screenshot and decide on a different approach. Task: ${userPrompt}`,
+          );
+          try { await ensureContentScript(tabId); } catch { /* */ }
+          try { await sendToTab(tabId, { type: 'BLOCK_INPUT' }); } catch { /* */ }
+        }
         await sleep(STEP_DELAY_MS);
         continue;
       }
@@ -207,24 +234,44 @@ export async function runAgentLoop(tabId: number, userPrompt: string): Promise<v
       // 8c. Handle standalone pressKey (no click target)
       if (decision.pressKey && decision.targetId == null) {
         await log(`Pressing key: ${decision.pressKey}`, 'act');
-        await sendToTab(tabId, { type: 'UNBLOCK_INPUT' });
-        await attachDebugger(tabId);
-        await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
-          type: 'rawKeyDown',
-          key: decision.pressKey,
-          windowsVirtualKeyCode: getKeyCode(decision.pressKey),
-        });
-        await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
-          type: 'keyUp',
-          key: decision.pressKey,
-          windowsVirtualKeyCode: getKeyCode(decision.pressKey),
-        });
-        try { await sendToTab(tabId, { type: 'BLOCK_INPUT' }); } catch { /* */ }
-        await appendConversationTurn(
-          tabId,
-          'user',
-          `[Step ${step}] Pressed key "${decision.pressKey}". Task: ${userPrompt}`,
-        );
+        try {
+          await sendToTab(tabId, { type: 'UNBLOCK_INPUT' });
+          await attachDebugger(tabId);
+          await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
+            type: 'rawKeyDown',
+            key: decision.pressKey,
+            windowsVirtualKeyCode: getKeyCode(decision.pressKey),
+          });
+          await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
+            type: 'keyUp',
+            key: decision.pressKey,
+            windowsVirtualKeyCode: getKeyCode(decision.pressKey),
+          });
+          // Enter/Return may trigger a form submit / navigation — wait for the tab to settle
+          if (decision.pressKey === 'Enter' || decision.pressKey === 'Return') {
+            await sleep(600);
+            await waitForTabLoad(tabId, 10_000, false);
+            await ensureContentScript(tabId);
+          }
+          try { await sendToTab(tabId, { type: 'BLOCK_INPUT' }); } catch { /* */ }
+          await appendConversationTurn(
+            sessionId,
+            'user',
+            `[Step ${step}] Pressed key "${decision.pressKey}". Task: ${userPrompt}`,
+          );
+        } catch (actErr) {
+          const errMsg = (actErr as Error).message;
+          await log(`Key press "${decision.pressKey}" failed: ${errMsg}`, 'warn');
+          await appendConversationTurn(
+            sessionId,
+            'user',
+            `[ACTION FAILED - Step ${step}] Pressing key "${decision.pressKey}" failed with error: "${errMsg}". The page may have navigated to an error page or crashed. Look at the new screenshot carefully and decide on a different approach. Task: ${userPrompt}`,
+          );
+          // Try to recover — the tab may have navigated somewhere
+          await waitForTabLoad(tabId, 10_000, false);
+          try { await ensureContentScript(tabId); } catch { /* */ }
+          try { await sendToTab(tabId, { type: 'BLOCK_INPUT' }); } catch { /* */ }
+        }
         await sleep(STEP_DELAY_MS);
         continue;
       }
@@ -258,39 +305,54 @@ export async function runAgentLoop(tabId: number, userPrompt: string): Promise<v
       };
       chrome.tabs.onCreated.addListener(newTabListener);
 
-      await dispatchHardwareClick(tabId, target.rect.x, target.rect.y);
+      let actError: string | null = null;
+      try {
+        await dispatchHardwareClick(tabId, target.rect.x, target.rect.y);
 
-      // 10. Type text if requested
-      if (decision.typeText) {
-        await log(`Typing: "${decision.typeText}"`, 'act');
-        await sleep(200);
-        for (const char of decision.typeText) {
+        // 10. Type text if requested
+        if (decision.typeText) {
+          await log(`Typing: "${decision.typeText}"`, 'act');
+          await sleep(200);
+          for (const char of decision.typeText) {
+            await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
+              type: 'keyDown',
+              text: char,
+            });
+            await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
+              type: 'keyUp',
+              text: char,
+            });
+            await sleep(30);
+          }
+        }
+
+        // 10b. Press key after click+type (e.g. Enter to submit)
+        if (decision.pressKey) {
+          await log(`Pressing key: ${decision.pressKey}`, 'act');
+          await sleep(100);
           await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
-            type: 'keyDown',
-            text: char,
+            type: 'rawKeyDown',
+            key: decision.pressKey,
+            windowsVirtualKeyCode: getKeyCode(decision.pressKey),
           });
           await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
             type: 'keyUp',
-            text: char,
+            key: decision.pressKey,
+            windowsVirtualKeyCode: getKeyCode(decision.pressKey),
           });
-          await sleep(30);
+          // Enter/Return may trigger navigation — wait for the tab to settle
+          if (decision.pressKey === 'Enter' || decision.pressKey === 'Return') {
+            await sleep(600);
+            await waitForTabLoad(tabId, 10_000, false);
+            await ensureContentScript(tabId);
+          }
         }
-      }
-
-      // 10b. Press key after click+type (e.g. Enter to submit)
-      if (decision.pressKey) {
-        await log(`Pressing key: ${decision.pressKey}`, 'act');
-        await sleep(100);
-        await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
-          type: 'rawKeyDown',
-          key: decision.pressKey,
-          windowsVirtualKeyCode: getKeyCode(decision.pressKey),
-        });
-        await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
-          type: 'keyUp',
-          key: decision.pressKey,
-          windowsVirtualKeyCode: getKeyCode(decision.pressKey),
-        });
+      } catch (actErr_) {
+        actError = (actErr_ as Error).message;
+        await log(`Action on #${target.id} failed: ${actError}`, 'warn');
+        // Try to recover from any mid-action navigation or frame crash
+        await waitForTabLoad(tabId, 10_000, false);
+        try { await ensureContentScript(tabId); } catch { /* */ }
       }
 
       await sleep(500);
@@ -309,14 +371,21 @@ export async function runAgentLoop(tabId: number, userPrompt: string): Promise<v
         await ensureContentScript(tabId);
         await sendToTab(tabId, { type: 'BLOCK_INPUT' });
         await appendConversationTurn(
-          tabId,
+          sessionId,
           'user',
           `[Step ${step}] Clicked #${decision.targetId} ("${target.text}") → opened new tab. Task: ${userPrompt}`,
+        );
+      } else if (actError) {
+        try { await sendToTab(tabId, { type: 'BLOCK_INPUT' }); } catch { /* */ }
+        await appendConversationTurn(
+          sessionId,
+          'user',
+          `[ACTION FAILED - Step ${step}] Clicking element #${decision.targetId} ("${target.text}") failed with error: "${actError}". The page may have navigated or crashed. Look at the new screenshot carefully and decide on a different approach. Task: ${userPrompt}`,
         );
       } else {
         try { await sendToTab(tabId, { type: 'BLOCK_INPUT' }); } catch { /* */ }
         await appendConversationTurn(
-          tabId,
+          sessionId,
           'user',
           `[Step ${step}] Clicked element #${decision.targetId} ("${target.text}"). Task: ${userPrompt}`,
         );
