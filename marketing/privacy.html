@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Privacy Policy — Opticlick Engine</title>
+  <meta name="description" content="Privacy Policy for Opticlick Engine Chrome Extension." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0a0a0f;
+      --surface: #111118;
+      --surface-2: #1a1a24;
+      --border: #2a2a38;
+      --accent: #6c63ff;
+      --accent-2: #a78bfa;
+      --text: #f0f0f8;
+      --text-muted: #8888a8;
+      --green: #22d3a0;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.7;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    a { color: var(--accent-2); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* ── NAV ── */
+    nav {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1rem 2rem;
+      background: rgba(10, 10, 15, 0.9);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .nav-logo {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      font-weight: 700;
+      font-size: 1.05rem;
+      letter-spacing: -0.02em;
+      color: var(--text);
+      text-decoration: none;
+    }
+
+    .nav-logo:hover { text-decoration: none; }
+
+    .dot {
+      width: 10px; height: 10px;
+      background: var(--accent);
+      border-radius: 50%;
+      box-shadow: 0 0 8px var(--accent);
+    }
+
+    /* ── LAYOUT ── */
+    .page-wrap {
+      display: grid;
+      grid-template-columns: 240px 1fr;
+      gap: 0;
+      max-width: 1060px;
+      margin: 0 auto;
+      padding: 4rem 2rem;
+      align-items: start;
+    }
+
+    /* ── TOC SIDEBAR ── */
+    .toc {
+      position: sticky;
+      top: 6rem;
+      padding-right: 2.5rem;
+    }
+
+    .toc-title {
+      font-size: 0.7rem;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      margin-bottom: 1rem;
+    }
+
+    .toc ul {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 0.3rem;
+    }
+
+    .toc a {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      display: block;
+      padding: 0.3rem 0.6rem;
+      border-radius: 6px;
+      border-left: 2px solid transparent;
+      transition: color 0.15s, border-color 0.15s;
+    }
+
+    .toc a:hover {
+      color: var(--text);
+      border-left-color: var(--accent);
+      text-decoration: none;
+    }
+
+    /* ── CONTENT ── */
+    .content {
+      min-width: 0;
+    }
+
+    .page-header {
+      margin-bottom: 3rem;
+      padding-bottom: 2rem;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .page-label {
+      font-size: 0.75rem;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 0.75rem;
+    }
+
+    .page-header h1 {
+      font-size: 2.4rem;
+      font-weight: 800;
+      letter-spacing: -0.04em;
+      margin-bottom: 0.75rem;
+    }
+
+    .meta {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      display: flex;
+      gap: 1.5rem;
+      flex-wrap: wrap;
+    }
+
+    .meta-item {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+
+    .meta-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--green);
+    }
+
+    /* ── POLICY SECTIONS ── */
+    .policy-section {
+      margin-bottom: 3.5rem;
+      scroll-margin-top: 5rem;
+    }
+
+    .policy-section h2 {
+      font-size: 1.25rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin-bottom: 1rem;
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+    }
+
+    .section-number {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.75rem;
+      color: var(--accent);
+      background: rgba(108,99,255,0.1);
+      border: 1px solid rgba(108,99,255,0.25);
+      padding: 0.15rem 0.5rem;
+      border-radius: 4px;
+    }
+
+    .policy-section p {
+      color: var(--text-muted);
+      font-size: 0.95rem;
+      margin-bottom: 0.9rem;
+    }
+
+    .policy-section ul, .policy-section ol {
+      margin: 0.5rem 0 1rem 1.25rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .policy-section li {
+      font-size: 0.95rem;
+      color: var(--text-muted);
+    }
+
+    .policy-section li strong {
+      color: var(--text);
+      font-weight: 600;
+    }
+
+    /* ── CALLOUT BOXES ── */
+    .callout {
+      border-radius: 10px;
+      padding: 1.1rem 1.4rem;
+      margin: 1.2rem 0;
+      font-size: 0.9rem;
+      line-height: 1.65;
+    }
+
+    .callout.info {
+      background: rgba(108,99,255,0.08);
+      border: 1px solid rgba(108,99,255,0.25);
+      color: var(--accent-2);
+    }
+
+    .callout.warning {
+      background: rgba(251,146,60,0.08);
+      border: 1px solid rgba(251,146,60,0.25);
+      color: #fb923c;
+    }
+
+    .callout.success {
+      background: rgba(34,211,160,0.08);
+      border: 1px solid rgba(34,211,160,0.25);
+      color: var(--green);
+    }
+
+    .callout strong { font-weight: 700; }
+
+    /* ── DATA TABLE ── */
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.875rem;
+      margin: 1rem 0;
+    }
+
+    .data-table th {
+      text-align: left;
+      padding: 0.65rem 1rem;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      font-weight: 600;
+      font-size: 0.8rem;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    .data-table td {
+      padding: 0.65rem 1rem;
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      vertical-align: top;
+    }
+
+    .data-table td strong { color: var(--text); }
+
+    /* ── FOOTER ── */
+    footer {
+      margin-top: 4rem;
+      padding: 2rem;
+      border-top: 1px solid var(--border);
+      text-align: center;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      max-width: 1060px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    footer a { color: var(--accent-2); }
+
+    /* ── RESPONSIVE ── */
+    @media (max-width: 760px) {
+      .page-wrap {
+        grid-template-columns: 1fr;
+        padding: 2rem 1.25rem;
+      }
+      .toc { display: none; }
+      .page-header h1 { font-size: 1.8rem; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- NAV -->
+  <nav>
+    <a href="index.html" class="nav-logo">
+      <div class="dot"></div>
+      Opticlick Engine
+    </a>
+    <span style="font-size:0.85rem; color:var(--text-muted);">Privacy Policy</span>
+  </nav>
+
+  <div class="page-wrap">
+
+    <!-- TOC SIDEBAR -->
+    <aside class="toc">
+      <div class="toc-title">Contents</div>
+      <ul>
+        <li><a href="#overview">Overview</a></li>
+        <li><a href="#data-collected">Data collected</a></li>
+        <li><a href="#api-key">Your API key</a></li>
+        <li><a href="#page-data">Page data & screenshots</a></li>
+        <li><a href="#storage">Local storage</a></li>
+        <li><a href="#third-parties">Third-party services</a></li>
+        <li><a href="#permissions">Chrome permissions</a></li>
+        <li><a href="#children">Children's privacy</a></li>
+        <li><a href="#changes">Policy changes</a></li>
+        <li><a href="#contact">Contact us</a></li>
+      </ul>
+    </aside>
+
+    <!-- MAIN CONTENT -->
+    <main class="content">
+
+      <div class="page-header">
+        <div class="page-label">Legal</div>
+        <h1>Privacy Policy</h1>
+        <div class="meta">
+          <div class="meta-item">
+            <div class="meta-dot"></div>
+            Effective date: April 3, 2026
+          </div>
+          <div class="meta-item">Last updated: April 3, 2026</div>
+        </div>
+      </div>
+
+      <!-- 1. OVERVIEW -->
+      <section class="policy-section" id="overview">
+        <h2><span class="section-number">01</span> Overview</h2>
+        <p>
+          Opticlick Engine ("the Extension", "we", "our") is a Manifest V3 Chrome Extension that acts as an
+          autonomous web agent. It analyzes web pages using computer vision and executes user-defined browsing
+          tasks by simulating hardware-level mouse events via the Chrome DevTools Protocol.
+        </p>
+        <p>
+          This Privacy Policy explains what information the Extension collects, how it is used, and your rights
+          regarding that information. By installing and using the Extension, you agree to the practices described here.
+        </p>
+        <div class="callout success">
+          <strong>Short version:</strong> Opticlick processes data locally on your device. We do not operate servers,
+          collect analytics, or sell any information about you. The only outbound request the Extension makes is to
+          Google's Gemini API using your own API key.
+        </div>
+      </section>
+
+      <!-- 2. DATA COLLECTED -->
+      <section class="policy-section" id="data-collected">
+        <h2><span class="section-number">02</span> Data we collect</h2>
+        <p>We distinguish between data that stays on your device and data transmitted to external services.</p>
+
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Data type</th>
+              <th>Where it stays</th>
+              <th>Purpose</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Gemini API key</strong></td>
+              <td>Your device only (<code>chrome.storage.local</code>)</td>
+              <td>Authenticate requests to Google's Gemini API</td>
+            </tr>
+            <tr>
+              <td><strong>Page screenshots</strong></td>
+              <td>Transmitted to Gemini API; not retained by us</td>
+              <td>Vision input for the AI decision loop</td>
+            </tr>
+            <tr>
+              <td><strong>Task prompt / goal text</strong></td>
+              <td>Transmitted to Gemini API; not retained by us</td>
+              <td>Instruction for the AI model</td>
+            </tr>
+            <tr>
+              <td><strong>Agent execution state</strong></td>
+              <td>Your device only (<code>chrome.storage.session</code>)</td>
+              <td>Resume after service worker restarts</td>
+            </tr>
+            <tr>
+              <td><strong>Conversation / task history</strong></td>
+              <td>Your device only (IndexedDB)</td>
+              <td>Long-term context for multi-step tasks</td>
+            </tr>
+            <tr>
+              <td><strong>Element coordinate mappings</strong></td>
+              <td>Your device only (<code>chrome.storage.session</code>)</td>
+              <td>Map AI-selected element IDs to CDP click targets</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <p>We do not collect names, email addresses, IP addresses, browsing history, or any personal identifiers.</p>
+      </section>
+
+      <!-- 3. API KEY -->
+      <section class="policy-section" id="api-key">
+        <h2><span class="section-number">03</span> Your API key</h2>
+        <p>
+          The Extension requires a Google Gemini API key to function. You enter this key through the Extension's
+          popup interface. It is stored exclusively in <code>chrome.storage.local</code> on your device and is
+          never transmitted to our servers (we have none) or any party other than Google's Gemini API endpoint.
+        </p>
+        <div class="callout warning">
+          <strong>Your responsibility:</strong> Keep your Gemini API key confidential. Opticlick cannot be held
+          responsible for API costs or quota usage resulting from tasks you initiate. Review Google's
+          <a href="https://ai.google.dev/terms" target="_blank" rel="noopener">Gemini API Terms of Service</a>
+          for details on usage limits and billing.
+        </div>
+        <p>You can delete your stored API key at any time by clearing the Extension's storage via
+          <em>chrome://extensions → Opticlick Engine → Details → Clear storage</em>, or by uninstalling the Extension.
+        </p>
+      </section>
+
+      <!-- 4. PAGE DATA & SCREENSHOTS -->
+      <section class="policy-section" id="page-data">
+        <h2><span class="section-number">04</span> Page data &amp; screenshots</h2>
+        <p>
+          When you run a task, the Extension captures a screenshot of the current browser tab using
+          <code>chrome.tabs.captureVisibleTab</code> and transmits it — along with your task description — to the
+          Google Gemini API. This is the core mechanism that gives the AI "eyes" to understand the page.
+        </p>
+        <ul>
+          <li>Screenshots are base64-encoded and sent over HTTPS directly to Google's API.</li>
+          <li>We do not store, cache, or log screenshots on any server we control.</li>
+          <li>Screenshots are held in memory only for the duration of a single Think–Act–Observe loop iteration.</li>
+          <li>If your active tab contains sensitive information (passwords, financial data, personal messages), be
+              aware that content will be included in the screenshot sent to Google.</li>
+        </ul>
+        <div class="callout info">
+          <strong>Recommendation:</strong> Only run Opticlick on tabs and pages you are comfortable sharing with
+          Google's Gemini API. Do not run automated tasks on pages that display credentials, private messages,
+          or confidential documents.
+        </div>
+        <p>
+          Google processes the screenshot under its own
+          <a href="https://policies.google.com/privacy" target="_blank" rel="noopener">Privacy Policy</a>
+          and Gemini API terms. We encourage you to review those documents.
+        </p>
+      </section>
+
+      <!-- 5. LOCAL STORAGE -->
+      <section class="policy-section" id="storage">
+        <h2><span class="section-number">05</span> Local storage</h2>
+        <p>The Extension uses three browser storage mechanisms, all local to your device:</p>
+        <ul>
+          <li><strong>chrome.storage.local</strong> — Stores your Gemini API key and user preferences. Persists until you clear it or uninstall the Extension.</li>
+          <li><strong>chrome.storage.session</strong> — Stores ephemeral agent state (current task step, element coordinate mappings). Cleared when the browser session ends.</li>
+          <li><strong>IndexedDB</strong> — Stores long-form conversation history and large payloads needed for multi-step tasks. Persists locally and can be cleared via browser developer tools or Extension settings.</li>
+        </ul>
+        <p>None of this data is synchronized to cloud services, shared with us, or accessible to any third party.</p>
+      </section>
+
+      <!-- 6. THIRD-PARTY SERVICES -->
+      <section class="policy-section" id="third-parties">
+        <h2><span class="section-number">06</span> Third-party services</h2>
+        <p>The only external service the Extension communicates with is the <strong>Google Gemini API</strong>.</p>
+        <ul>
+          <li>Endpoint: <code>generativelanguage.googleapis.com</code> (gemini-3.1-pro-preview)</li>
+          <li>Data sent per request: your task prompt, a base64-encoded screenshot of the active tab.</li>
+          <li>Authentication: your API key, sent as an HTTP header.</li>
+        </ul>
+        <p>
+          Google's handling of this data is governed by Google's
+          <a href="https://policies.google.com/privacy" target="_blank" rel="noopener">Privacy Policy</a>
+          and the
+          <a href="https://ai.google.dev/terms" target="_blank" rel="noopener">Gemini API Additional Terms</a>.
+          We have no control over and assume no responsibility for Google's data practices.
+        </p>
+        <p>We do not integrate any analytics services, advertising networks, crash reporters, or telemetry tools.</p>
+      </section>
+
+      <!-- 7. CHROME PERMISSIONS -->
+      <section class="policy-section" id="permissions">
+        <h2><span class="section-number">07</span> Chrome permissions explained</h2>
+        <p>The Extension requests the following permissions. Each is necessary for core functionality:</p>
+        <ul>
+          <li>
+            <strong>activeTab</strong> — Grants temporary access to the currently active tab when you invoke the
+            Extension. Used to inject content scripts and capture screenshots.
+          </li>
+          <li>
+            <strong>scripting</strong> — Required to programmatically inject the annotation content script into
+            page frames, including cross-origin iframes.
+          </li>
+          <li>
+            <strong>debugger</strong> — Attaches the Chrome DevTools Protocol to the active tab so the Extension
+            can dispatch hardware-level mouse events via <code>Input.dispatchMouseEvent</code>. This is necessary
+            to interact correctly with React, Vue, and Angular applications.
+          </li>
+          <li>
+            <strong>storage</strong> — Enables use of <code>chrome.storage.local</code> and
+            <code>chrome.storage.session</code> for persisting the API key and agent state.
+          </li>
+        </ul>
+        <p>No broad host permissions (<code>&lt;all_urls&gt;</code>) are requested. Access is scoped to the active tab only.</p>
+      </section>
+
+      <!-- 8. CHILDREN -->
+      <section class="policy-section" id="children">
+        <h2><span class="section-number">08</span> Children's privacy</h2>
+        <p>
+          Opticlick Engine is not directed at children under 13 years of age. We do not knowingly collect personal
+          information from children. If you believe a child has provided information through this Extension, please
+          contact us so we can address the situation.
+        </p>
+      </section>
+
+      <!-- 9. CHANGES -->
+      <section class="policy-section" id="changes">
+        <h2><span class="section-number">09</span> Changes to this policy</h2>
+        <p>
+          We may update this Privacy Policy from time to time. When we do, we will revise the "Last updated" date
+          at the top of this page and, for material changes, notify users via the Extension's update notes in the
+          Chrome Web Store.
+        </p>
+        <p>
+          Continued use of the Extension after changes are posted constitutes your acceptance of the revised policy.
+          We encourage you to review this page periodically.
+        </p>
+      </section>
+
+      <!-- 10. CONTACT -->
+      <section class="policy-section" id="contact">
+        <h2><span class="section-number">10</span> Contact us</h2>
+        <p>
+          If you have questions, concerns, or requests related to this Privacy Policy or the Extension's data
+          practices, please contact us:
+        </p>
+        <ul>
+          <li><strong>Email:</strong> <a href="mailto:privacy@opticlick.dev">privacy@opticlick.dev</a></li>
+          <li><strong>GitHub Issues:</strong> <a href="https://github.com" target="_blank" rel="noopener">github.com/opticlick/engine/issues</a></li>
+        </ul>
+        <p>We will respond to privacy inquiries within 30 days.</p>
+      </section>
+
+    </main>
+  </div>
+
+  <footer>
+    <p>
+      &copy; 2026 Opticlick Engine &nbsp;·&nbsp;
+      <a href="index.html">Home</a> &nbsp;·&nbsp;
+      <a href="privacy.html">Privacy Policy</a> &nbsp;·&nbsp;
+      <a href="mailto:privacy@opticlick.dev">Contact</a>
+    </p>
+  </footer>
+
+</body>
+</html>
