@@ -11,6 +11,11 @@ import { runAgentLoop } from './background/loop';
 export default defineBackground(() => {
   let loopRunning = false;
 
+  // Open the side panel when the toolbar icon is clicked
+  chrome.sidePanel
+    .setPanelBehavior({ openPanelOnActionClick: true })
+    .catch(() => {});
+
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     if (msg.type === 'START_AGENT') {
       if (loopRunning) {
