@@ -3,7 +3,7 @@ interface Props {
   maxSteps?: number;
 }
 
-export function StepFooter({ step, maxSteps = 20 }: Props) {
+export function StepFooter({ step, maxSteps = 500 }: Props) {
   const pct = Math.min((step / maxSteps) * 100, 100);
 
   return (

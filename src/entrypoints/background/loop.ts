@@ -6,8 +6,8 @@ import { appendConversationTurn, createSession, getConversationHistory, touchSes
 import { callModel, createModel } from '@/utils/llm';
 import type { InlineImage } from '@/utils/llm';
 import { loadTodoFromVFS, saveTodoToVFS, applyTodoUpdates, TODO_VFS_FILENAME } from '@/utils/todo';
-import type { TodoItem } from '@/utils/types';
-import { attachDebugger, detachDebugger, dispatchHardwareClick, getKeyCode, writeTempFile, cleanupTempFile } from '@/utils/cdp';
+import type { AgentAction, TodoItem } from '@/utils/types';
+import { attachDebugger, detachDebugger, dispatchHardwareClick, CDP_MODIFIER, getKeyCode, writeTempFile, cleanupTempFile } from '@/utils/cdp';
 import { log } from '@/utils/agent-log';
 import { getAgentState, setAgentState } from '@/utils/agent-state';
 import {
@@ -46,17 +46,195 @@ function filenameFromResponse(response: Response, url: string, override?: string
   return 'download';
 }
 
-const MAX_STEPS = 20;
+const MAX_STEPS = 500;
 const STEP_DELAY_MS = 800;
 const RATE_LIMIT_DELAY_MS = 10_000;
 const MAX_EMPTY_RETRIES = 3;
 
-export async function runAgentLoop(tabId: number, userPrompt: string, existingSessionId?: number, attachments?: AttachedFile[]): Promise<void> {
-  // Create a new session or reuse an existing one for context continuity.
-  const sessionId = existingSessionId ?? await createSession(userPrompt);
+// ─────────────────────────────────────────────────────────────────────────────
+// Action executors — each handles one AgentAction type
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Log the finish action's summary (the agent's final answer to the user). */
+async function logFinishSummary(actions: AgentAction[]): Promise<void> {
+  const finish = actions.find((a): a is Extract<AgentAction, { type: 'finish' }> => a.type === 'finish');
+  if (finish?.summary) await log(finish.summary, 'ok');
+}
+
+/** Execute all non-UI actions (VFS mutations, todo, DOM) and return a summary. */
+async function executeSideEffects(
+  actions: AgentAction[],
+  sessionId: number,
+  tabId: number,
+  base64Image: string,
+  step: number,
+  coordinateMap: CoordinateEntry[],
+  currentTodo: TodoItem[],
+  userPrompt: string,
+): Promise<{ updatedTodo: TodoItem[]; mutations: string[] }> {
+  let updatedTodo = currentTodo;
+  const mutations: string[] = [];
+
+  for (const action of actions) {
+    switch (action.type) {
+      // ── VFS ──────────────────────────────────────────────────────────────
+
+      case 'vfs_save_screenshot': {
+        const fname = action.name.trim() || `step_${step}.png`;
+        const saved = await writeVFSFile(sessionId, fname, base64Image, 'image/png');
+        mutations.push(`Saved screenshot as "${saved.name}" (id: ${saved.id})`);
+        await log(`VFS: saved screenshot → "${saved.name}"`, 'act');
+        break;
+      }
+
+      case 'vfs_write': {
+        const { name, content, mimeType = 'text/plain' } = action;
+        const base64Content = btoa(
+          Array.from(new TextEncoder().encode(content), (b) => String.fromCharCode(b)).join(''),
+        );
+        const saved = await writeVFSFile(sessionId, name, base64Content, mimeType);
+        mutations.push(`Wrote "${saved.name}" (${saved.size} B, id: ${saved.id})`);
+        await log(`VFS: wrote "${saved.name}" (${saved.size} B)`, 'act');
+        break;
+      }
+
+      case 'vfs_delete': {
+        await deleteVFSFile(action.fileId);
+        mutations.push(`Deleted VFS file ${action.fileId}`);
+        await log(`VFS: deleted file ${action.fileId}`, 'act');
+        break;
+      }
+
+      case 'vfs_download': {
+        const { url, name: nameHint } = action;
+        await log(`VFS: downloading ${url}`, 'act');
+        try {
+          const resp = await fetch(url);
+          if (!resp.ok) throw new Error(`HTTP ${resp.status} for ${url}`);
+          const mimeType =
+            resp.headers.get('Content-Type')?.split(';')[0].trim() ?? 'application/octet-stream';
+          const filename = filenameFromResponse(resp.clone(), url, nameHint);
+          const base64 = arrayBufferToBase64(await resp.arrayBuffer());
+          const saved = await writeVFSFile(sessionId, filename, base64, mimeType);
+          mutations.push(`Downloaded "${saved.name}" (${saved.size} B, id: ${saved.id})`);
+          await log(`VFS: downloaded → "${saved.name}" (${saved.size} B)`, 'act');
+        } catch (dlErr) {
+          const msg = (dlErr as Error).message;
+          mutations.push(`Download failed: ${msg}`);
+          await log(`VFS: download failed — ${msg}`, 'warn');
+        }
+        break;
+      }
+
+      // ── Todo ─────────────────────────────────────────────────────────────
+
+      case 'todo_create': {
+        updatedTodo = action.items as TodoItem[];
+        await saveTodoToVFS(sessionId, updatedTodo);
+        await log(`Todo: created plan with ${updatedTodo.length} item(s)`, 'info');
+        break;
+      }
+
+      case 'todo_update': {
+        updatedTodo = applyTodoUpdates(updatedTodo, action.updates);
+        await saveTodoToVFS(sessionId, updatedTodo);
+        const summary = action.updates
+          .map((u) => `${u.id}→${u.status ?? 'note'}`)
+          .join(', ');
+        await log(`Todo updated: ${summary}`, 'info');
+        break;
+      }
+
+      // ── DOM inspection ────────────────────────────────────────────────────
+
+      case 'fetch_dom': {
+        const domTarget = coordinateMap.find((c) => c.id === action.targetId);
+        if (!domTarget) {
+          await log(`fetch_dom — element #${action.targetId} not in coordinate map`, 'warn');
+          break;
+        }
+        await log(`Fetching DOM of element #${domTarget.id}…`, 'observe');
+        try {
+          const domResult = await sendToTab<{
+            success: boolean;
+            outerHTML?: string;
+            tag?: string;
+            truncated?: boolean;
+            error?: string;
+          }>(tabId, { type: 'GET_ELEMENT_DOM', x: domTarget.rect.x, y: domTarget.rect.y });
+
+          if (domResult?.success && domResult.outerHTML) {
+            const truncNote = domResult.truncated ? ' [truncated at 40 KB]' : '';
+            await log(`DOM of #${domTarget.id} <${domResult.tag}> ready${truncNote}`, 'observe');
+            await appendConversationTurn(
+              sessionId,
+              'user',
+              `[Step ${step}] DOM of element #${domTarget.id} <${domResult.tag}>${truncNote}:\n${domResult.outerHTML}\n\nTask: ${userPrompt}`,
+            );
+          } else {
+            await log(`DOM fetch failed — ${domResult?.error ?? 'unknown'}`, 'warn');
+          }
+        } catch (domErr) {
+          await log(`DOM fetch error — ${(domErr as Error).message}`, 'warn');
+        }
+        break;
+      }
+
+      // ── Wait ─────────────────────────────────────────────────────────────
+
+      case 'wait': {
+        await log(`Waiting ${action.ms} ms…`, 'observe');
+        await sleep(action.ms);
+        mutations.push(`Waited ${action.ms} ms`);
+        break;
+      }
+
+      // UI actions and finish are handled by the caller
+      default:
+        break;
+    }
+  }
+
+  return { updatedTodo, mutations };
+}
+
+/** Press a key via CDP (rawKeyDown + keyUp). */
+async function pressKeyCDP(
+  tabId: number,
+  key: string,
+  waitForNav: boolean,
+): Promise<void> {
+  await attachDebugger(tabId);
+  await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
+    type: 'rawKeyDown',
+    key,
+    windowsVirtualKeyCode: getKeyCode(key),
+  });
+  await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
+    type: 'keyUp',
+    key,
+    windowsVirtualKeyCode: getKeyCode(key),
+  });
+  if (waitForNav) {
+    await sleep(600);
+    await waitForTabLoad(tabId, 10_000, false);
+    await ensureContentScript(tabId);
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Main loop
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function runAgentLoop(
+  tabId: number,
+  userPrompt: string,
+  existingSessionId?: number,
+  attachments?: AttachedFile[],
+): Promise<void> {
+  const sessionId = existingSessionId ?? (await createSession(userPrompt));
   await setAgentState({ status: 'running', tabId, step: 0, prompt: userPrompt, sessionId });
 
-  // Seed any user-attached files into the VFS so Gemini can reference them.
   if (attachments?.length) {
     for (const file of attachments) {
       await saveVFSFile(sessionId, file.name, file.data, file.mimeType);
@@ -64,7 +242,6 @@ export async function runAgentLoop(tabId: number, userPrompt: string, existingSe
     await log(`Loaded ${attachments.length} attached file(s) into VFS`, 'info');
   }
 
-  // Load existing todo list when resuming an interrupted session.
   let currentTodo: TodoItem[] = (await loadTodoFromVFS(sessionId)) ?? [];
   if (currentTodo.length > 0) {
     await log(`Resumed todo list: ${currentTodo.length} item(s) loaded from VFS`, 'info');
@@ -72,12 +249,7 @@ export async function runAgentLoop(tabId: number, userPrompt: string, existingSe
 
   await log(`Agent started`, 'observe');
 
-  // ── File chooser guard ──────────────────────────────────────────────────────
-  // Always-on interceptor: cancels any OS file dialog that opens during the
-  // session. The agent never clicks upload buttons — it uses CDP
-  // DOM.setFileInputFiles directly — but if a dialog opens by accident
-  // (e.g. Gemini clicks a file button without uploadFileId), this guard
-  // silently kills it so the user never sees an OS file picker.
+  // ── File chooser guard ────────────────────────────────────────────────────
   const fileChooserGuard = (
     source: chrome.debugger.Debuggee,
     method: string,
@@ -100,7 +272,6 @@ export async function runAgentLoop(tabId: number, userPrompt: string, existingSe
     }
     const model = createModel(geminiApiKey as string);
 
-    // If the active tab is on a restricted page, try to extract a URL from the prompt
     if (!(await isTabInjectable(tabId))) {
       const urlMatch = userPrompt.match(/https?:\/\/[^\s"'<>]+/i);
       if (urlMatch) {
@@ -114,10 +285,6 @@ export async function runAgentLoop(tabId: number, userPrompt: string, existingSe
     await ensureContentScript(tabId);
     await sendToTab(tabId, { type: 'BLOCK_INPUT' });
 
-    // Globally intercept file chooser dialogs for the entire session.
-    // If a hardware click accidentally triggers one (e.g. Gemini clicks an upload
-    // button without uploadFileId), we cancel it instead of letting the OS dialog
-    // pop up and block the agent.
     await attachDebugger(tabId);
     await chrome.debugger.sendCommand(
       { tabId },
@@ -137,8 +304,6 @@ export async function runAgentLoop(tabId: number, userPrompt: string, existingSe
       await setAgentState({ step });
       chrome.runtime.sendMessage({ type: 'AGENT_STATE_CHANGE' }).catch(() => {});
 
-      // Re-enable file chooser interception every step — it gets lost when the
-      // debugger detaches during navigation (which happens on navigateUrl actions).
       try {
         await attachDebugger(tabId);
         await chrome.debugger.sendCommand(
@@ -148,57 +313,32 @@ export async function runAgentLoop(tabId: number, userPrompt: string, existingSe
         );
       } catch { /* will be re-attached when needed */ }
 
-      // Block file dialogs at the JS level for the entire session.
-      // Page.setInterceptFileChooserDialog doesn't catch showOpenFilePicker
-      // and is unreliable in extensions, so we monkey-patch at the JS level too.
-      // Idempotent — safe to re-inject after navigation.
+      // Re-install JS-level file dialog block after navigation.
       try {
         await chrome.debugger.sendCommand({ tabId }, 'Runtime.evaluate', {
           expression: `(() => {
             if (window.__opticlick_fileBlock) return;
-
-            // 1. Monkey-patch input.click() — catches programmatic triggers
             window.__opticlick_origClick = HTMLInputElement.prototype.click;
             HTMLInputElement.prototype.click = function() {
-              if (this.type === 'file') {
-                window.__opticlick_fileInput = this;
-                return;
-              }
+              if (this.type === 'file') { window.__opticlick_fileInput = this; return; }
               return window.__opticlick_origClick.call(this);
             };
-
-            // 2. Block showOpenFilePicker (File System Access API)
             if (window.showOpenFilePicker) {
               window.__opticlick_origPicker = window.showOpenFilePicker;
-              window.showOpenFilePicker = () =>
-                Promise.reject(new DOMException('Aborted', 'AbortError'));
+              window.showOpenFilePicker = () => Promise.reject(new DOMException('Aborted', 'AbortError'));
             }
-
-            // 3. Capture-phase click listener — catches direct clicks on
-            //    <input type="file">, <label for="...">, and <label> wrappers.
-            //    preventDefault() blocks the dialog; event still propagates
-            //    so site JS handlers run normally.
             window.__opticlick_clickGuard = (e) => {
               const el = e.target;
-              if (el.tagName === 'INPUT' && el.type === 'file') {
-                e.preventDefault();
-                window.__opticlick_fileInput = el;
-                return;
-              }
+              if (el.tagName === 'INPUT' && el.type === 'file') { e.preventDefault(); window.__opticlick_fileInput = el; return; }
               const label = el.closest ? el.closest('label') : null;
               if (label) {
                 const forId = label.getAttribute('for');
                 let inp = forId ? document.getElementById(forId) : null;
                 if (!inp) inp = label.querySelector('input[type="file"]');
-                if (inp && inp.tagName === 'INPUT' && inp.type === 'file') {
-                  e.preventDefault();
-                  window.__opticlick_fileInput = inp;
-                  return;
-                }
+                if (inp && inp.tagName === 'INPUT' && inp.type === 'file') { e.preventDefault(); window.__opticlick_fileInput = inp; return; }
               }
             };
             document.addEventListener('click', window.__opticlick_clickGuard, { capture: true });
-
             window.__opticlick_fileBlock = true;
           })()`,
         });
@@ -236,10 +376,9 @@ export async function runAgentLoop(tabId: number, userPrompt: string, existingSe
           step--;
           continue;
         }
-        // No interactable elements after retries — capture a plain screenshot and
-        // let Gemini decide what to do (navigate, scroll, key, or declare done).
-        await log('No interactable elements found after retries. Sending screenshot to Gemini for guidance…', 'warn');
 
+        // No interactable elements after retries — send plain screenshot.
+        await log('No interactable elements found after retries. Sending screenshot to LLM for guidance…', 'warn');
         const plainScreenshot = await captureScreenshot(tabId);
         await chrome.storage.session.set({ lastScreenshot: plainScreenshot, lastScreenshotStep: step });
         await log('Screenshot captured — tap to preview', 'screenshot');
@@ -248,56 +387,78 @@ export async function runAgentLoop(tabId: number, userPrompt: string, existingSe
         const vfsFilesForEmpty = await listVFSFiles(sessionId);
         await log('Sending to LLM…', 'observe');
 
-        let emptyDecision;
+        let emptyResult;
         try {
-          emptyDecision = await callModel(
+          emptyResult = await callModel(
             model,
             plainScreenshot,
-            `${userPrompt}\n\n[SYSTEM NOTE: No interactable elements were detected on the current page after repeated attempts. Decide whether to navigate to a different URL, scroll to reveal content, press a key, or mark the task as done if the goal is already achieved. Do NOT set targetId — there are no annotated elements.]`,
+            `${userPrompt}\n\n[SYSTEM NOTE: No interactable elements detected. Decide whether to navigate, scroll, press a key, or call finish if the goal is already achieved. Do NOT call click — there are no annotated elements.]`,
             historyForEmpty,
             log,
             vfsFilesForEmpty,
+            [],
+            currentTodo,
           );
         } catch (err) {
           await log(`LLM call failed: ${(err as Error).message}. Giving up.`, 'error');
           break;
         }
 
-        await log(emptyDecision.reasoning, 'think');
-        await appendConversationTurn(sessionId, 'model', JSON.stringify(emptyDecision));
+        if (emptyResult.reasoning) await log(emptyResult.reasoning, 'think');
+        await appendConversationTurn(sessionId, 'model', emptyResult.reasoning || JSON.stringify(emptyResult.actions.map((a) => a.type)));
         await touchSession(sessionId);
         emptyRetries = 0;
 
-        if (emptyDecision.done) {
+        // Process side-effects (todo, VFS, DOM) — coordinateMap is empty here.
+        const { updatedTodo: newTodo } = await executeSideEffects(
+          emptyResult.actions,
+          sessionId,
+          tabId,
+          plainScreenshot,
+          step,
+          [],
+          currentTodo,
+          userPrompt,
+        );
+        currentTodo = newTodo;
+
+        if (emptyResult.done) {
+          await logFinishSummary(emptyResult.actions);
           await log('Task complete!', 'observe');
           await setAgentState({ status: 'done' });
           break;
         }
 
-        if (emptyDecision.navigateUrl) {
-          await log(`Navigating to: ${emptyDecision.navigateUrl}`, 'act');
+        // Execute the single UI action (navigate / scroll / press_key).
+        const uiAction = emptyResult.actions.find((a) =>
+          a.type === 'navigate' || a.type === 'scroll' || a.type === 'press_key',
+        );
+
+        if (!uiAction) {
+          await log('LLM could not determine a next action. Giving up.', 'error');
+          break;
+        }
+
+        if (uiAction.type === 'navigate') {
+          await log(`Navigating to: ${uiAction.url}`, 'act');
           try {
             try { await sendToTab(tabId, { type: 'UNBLOCK_INPUT' }); } catch { /* */ }
             await detachDebugger(tabId);
-            await chrome.tabs.update(tabId, { url: emptyDecision.navigateUrl });
+            await chrome.tabs.update(tabId, { url: uiAction.url });
             await waitForTabLoad(tabId, 15_000, true);
             await ensureContentScript(tabId);
             await sendToTab(tabId, { type: 'BLOCK_INPUT' });
-            await appendConversationTurn(sessionId, 'user', `[Step ${step}] Navigated to ${emptyDecision.navigateUrl}. Task: ${userPrompt}`);
+            await appendConversationTurn(sessionId, 'user', `[Step ${step}] Navigated to ${uiAction.url}. Task: ${userPrompt}`);
           } catch (navErr) {
             await log(`Navigation failed: ${(navErr as Error).message}`, 'warn');
-            await appendConversationTurn(sessionId, 'user', `[ACTION FAILED - Step ${step}] Navigation to "${emptyDecision.navigateUrl}" failed: "${(navErr as Error).message}". Task: ${userPrompt}`);
+            await appendConversationTurn(sessionId, 'user', `[ACTION FAILED - Step ${step}] Navigation to "${uiAction.url}" failed: "${(navErr as Error).message}". Task: ${userPrompt}`);
             try { await ensureContentScript(tabId); } catch { /* */ }
             try { await sendToTab(tabId, { type: 'BLOCK_INPUT' }); } catch { /* */ }
           }
-          await sleep(STEP_DELAY_MS);
-          continue;
-        }
-
-        if (emptyDecision.scroll) {
-          const isVert = emptyDecision.scroll === 'up' || emptyDecision.scroll === 'down';
-          const sign = emptyDecision.scroll === 'up' || emptyDecision.scroll === 'left' ? -1 : 1;
-          const label = `Scrolling page ${emptyDecision.scroll}`;
+        } else if (uiAction.type === 'scroll') {
+          const isVert = uiAction.direction === 'up' || uiAction.direction === 'down';
+          const sign = uiAction.direction === 'up' || uiAction.direction === 'left' ? -1 : 1;
+          const label = `Scrolling page ${uiAction.direction}`;
           await log(label, 'act');
           try {
             try { await sendToTab(tabId, { type: 'UNBLOCK_INPUT' }); } catch { /* */ }
@@ -313,37 +474,20 @@ export async function runAgentLoop(tabId: number, userPrompt: string, existingSe
           } catch (scrollErr) {
             await log(`Scroll failed: ${(scrollErr as Error).message}`, 'warn');
           }
-          await sleep(STEP_DELAY_MS);
-          continue;
-        }
-
-        if (emptyDecision.pressKey) {
-          await log(`Pressing key: ${emptyDecision.pressKey}`, 'act');
+        } else if (uiAction.type === 'press_key') {
+          await log(`Pressing key: ${uiAction.key}`, 'act');
           try {
             try { await sendToTab(tabId, { type: 'UNBLOCK_INPUT' }); } catch { /* */ }
-            await attachDebugger(tabId);
-            await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
-              type: 'rawKeyDown', key: emptyDecision.pressKey, windowsVirtualKeyCode: getKeyCode(emptyDecision.pressKey),
-            });
-            await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
-              type: 'keyUp', key: emptyDecision.pressKey, windowsVirtualKeyCode: getKeyCode(emptyDecision.pressKey),
-            });
-            if (emptyDecision.pressKey === 'Enter' || emptyDecision.pressKey === 'Return') {
-              await sleep(600);
-              await waitForTabLoad(tabId, 10_000, false);
-              await ensureContentScript(tabId);
-            }
+            await pressKeyCDP(tabId, uiAction.key, uiAction.key === 'Enter' || uiAction.key === 'Return');
             try { await sendToTab(tabId, { type: 'BLOCK_INPUT' }); } catch { /* */ }
-            await appendConversationTurn(sessionId, 'user', `[Step ${step}] Pressed key "${emptyDecision.pressKey}". Task: ${userPrompt}`);
+            await appendConversationTurn(sessionId, 'user', `[Step ${step}] Pressed key "${uiAction.key}". Task: ${userPrompt}`);
           } catch (keyErr) {
             await log(`Key press failed: ${(keyErr as Error).message}`, 'warn');
           }
-          await sleep(STEP_DELAY_MS);
-          continue;
         }
 
-        await log('Gemini could not determine a next action. Giving up.', 'error');
-        break;
+        await sleep(STEP_DELAY_MS);
+        continue;
       }
       emptyRetries = 0;
 
@@ -351,161 +495,83 @@ export async function runAgentLoop(tabId: number, userPrompt: string, existingSe
 
       // 3. Capture annotated screenshot
       const base64Image = await captureScreenshot(tabId);
-      // Store for popup preview, keyed to current step
       await chrome.storage.session.set({ lastScreenshot: base64Image, lastScreenshotStep: step });
       await log('Screenshot captured — tap to preview', 'screenshot');
-
-      // Save screenshot to the virtual filesystem so the agent can upload it later
       await saveVFSFile(sessionId, `step_${step}.png`, base64Image, 'image/png');
 
       // 4. Destroy overlay
       await sendToTab(tabId, { type: 'DESTROY_MARKS' });
 
-      // 5. Fetch conversation history for this session
+      // 5. Fetch conversation history and VFS listing
       const history = await getConversationHistory(sessionId);
-
-      // 6. Call LLM — thinking tokens are logged as [THINK] inside callModel
-      await log('Sending to LLM…', 'observe');
       const vfsFiles = await listVFSFiles(sessionId);
+      await log('Sending to LLM…', 'observe');
 
-      // On the first step, pass user-attached images inline so Gemini can see them
-      const inlineImages: InlineImage[] = step === 1 && attachments?.length
-        ? attachments
-            .filter((a) => a.mimeType.startsWith('image/'))
-            .map(({ name, mimeType, data }) => ({ name, mimeType, data }))
-        : [];
+      const inlineImages: InlineImage[] =
+        step === 1 && attachments?.length
+          ? attachments
+              .filter((a) => a.mimeType.startsWith('image/'))
+              .map(({ name, mimeType, data }) => ({ name, mimeType, data }))
+          : [];
 
-      let decision;
+      // 6. Call LLM → AgentResult
+      let result;
       try {
-        decision = await callModel(model, base64Image, userPrompt, history, log, vfsFiles, inlineImages, currentTodo);
+        result = await callModel(model, base64Image, userPrompt, history, log, vfsFiles, inlineImages, currentTodo);
       } catch (err) {
-        await log(
-          `LLM call failed: ${(err as Error).message}. Will retry step.`,
-          'error',
-        );
+        await log(`LLM call failed: ${(err as Error).message}. Will retry step.`, 'error');
         await sleep(RATE_LIMIT_DELAY_MS);
         continue;
       }
 
-      // Log the model's reasoning conclusion
-      await log(decision.reasoning, 'think');
-      await appendConversationTurn(sessionId, 'model', JSON.stringify(decision));
+      const { reasoning, actions, done } = result;
+      if (reasoning) await log(reasoning, 'think');
+      await appendConversationTurn(
+        sessionId,
+        'model',
+        reasoning || actions.map((a) => a.type).join(', '),
+      );
       await touchSession(sessionId);
 
-      // 7. Execute VFS mutations requested by Gemini (before any UI action)
-      const vfsMutations: string[] = [];
+      // 7. Execute side-effects (VFS, todo, fetch_dom)
+      const { updatedTodo, mutations } = await executeSideEffects(
+        actions,
+        sessionId,
+        tabId,
+        base64Image,
+        step,
+        coordinateMap,
+        currentTodo,
+        userPrompt,
+      );
+      currentTodo = updatedTodo;
 
-      if (decision.vfsSaveScreenshot) {
-        const fname = decision.vfsSaveScreenshot.trim() || `step_${step}.png`;
-        const saved = await writeVFSFile(sessionId, fname, base64Image, 'image/png');
-        vfsMutations.push(`Saved screenshot as "${saved.name}" (id: ${saved.id})`);
-        await log(`VFS: saved screenshot → "${saved.name}"`, 'act');
-      }
+      // Determine what kind of action(s) were requested
+      const uiAction = actions.find((a) =>
+        a.type === 'click' ||
+        a.type === 'navigate' ||
+        a.type === 'scroll' ||
+        a.type === 'press_key',
+      );
+      const hasSideEffects = mutations.length > 0 || actions.some((a) => a.type === 'fetch_dom');
 
-      if (decision.vfsWrite) {
-        const { name, content, mimeType = 'text/plain' } = decision.vfsWrite;
-        const base64Content = btoa(unescape(encodeURIComponent(content)));
-        const saved = await writeVFSFile(sessionId, name, base64Content, mimeType);
-        vfsMutations.push(`Wrote "${saved.name}" (${saved.size} B, id: ${saved.id})`);
-        await log(`VFS: wrote "${saved.name}" (${saved.size} B)`, 'act');
-      }
-
-      if (decision.vfsDelete) {
-        await deleteVFSFile(decision.vfsDelete);
-        vfsMutations.push(`Deleted VFS file ${decision.vfsDelete}`);
-        await log(`VFS: deleted file ${decision.vfsDelete}`, 'act');
-      }
-
-      if (decision.vfsDownload) {
-        const { url, name: nameHint } = decision.vfsDownload;
-        await log(`VFS: downloading ${url}`, 'act');
-        try {
-          const resp = await fetch(url);
-          if (!resp.ok) throw new Error(`HTTP ${resp.status} for ${url}`);
-          const mimeType = resp.headers.get('Content-Type')?.split(';')[0].trim()
-            ?? 'application/octet-stream';
-          const filename = filenameFromResponse(resp.clone(), url, nameHint);
-          const base64 = arrayBufferToBase64(await resp.arrayBuffer());
-          const saved = await writeVFSFile(sessionId, filename, base64, mimeType);
-          vfsMutations.push(`Downloaded "${saved.name}" (${saved.size} B, id: ${saved.id})`);
-          await log(`VFS: downloaded → "${saved.name}" (${saved.size} B)`, 'act');
-        } catch (dlErr) {
-          const msg = (dlErr as Error).message;
-          vfsMutations.push(`Download failed: ${msg}`);
-          await log(`VFS: download failed — ${msg}`, 'warn');
-        }
-      }
-
-      // 7b. Process todo mutations (create / update)
-      if (decision.todoCreate?.length) {
-        currentTodo = decision.todoCreate;
-        await saveTodoToVFS(sessionId, currentTodo);
-        await log(`Todo: created plan with ${currentTodo.length} item(s)`, 'info');
-      }
-      if (decision.todoUpdate?.length) {
-        currentTodo = applyTodoUpdates(currentTodo, decision.todoUpdate);
-        await saveTodoToVFS(sessionId, currentTodo);
-        const summary = decision.todoUpdate
-          .map((u) => `${u.id}→${u.status ?? 'note'}`)
-          .join(', ');
-        await log(`Todo updated: ${summary}`, 'info');
-      }
-
-      // DOM inspection — Gemini asked for the outer HTML of a specific element
-      if (decision.fetchDOM != null) {
-        const domTarget = coordinateMap.find((c: CoordinateEntry) => c.id === decision.fetchDOM);
-        if (domTarget) {
-          await log(`Fetching DOM of element #${domTarget.id}…`, 'observe');
-          try {
-            const domResult = await sendToTab<{
-              success: boolean;
-              outerHTML?: string;
-              tag?: string;
-              truncated?: boolean;
-              error?: string;
-            }>(tabId, { type: 'GET_ELEMENT_DOM', x: domTarget.rect.x, y: domTarget.rect.y });
-
-            if (domResult?.success && domResult.outerHTML) {
-              const truncNote = domResult.truncated ? ' [truncated at 40 KB]' : '';
-              await log(`DOM of #${domTarget.id} <${domResult.tag}> ready${truncNote}`, 'observe');
-              await appendConversationTurn(
-                sessionId,
-                'user',
-                `[Step ${step}] DOM of element #${domTarget.id} <${domResult.tag}>${truncNote}:\n${domResult.outerHTML}\n\nTask: ${userPrompt}`,
-              );
-            } else {
-              await log(`DOM fetch failed — ${domResult?.error ?? 'unknown'}`, 'warn');
-            }
-          } catch (domErr) {
-            await log(`DOM fetch error — ${(domErr as Error).message}`, 'warn');
-          }
-        } else {
-          await log(`fetchDOM — element #${decision.fetchDOM} not in coordinate map`, 'warn');
-        }
-      }
-
-      // 8. If done with no further UI action (VFS-only turn is valid), finish
-      const hasUIAction =
-        decision.targetId != null ||
-        decision.navigateUrl ||
-        decision.scroll ||
-        decision.pressKey;
-      const hasFinalAction = hasUIAction || vfsMutations.length > 0 || decision.fetchDOM != null;
-
-      if (decision.done && !hasFinalAction) {
+      // 8. If done with no UI action, finish
+      if (done && !uiAction) {
+        await logFinishSummary(actions);
         await log('Task complete!', 'observe');
         await setAgentState({ status: 'done' });
         break;
       }
 
-      // If Gemini only wanted VFS mutations / DOM inspection this turn (no UI action), log and continue
-      if (!hasUIAction && (vfsMutations.length > 0 || decision.fetchDOM != null)) {
+      // Side-effects only this turn — log and continue
+      if (!uiAction && hasSideEffects) {
         await appendConversationTurn(
           sessionId,
           'user',
-          `[Step ${step}] VFS operations: ${vfsMutations.join('; ')}. Task: ${userPrompt}`,
+          `[Step ${step}] VFS/todo operations: ${mutations.join('; ')}. Task: ${userPrompt}`,
         );
-        if (decision.done) {
+        if (done) {
+          await logFinishSummary(actions);
           await log('Task complete!', 'observe');
           await setAgentState({ status: 'done' });
           break;
@@ -514,28 +580,33 @@ export async function runAgentLoop(tabId: number, userPrompt: string, existingSe
         continue;
       }
 
-      // 8a. Handle URL navigation
-      if (decision.navigateUrl) {
-        await log(`Navigating to: ${decision.navigateUrl}`, 'act');
+      if (!uiAction) {
+        await log('No actionable response from LLM. Retrying step…', 'warn');
+        continue;
+      }
+
+      // 8a. Navigate
+      if (uiAction.type === 'navigate') {
+        await log(`Navigating to: ${uiAction.url}`, 'act');
         try {
           try { await sendToTab(tabId, { type: 'UNBLOCK_INPUT' }); } catch { /* */ }
           await detachDebugger(tabId);
-          await chrome.tabs.update(tabId, { url: decision.navigateUrl });
+          await chrome.tabs.update(tabId, { url: uiAction.url });
           await waitForTabLoad(tabId, 15_000, true);
           await ensureContentScript(tabId);
           await sendToTab(tabId, { type: 'BLOCK_INPUT' });
           await appendConversationTurn(
             sessionId,
             'user',
-            `[Step ${step}] Navigated to ${decision.navigateUrl}. Task: ${userPrompt}`,
+            `[Step ${step}] Navigated to ${uiAction.url}. Task: ${userPrompt}`,
           );
         } catch (actErr) {
           const errMsg = (actErr as Error).message;
-          await log(`Navigation to ${decision.navigateUrl} failed: ${errMsg}`, 'warn');
+          await log(`Navigation to ${uiAction.url} failed: ${errMsg}`, 'warn');
           await appendConversationTurn(
             sessionId,
             'user',
-            `[ACTION FAILED - Step ${step}] Navigation to "${decision.navigateUrl}" failed with error: "${errMsg}". The page state is unknown. Look at the new screenshot carefully and decide on a different approach. Task: ${userPrompt}`,
+            `[ACTION FAILED - Step ${step}] Navigation to "${uiAction.url}" failed: "${errMsg}". Task: ${userPrompt}`,
           );
           try { await ensureContentScript(tabId); } catch { /* */ }
           try { await sendToTab(tabId, { type: 'BLOCK_INPUT' }); } catch { /* */ }
@@ -544,40 +615,30 @@ export async function runAgentLoop(tabId: number, userPrompt: string, existingSe
         continue;
       }
 
-      // 8b. Handle scroll
-      if (decision.scroll) {
-        const isVertical = decision.scroll === 'up' || decision.scroll === 'down';
-        const sign = decision.scroll === 'up' || decision.scroll === 'left' ? -1 : 1;
+      // 8b. Scroll
+      if (uiAction.type === 'scroll') {
+        const isVertical = uiAction.direction === 'up' || uiAction.direction === 'down';
+        const sign = uiAction.direction === 'up' || uiAction.direction === 'left' ? -1 : 1;
         const deltaX = isVertical ? 0 : sign * 500;
         const deltaY = isVertical ? sign * 500 : 0;
 
         let scrollX = 600;
         let scrollY = 400;
-
-        if (decision.scrollTargetId != null) {
-          const scrollTarget = coordinateMap.find(
-            (c: CoordinateEntry) => c.id === decision.scrollTargetId,
-          );
-          if (scrollTarget) {
-            scrollX = scrollTarget.rect.x;
-            scrollY = scrollTarget.rect.y;
-          }
+        if (uiAction.scrollTargetId != null) {
+          const scrollTarget = coordinateMap.find((c) => c.id === uiAction.scrollTargetId);
+          if (scrollTarget) { scrollX = scrollTarget.rect.x; scrollY = scrollTarget.rect.y; }
         }
 
-        const label = decision.scrollTargetId
-          ? `Scrolling ${decision.scroll} inside element #${decision.scrollTargetId}`
-          : `Scrolling page ${decision.scroll}`;
-        await log(`${label}`, 'act');
+        const label = uiAction.scrollTargetId
+          ? `Scrolling ${uiAction.direction} inside element #${uiAction.scrollTargetId}`
+          : `Scrolling page ${uiAction.direction}`;
+        await log(label, 'act');
 
         try {
           try { await sendToTab(tabId, { type: 'UNBLOCK_INPUT' }); } catch { /* */ }
           await attachDebugger(tabId);
           await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchMouseEvent', {
-            type: 'mouseWheel',
-            x: scrollX,
-            y: scrollY,
-            deltaX,
-            deltaY,
+            type: 'mouseWheel', x: scrollX, y: scrollY, deltaX, deltaY,
           });
           await sleep(300);
           try { await sendToTab(tabId, { type: 'BLOCK_INPUT' }); } catch { /* */ }
@@ -592,7 +653,7 @@ export async function runAgentLoop(tabId: number, userPrompt: string, existingSe
           await appendConversationTurn(
             sessionId,
             'user',
-            `[ACTION FAILED - Step ${step}] Scroll action ("${label}") failed with error: "${errMsg}". Look at the new screenshot and decide on a different approach. Task: ${userPrompt}`,
+            `[ACTION FAILED - Step ${step}] ${label} failed: "${errMsg}". Task: ${userPrompt}`,
           );
           try { await ensureContentScript(tabId); } catch { /* */ }
           try { await sendToTab(tabId, { type: 'BLOCK_INPUT' }); } catch { /* */ }
@@ -601,43 +662,30 @@ export async function runAgentLoop(tabId: number, userPrompt: string, existingSe
         continue;
       }
 
-      // 8c. Handle standalone pressKey (no click target)
-      if (decision.pressKey && decision.targetId == null) {
-        await log(`Pressing key: ${decision.pressKey}`, 'act');
+      // 8c. Standalone key press (no click target)
+      if (uiAction.type === 'press_key') {
+        await log(`Pressing key: ${uiAction.key}`, 'act');
         try {
           try { await sendToTab(tabId, { type: 'UNBLOCK_INPUT' }); } catch { /* */ }
-          await attachDebugger(tabId);
-          await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
-            type: 'rawKeyDown',
-            key: decision.pressKey,
-            windowsVirtualKeyCode: getKeyCode(decision.pressKey),
-          });
-          await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
-            type: 'keyUp',
-            key: decision.pressKey,
-            windowsVirtualKeyCode: getKeyCode(decision.pressKey),
-          });
-          // Enter/Return may trigger a form submit / navigation — wait for the tab to settle
-          if (decision.pressKey === 'Enter' || decision.pressKey === 'Return') {
-            await sleep(600);
-            await waitForTabLoad(tabId, 10_000, false);
-            await ensureContentScript(tabId);
-          }
+          await pressKeyCDP(
+            tabId,
+            uiAction.key,
+            uiAction.key === 'Enter' || uiAction.key === 'Return',
+          );
           try { await sendToTab(tabId, { type: 'BLOCK_INPUT' }); } catch { /* */ }
           await appendConversationTurn(
             sessionId,
             'user',
-            `[Step ${step}] Pressed key "${decision.pressKey}". Task: ${userPrompt}`,
+            `[Step ${step}] Pressed key "${uiAction.key}". Task: ${userPrompt}`,
           );
         } catch (actErr) {
           const errMsg = (actErr as Error).message;
-          await log(`Key press "${decision.pressKey}" failed: ${errMsg}`, 'warn');
+          await log(`Key press "${uiAction.key}" failed: ${errMsg}`, 'warn');
           await appendConversationTurn(
             sessionId,
             'user',
-            `[ACTION FAILED - Step ${step}] Pressing key "${decision.pressKey}" failed with error: "${errMsg}". The page may have navigated to an error page or crashed. Look at the new screenshot carefully and decide on a different approach. Task: ${userPrompt}`,
+            `[ACTION FAILED - Step ${step}] Pressing key "${uiAction.key}" failed: "${errMsg}". Task: ${userPrompt}`,
           );
-          // Try to recover — the tab may have navigated somewhere
           await waitForTabLoad(tabId, 10_000, false);
           try { await ensureContentScript(tabId); } catch { /* */ }
           try { await sendToTab(tabId, { type: 'BLOCK_INPUT' }); } catch { /* */ }
@@ -646,184 +694,155 @@ export async function runAgentLoop(tabId: number, userPrompt: string, existingSe
         continue;
       }
 
-      if (decision.targetId == null) {
-        await log('No actionable response from LLM. Retrying step…', 'warn');
-        continue;
-      }
+      // 8d. Click (with optional type + key)
+      if (uiAction.type === 'click') {
+        const target = coordinateMap.find((c) => c.id === uiAction.targetId);
+        if (!target) {
+          const errMsg = `Target ID ${uiAction.targetId} not found in coordinate map — element may have disappeared.`;
+          await log(errMsg, 'warn');
+          await appendConversationTurn(
+            sessionId,
+            'user',
+            `[ACTION FAILED - Step ${step}] ${errMsg} Choose a valid element ID. Task: ${userPrompt}`,
+          );
+          await sleep(STEP_DELAY_MS);
+          continue;
+        }
 
-      // 9. Resolve target coordinates
-      const target = coordinateMap.find(
-        (c: CoordinateEntry) => c.id === decision.targetId,
-      );
-      if (!target) {
-        const errMsg = `Target ID ${decision.targetId} was not found in the coordinate map — the element may have disappeared or the page changed since the screenshot was taken.`;
-        await log(errMsg, 'warn');
-        await appendConversationTurn(
-          sessionId,
-          'user',
-          `[ACTION FAILED - Step ${step}] ${errMsg} Look at the new screenshot carefully and choose a valid element ID from the current page. Task: ${userPrompt}`,
+        await log(
+          `Clicking element #${target.id} "${target.text}" at (${target.rect.x}, ${target.rect.y})`,
+          'act',
         );
-        await sleep(STEP_DELAY_MS);
-        continue;
-      }
 
-      await log(
-        `Clicking element #${target.id} "${target.text}" at (${target.rect.x}, ${target.rect.y})`,
-        'act',
-      );
+        let newTabId: number | null = null;
+        const newTabListener = (tab: chrome.tabs.Tab) => {
+          if (tab.openerTabId === tabId) newTabId = tab.id ?? null;
+        };
+        chrome.tabs.onCreated.addListener(newTabListener);
 
-      // Listen for new tabs opened by the click
-      let newTabId: number | null = null;
-      const newTabListener = (tab: chrome.tabs.Tab) => {
-        if (tab.openerTabId === tabId) newTabId = tab.id ?? null;
-      };
-      chrome.tabs.onCreated.addListener(newTabListener);
-
-      let actError: string | null = null;
-      try {
-        // 10. If the target is a file input with a VFS file to upload, skip hardware
-        //     click and instead inject the file programmatically via the content script.
-        if (decision.uploadFileId && target) {
-          // Resolve by UUID first, then fall back to filename
-          let vfsFile = await getVFSFile(decision.uploadFileId);
-          if (!vfsFile) {
-            const allFiles = await listVFSFiles(sessionId);
-            vfsFile = allFiles.find((f) => f.name === decision.uploadFileId);
-          }
-          if (!vfsFile) {
-            throw new Error(`VFS file "${decision.uploadFileId}" not found by ID or name.`);
-          }
-          await log(`Uploading "${vfsFile.name}" → element #${target.id}`, 'act');
-
-          // The JS-level file dialog block is already installed at the top of
-          // each step. It captures any input.click() for type=file into
-          // window.__opticlick_fileInput. We just click the button, then set
-          // files on the captured input.
-          const tempDl = await writeTempFile(vfsFile.data, vfsFile.name, vfsFile.mimeType);
-
-          try {
-            // Clear any stale captured input from a previous click
-            await chrome.debugger.sendCommand({ tabId }, 'Runtime.evaluate', {
-              expression: `window.__opticlick_fileInput = null`,
-            });
-
-            // Click the upload button — site JS runs, creates input, but
-            // our override blocks the dialog and captures the input reference.
-            try { await sendToTab(tabId, { type: 'UNBLOCK_INPUT' }); } catch { /* */ }
-            await dispatchHardwareClick(tabId, target.rect.x, target.rect.y);
-            await sleep(500);
-
-            // Set files on the captured input (or first input in DOM as fallback)
-            const inputEval = (await chrome.debugger.sendCommand({ tabId }, 'Runtime.evaluate', {
-              expression: `window.__opticlick_fileInput || document.querySelector('input[type="file"]')`,
-            })) as { result: { objectId?: string; subtype?: string } };
-
-            const objectId = inputEval?.result?.objectId;
-            if (!objectId || inputEval.result.subtype === 'null') {
-              throw new Error('No file input found after clicking upload button');
+        let actError: string | null = null;
+        try {
+          if (uiAction.uploadFileId) {
+            let vfsFile = await getVFSFile(uiAction.uploadFileId);
+            if (!vfsFile) {
+              const allFiles = await listVFSFiles(sessionId);
+              vfsFile = allFiles.find((f) => f.name === uiAction.uploadFileId);
             }
+            if (!vfsFile) throw new Error(`VFS file "${uiAction.uploadFileId}" not found.`);
+            await log(`Uploading "${vfsFile.name}" → element #${target.id}`, 'act');
 
-            await chrome.debugger.sendCommand({ tabId }, 'DOM.setFileInputFiles', {
-              objectId,
-              files: [tempDl.filePath],
-            });
-            await log('Uploaded via CDP', 'act');
-          } finally {
-            await cleanupTempFile(tempDl.downloadId);
+            const tempDl = await writeTempFile(vfsFile.data, vfsFile.name, vfsFile.mimeType);
+            try {
+              await chrome.debugger.sendCommand({ tabId }, 'Runtime.evaluate', {
+                expression: `window.__opticlick_fileInput = null`,
+              });
+              try { await sendToTab(tabId, { type: 'UNBLOCK_INPUT' }); } catch { /* */ }
+              await dispatchHardwareClick(tabId, target.rect.x, target.rect.y);
+              await sleep(500);
+              const inputEval = (await chrome.debugger.sendCommand({ tabId }, 'Runtime.evaluate', {
+                expression: `window.__opticlick_fileInput || document.querySelector('input[type="file"]')`,
+              })) as { result: { objectId?: string; subtype?: string } };
+              const objectId = inputEval?.result?.objectId;
+              if (!objectId || inputEval.result.subtype === 'null') {
+                throw new Error('No file input found after clicking upload button');
+              }
+              await chrome.debugger.sendCommand({ tabId }, 'DOM.setFileInputFiles', {
+                objectId,
+                files: [tempDl.filePath],
+              });
+              await log('Uploaded via CDP', 'act');
+            } finally {
+              await cleanupTempFile(tempDl.downloadId);
+            }
+          } else {
+            try { await sendToTab(tabId, { type: 'UNBLOCK_INPUT' }); } catch { /* */ }
+            const modBitmask = uiAction.modifier ? (CDP_MODIFIER[uiAction.modifier] ?? 0) : 0;
+            await dispatchHardwareClick(tabId, target.rect.x, target.rect.y, modBitmask);
           }
-        } else {
+
+          if (uiAction.typeText && uiAction.clearField) {
+            // Select all existing content so the new text replaces it.
+            await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
+              type: 'rawKeyDown', key: 'a', windowsVirtualKeyCode: 65, modifiers: 2, // Ctrl+A
+            });
+            await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
+              type: 'keyUp', key: 'a', windowsVirtualKeyCode: 65, modifiers: 2,
+            });
+            await sleep(50);
+          }
+
+          if (uiAction.typeText) {
+            await log(`Typing: "${uiAction.typeText}"`, 'act');
+            await sleep(200);
+            for (const char of uiAction.typeText) {
+              await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
+                type: 'keyDown', text: char,
+              });
+              await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
+                type: 'keyUp', text: char,
+              });
+              await sleep(30);
+            }
+          }
+
+          if (uiAction.pressKey) {
+            await log(`Pressing key: ${uiAction.pressKey}`, 'act');
+            await sleep(100);
+            await pressKeyCDP(
+              tabId,
+              uiAction.pressKey,
+              uiAction.pressKey === 'Enter' || uiAction.pressKey === 'Return',
+            );
+          }
+        } catch (actErr_) {
+          actError = (actErr_ as Error).message;
+          await log(`Action on #${target.id} failed: ${actError}`, 'warn');
+          await waitForTabLoad(tabId, 10_000, false);
+          try { await ensureContentScript(tabId); } catch { /* */ }
+        }
+
+        await sleep(500);
+        chrome.tabs.onCreated.removeListener(newTabListener);
+
+        if (newTabId) {
+          await log(`Click opened new tab. Following it.`, 'observe');
           try { await sendToTab(tabId, { type: 'UNBLOCK_INPUT' }); } catch { /* */ }
-          await dispatchHardwareClick(tabId, target.rect.x, target.rect.y);
+          await detachDebugger(tabId);
+          tabId = newTabId;
+          await setAgentState({ tabId });
+          await chrome.tabs.update(tabId, { active: true });
+          await waitForTabLoad(tabId);
+          await ensureContentScript(tabId);
+          await sendToTab(tabId, { type: 'BLOCK_INPUT' });
+          await appendConversationTurn(
+            sessionId,
+            'user',
+            `[Step ${step}] Clicked #${uiAction.targetId} ("${target.text}") → opened new tab. Task: ${userPrompt}`,
+          );
+        } else if (actError) {
+          try { await sendToTab(tabId, { type: 'BLOCK_INPUT' }); } catch { /* */ }
+          await appendConversationTurn(
+            sessionId,
+            'user',
+            `[ACTION FAILED - Step ${step}] Clicking element #${uiAction.targetId} ("${target.text}") failed: "${actError}". Task: ${userPrompt}`,
+          );
+        } else {
+          try { await sendToTab(tabId, { type: 'BLOCK_INPUT' }); } catch { /* */ }
+          await appendConversationTurn(
+            sessionId,
+            'user',
+            `[Step ${step}] Clicked element #${uiAction.targetId} ("${target.text}"). Task: ${userPrompt}`,
+          );
         }
 
-        // Type text if requested
-        if (decision.typeText) {
-          await log(`Typing: "${decision.typeText}"`, 'act');
-          await sleep(200);
-          for (const char of decision.typeText) {
-            await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
-              type: 'keyDown',
-              text: char,
-            });
-            await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
-              type: 'keyUp',
-              text: char,
-            });
-            await sleep(30);
-          }
+        await sleep(STEP_DELAY_MS);
+
+        if (done) {
+          await logFinishSummary(actions);
+          await log('Task complete!', 'observe');
+          await setAgentState({ status: 'done' });
+          break;
         }
-
-        // 10b. Press key after click+type (e.g. Enter to submit)
-        if (decision.pressKey) {
-          await log(`Pressing key: ${decision.pressKey}`, 'act');
-          await sleep(100);
-          await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
-            type: 'rawKeyDown',
-            key: decision.pressKey,
-            windowsVirtualKeyCode: getKeyCode(decision.pressKey),
-          });
-          await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
-            type: 'keyUp',
-            key: decision.pressKey,
-            windowsVirtualKeyCode: getKeyCode(decision.pressKey),
-          });
-          // Enter/Return may trigger navigation — wait for the tab to settle
-          if (decision.pressKey === 'Enter' || decision.pressKey === 'Return') {
-            await sleep(600);
-            await waitForTabLoad(tabId, 10_000, false);
-            await ensureContentScript(tabId);
-          }
-        }
-      } catch (actErr_) {
-        actError = (actErr_ as Error).message;
-        await log(`Action on #${target.id} failed: ${actError}`, 'warn');
-        // Try to recover from any mid-action navigation or frame crash
-        await waitForTabLoad(tabId, 10_000, false);
-        try { await ensureContentScript(tabId); } catch { /* */ }
-      }
-
-      await sleep(500);
-      chrome.tabs.onCreated.removeListener(newTabListener);
-
-      // 11. Follow new tab if opened
-      if (newTabId) {
-        await log(`Click opened new tab. Following it.`, 'observe');
-        try { await sendToTab(tabId, { type: 'UNBLOCK_INPUT' }); } catch { /* */ }
-        await detachDebugger(tabId);
-
-        tabId = newTabId;
-        await setAgentState({ tabId });
-        await chrome.tabs.update(tabId, { active: true });
-        await waitForTabLoad(tabId);
-        await ensureContentScript(tabId);
-        await sendToTab(tabId, { type: 'BLOCK_INPUT' });
-        await appendConversationTurn(
-          sessionId,
-          'user',
-          `[Step ${step}] Clicked #${decision.targetId} ("${target.text}") → opened new tab. Task: ${userPrompt}`,
-        );
-      } else if (actError) {
-        try { await sendToTab(tabId, { type: 'BLOCK_INPUT' }); } catch { /* */ }
-        await appendConversationTurn(
-          sessionId,
-          'user',
-          `[ACTION FAILED - Step ${step}] Clicking element #${decision.targetId} ("${target.text}") failed with error: "${actError}". The page may have navigated or crashed. Look at the new screenshot carefully and decide on a different approach. Task: ${userPrompt}`,
-        );
-      } else {
-        try { await sendToTab(tabId, { type: 'BLOCK_INPUT' }); } catch { /* */ }
-        await appendConversationTurn(
-          sessionId,
-          'user',
-          `[Step ${step}] Clicked element #${decision.targetId} ("${target.text}"). Task: ${userPrompt}`,
-        );
-      }
-
-      await sleep(STEP_DELAY_MS);
-
-      if (decision.done) {
-        await log('Task complete!', 'observe');
-        await setAgentState({ status: 'done' });
-        break;
       }
     }
   } catch (err) {
@@ -831,19 +850,12 @@ export async function runAgentLoop(tabId: number, userPrompt: string, existingSe
     await setAgentState({ status: 'error' });
   } finally {
     try { await sendToTab(tabId, { type: 'UNBLOCK_INPUT' }); } catch { /* */ }
-    // Restore monkey-patched functions so the page works normally after session
     try {
       await chrome.debugger.sendCommand({ tabId }, 'Runtime.evaluate', {
         expression: `(() => {
-          if (window.__opticlick_origClick) {
-            HTMLInputElement.prototype.click = window.__opticlick_origClick;
-          }
-          if (window.__opticlick_origPicker) {
-            window.showOpenFilePicker = window.__opticlick_origPicker;
-          }
-          if (window.__opticlick_clickGuard) {
-            document.removeEventListener('click', window.__opticlick_clickGuard, { capture: true });
-          }
+          if (window.__opticlick_origClick) HTMLInputElement.prototype.click = window.__opticlick_origClick;
+          if (window.__opticlick_origPicker) window.showOpenFilePicker = window.__opticlick_origPicker;
+          if (window.__opticlick_clickGuard) document.removeEventListener('click', window.__opticlick_clickGuard, { capture: true });
           delete window.__opticlick_origClick;
           delete window.__opticlick_origPicker;
           delete window.__opticlick_clickGuard;
@@ -852,18 +864,11 @@ export async function runAgentLoop(tabId: number, userPrompt: string, existingSe
         })()`,
       });
     } catch { /* */ }
-    // Remove the CDP file chooser guard
     chrome.debugger.onEvent.removeListener(fileChooserGuard);
     try {
-      await chrome.debugger.sendCommand(
-        { tabId },
-        'Page.setInterceptFileChooserDialog',
-        { enabled: false },
-      );
+      await chrome.debugger.sendCommand({ tabId }, 'Page.setInterceptFileChooserDialog', { enabled: false });
     } catch { /* */ }
     await detachDebugger(tabId);
-    // Garbage-collect all VFS files created during this session.
-    // Preserve __todo.json so interrupted sessions can resume with the original plan.
     try { await clearVFSFiles(sessionId, [TODO_VFS_FILENAME]); } catch { /* */ }
     chrome.runtime.sendMessage({ type: 'AGENT_STATE_CHANGE' }).catch(() => {});
   }

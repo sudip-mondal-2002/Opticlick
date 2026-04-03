@@ -21,17 +21,31 @@ export async function detachDebugger(tabId: number): Promise<void> {
 }
 
 /**
+ * CDP modifier bitmask values for Input.dispatchMouseEvent.
+ * Multiple modifiers can be OR-ed together.
+ */
+export const CDP_MODIFIER: Record<string, number> = {
+  alt:   1,
+  ctrl:  2,
+  meta:  4,  // Cmd on macOS, Windows key on Windows
+  shift: 8,
+};
+
+/**
  * Simulate a physical mouse click using Input.dispatchMouseEvent.
  * Coordinates MUST be pre-scaled (CSS pixels, not physical pixels).
+ * Pass a non-zero `modifiers` bitmask (see CDP_MODIFIER) for modifier+click,
+ * e.g. Ctrl+Click to open a link in a new tab.
  */
 export async function dispatchHardwareClick(
   tabId: number,
   cssX: number,
   cssY: number,
+  modifiers = 0,
 ): Promise<void> {
   await attachDebugger(tabId);
 
-  const base = { x: cssX, y: cssY, button: 'left' as const, clickCount: 1 };
+  const base = { x: cssX, y: cssY, button: 'left' as const, clickCount: 1, modifiers };
 
   await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchMouseEvent', {
     ...base,

@@ -40,64 +40,70 @@ export interface TodoUpdate {
   notes?: string;
 }
 
-/** A text file Gemini wants to write into the VFS. */
-export interface VFSWriteOp {
-  /** Filename including extension (e.g. "notes.txt", "data.json"). */
-  name: string;
-  /** UTF-8 text content to store. */
-  content: string;
-  /** MIME type — defaults to "text/plain" if omitted. */
-  mimeType?: string;
-}
+/**
+ * Discriminated union of every action the agent can take in a single turn.
+ * UI actions (click/navigate/scroll/press_key) are mutually exclusive;
+ * VFS, DOM, and todo actions may be combined freely with each other and
+ * with at most one UI action per turn.
+ */
+export type AgentAction =
+  // ── UI actions ──────────────────────────────────────────────────────────
+  | {
+      type: 'click';
+      /** Numeric ID of the annotated element. */
+      targetId: number;
+      /**
+       * Modifier key held during the click (uses CDP bitmask).
+       * Use 'ctrl' for Ctrl+Click (open in new tab, multi-select) on all platforms.
+       * Use 'meta' for Cmd+Click on macOS or Win+Click on Windows.
+       */
+      modifier?: 'ctrl' | 'meta' | 'shift' | 'alt';
+      /**
+       * When true, selects all existing content (Ctrl+A) before typing,
+       * so typeText replaces the field value instead of appending to it.
+       */
+      clearField?: boolean;
+      /** Text to type into the element after clicking. */
+      typeText?: string;
+      /** Key to press after click+type, e.g. "Enter" to submit a form. */
+      pressKey?: string;
+      /** VFS file ID or filename to inject into a file input. */
+      uploadFileId?: string;
+    }
+  | { type: 'navigate'; url: string }
+  | {
+      type: 'scroll';
+      direction: 'up' | 'down' | 'left' | 'right';
+      /** If set, scroll inside this element instead of the page. */
+      scrollTargetId?: number;
+    }
+  | { type: 'press_key'; key: string }
+  // ── DOM inspection ───────────────────────────────────────────────────────
+  | { type: 'fetch_dom'; targetId: number }
+  // ── VFS mutations ────────────────────────────────────────────────────────
+  | { type: 'vfs_save_screenshot'; name: string }
+  | { type: 'vfs_write'; name: string; content: string; mimeType?: string }
+  | { type: 'vfs_delete'; fileId: string }
+  | { type: 'vfs_download'; url: string; name?: string }
+  // ── Todo management ──────────────────────────────────────────────────────
+  | { type: 'todo_create'; items: TodoItem[] }
+  | { type: 'todo_update'; updates: TodoUpdate[] }
+  // ── Control ──────────────────────────────────────────────────────────────
+  | { type: 'finish'; summary: string }
+  | {
+      type: 'wait';
+      /** Milliseconds to pause before the next action (100–10 000). */
+      ms: number;
+    };
 
-/** Gemini LLM decision payload. */
-export interface AgentDecision {
-  targetId: number | null;
-  done: boolean;
+/** Structured result returned by callModel. */
+export interface AgentResult {
+  /** Model's step-by-step reasoning (from text content or thinking tokens). */
   reasoning: string;
-  typeText?: string;
-  navigateUrl?: string;
-  scroll?: 'up' | 'down' | 'left' | 'right';
-  scrollTargetId?: number;
-  pressKey?: string;
-  /** VFS file ID to upload to the targeted file input element. */
-  uploadFileId?: string;
-
-  // ── VFS mutations (executed before any UI action this turn) ──────────────
-  /** Save the current step screenshot to the VFS under this filename. */
-  vfsSaveScreenshot?: string;
-  /** Write (create or overwrite) a text file in the VFS. */
-  vfsWrite?: VFSWriteOp;
-  /** Delete a VFS file by its ID. */
-  vfsDelete?: string;
-  /**
-   * Download a file from a URL and store it in the VFS.
-   * The service worker fetches the URL directly — no browser download dialog.
-   */
-  vfsDownload?: {
-    url: string;
-    /** Optional filename override. Defaults to the filename derived from the URL or Content-Disposition header. */
-    name?: string;
-  };
-  /**
-   * Ask the extension to return the outer HTML of an annotated element.
-   * The result is injected into conversation history so Gemini can read
-   * link hrefs, table rows, form fields, etc. on the next step.
-   */
-  fetchDOM?: number;
-
-  // ── Todo list management ─────────────────────────────────────────────────
-  /**
-   * Create (or fully replace) the session todo list.
-   * MUST be set on step 1 when no todo list exists yet.
-   * Set the first item you are about to work on to "in_progress"; all others "pending".
-   */
-  todoCreate?: TodoItem[];
-  /**
-   * Apply partial updates to existing todo items.
-   * Combine with any UI action — e.g. mark previous item "done" and next "in_progress".
-   */
-  todoUpdate?: TodoUpdate[];
+  /** Ordered list of actions for the loop to execute. */
+  actions: AgentAction[];
+  /** True when a `finish` action is present. */
+  done: boolean;
 }
 
 /** Persisted agent state in chrome.storage.session. */
