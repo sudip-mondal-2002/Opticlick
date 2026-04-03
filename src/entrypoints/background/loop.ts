@@ -4,6 +4,7 @@
 
 import { appendConversationTurn, createSession, getConversationHistory, touchSession, saveVFSFile, writeVFSFile, listVFSFiles, clearVFSFiles, getVFSFile, deleteVFSFile } from '@/utils/db';
 import { callGemini } from '@/utils/gemini';
+import type { InlineImage } from '@/utils/gemini';
 import { attachDebugger, detachDebugger, dispatchHardwareClick, getKeyCode, writeTempFile, cleanupTempFile } from '@/utils/cdp';
 import { log } from '@/utils/agent-log';
 import { getAgentState, setAgentState } from '@/utils/agent-state';
@@ -16,7 +17,7 @@ import {
 import { captureScreenshot } from '@/utils/screenshot';
 import { waitForDOMIdle } from '@/utils/dom-idle';
 import { sleep } from '@/utils/sleep';
-import type { CoordinateEntry, DrawMarksResult } from '@/utils/types';
+import type { CoordinateEntry, DrawMarksResult, AttachedFile } from '@/utils/types';
 
 function arrayBufferToBase64(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);
@@ -43,15 +44,23 @@ function filenameFromResponse(response: Response, url: string, override?: string
   return 'download';
 }
 
-const MAX_STEPS = 500;
+const MAX_STEPS = 20;
 const STEP_DELAY_MS = 800;
 const RATE_LIMIT_DELAY_MS = 10_000;
 const MAX_EMPTY_RETRIES = 3;
 
-export async function runAgentLoop(tabId: number, userPrompt: string, existingSessionId?: number): Promise<void> {
+export async function runAgentLoop(tabId: number, userPrompt: string, existingSessionId?: number, attachments?: AttachedFile[]): Promise<void> {
   // Create a new session or reuse an existing one for context continuity.
   const sessionId = existingSessionId ?? await createSession(userPrompt);
   await setAgentState({ status: 'running', tabId, step: 0, prompt: userPrompt, sessionId });
+
+  // Seed any user-attached files into the VFS so Gemini can reference them.
+  if (attachments?.length) {
+    for (const file of attachments) {
+      await saveVFSFile(sessionId, file.name, file.data, file.mimeType);
+    }
+    await log(`Loaded ${attachments.length} attached file(s) into VFS`, 'info');
+  }
   await log(`Agent started`, 'observe');
 
   // ── File chooser guard ──────────────────────────────────────────────────────
@@ -348,9 +357,17 @@ export async function runAgentLoop(tabId: number, userPrompt: string, existingSe
       // 6. Call Gemini — thinking tokens are logged as [THINK] inside callGemini
       await log('Sending to Gemini…', 'observe');
       const vfsFiles = await listVFSFiles(sessionId);
+
+      // On the first step, pass user-attached images inline so Gemini can see them
+      const inlineImages: InlineImage[] = step === 1 && attachments?.length
+        ? attachments
+            .filter((a) => a.mimeType.startsWith('image/'))
+            .map(({ name, mimeType, data }) => ({ name, mimeType, data }))
+        : [];
+
       let decision;
       try {
-        decision = await callGemini(geminiApiKey as string, base64Image, userPrompt, history, log, vfsFiles);
+        decision = await callGemini(geminiApiKey as string, base64Image, userPrompt, history, log, vfsFiles, inlineImages);
       } catch (err) {
         await log(
           `Gemini call failed: ${(err as Error).message}. Will retry step.`,

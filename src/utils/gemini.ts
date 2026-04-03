@@ -122,6 +122,13 @@ function summariseThinking(raw: string): string {
   return first.slice(0, cut > 120 ? cut : 260) + '…';
 }
 
+export interface InlineImage {
+  name: string;
+  mimeType: string;
+  /** Base64-encoded data (no data-URL prefix). */
+  data: string;
+}
+
 export async function callGemini(
   apiKey: string,
   base64Image: string,
@@ -129,6 +136,7 @@ export async function callGemini(
   history: { role: string; content: string }[] = [],
   logFn: (msg: string, level?: string) => Promise<void> = async () => {},
   vfsFiles: VFSFile[] = [],
+  inlineImages: InlineImage[] = [],
 ): Promise<AgentDecision> {
   const GEMINI_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`;
   const contents: Array<{ role: string; parts: Array<Record<string, unknown>> }> = [];
@@ -148,18 +156,25 @@ export async function callGemini(
       }\nYou can use vfsSaveScreenshot, vfsWrite, vfsDelete, or uploadFileId (with targetId) to manage these files.`
     : '\n\n── Virtual Filesystem (VFS) — currently empty ──\nUse vfsSaveScreenshot or vfsWrite to create files.';
 
-  contents.push({
-    role: 'user',
-    parts: [
-      { text: `User task: ${userPrompt}${vfsContext}\n\nAnalyze the annotated screenshot and respond in JSON.` },
-      {
-        inlineData: {
-          mimeType: 'image/png',
-          data: base64Image,
-        },
-      },
-    ],
-  });
+  const userParts: Array<Record<string, unknown>> = [
+    { text: `User task: ${userPrompt}${vfsContext}` },
+  ];
+
+  // Attach user-provided reference images before the page screenshot
+  if (inlineImages.length > 0) {
+    userParts.push({
+      text: `\n\n── User-provided reference images (${inlineImages.length}) ──\nThe user attached the following images as context for this task:`,
+    });
+    for (const img of inlineImages) {
+      userParts.push({ text: `[${img.name}]` });
+      userParts.push({ inlineData: { mimeType: img.mimeType, data: img.data } });
+    }
+  }
+
+  userParts.push({ text: '\n\nAnalyze the annotated screenshot below and respond in JSON.' });
+  userParts.push({ inlineData: { mimeType: 'image/png', data: base64Image } });
+
+  contents.push({ role: 'user', parts: userParts });
 
   const body = {
     system_instruction: {

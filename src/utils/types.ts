@@ -93,9 +93,17 @@ export interface LogEntry {
   ts: number;
 }
 
+/** A file attached to a chat prompt to be seeded into the VFS. */
+export interface AttachedFile {
+  name: string;
+  mimeType: string;
+  /** Base64-encoded data (no data-URL prefix). */
+  data: string;
+}
+
 /** Messages flowing between popup / background / content. */
 export type Message =
-  | { type: 'START_AGENT'; tabId: number; prompt: string; sessionId?: number }
+  | { type: 'START_AGENT'; tabId: number; prompt: string; sessionId?: number; attachments?: AttachedFile[] }
   | { type: 'STOP_AGENT' }
   | { type: 'AGENT_LOG'; message: string; level: string }
   | { type: 'AGENT_STATE_CHANGE' }
