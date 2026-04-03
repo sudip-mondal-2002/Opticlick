@@ -1,0 +1,23 @@
+{
+  "name": "opticlick-engine",
+  "version": "1.0.0",
+  "description": "Autonomous web agent using Set-of-Mark visual prompting and Gemini 3.1 Pro.",
+  "type": "module",
+  "scripts": {
+    "dev": "wxt",
+    "build": "wxt build",
+    "zip": "wxt zip",
+    "postinstall": "wxt prepare"
+  },
+  "dependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react-swc": "^4.3.0",
+    "typescript": "^5.7.0",
+    "wxt": "^0.19.0"
+  }
+}
