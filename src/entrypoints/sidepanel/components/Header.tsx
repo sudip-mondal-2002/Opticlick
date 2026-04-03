@@ -3,6 +3,8 @@ import { useTheme } from '../context/ThemeContext';
 interface Props {
   isRunning: boolean;
   isError: boolean;
+  sessionCount: number;
+  onShowSessions: () => void;
 }
 
 function SunIcon() {
@@ -29,7 +31,7 @@ function MoonIcon() {
   );
 }
 
-export function Header({ isRunning, isError }: Props) {
+export function Header({ isRunning, isError, sessionCount, onShowSessions }: Props) {
   const { theme, toggleTheme } = useTheme();
 
   const dotClass = isRunning
@@ -61,8 +63,20 @@ export function Header({ isRunning, isError }: Props) {
         Agent
       </span>
 
+      {/* Sessions button */}
+      <button
+        onClick={onShowSessions}
+        className="ml-auto flex items-center gap-1.5 px-2 py-1 text-[10px] font-semibold text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 bg-slate-200/60 dark:bg-slate-800 rounded-md transition-colors"
+        title="Past sessions"
+      >
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
+        </svg>
+        {sessionCount > 0 && <span>{sessionCount}</span>}
+      </button>
+
       {/* Status dot */}
-      <div className={`ml-auto w-2 h-2 rounded-full shrink-0 transition-[background,box-shadow] duration-300 ${dotClass}`} />
+      <div className={`w-2 h-2 rounded-full shrink-0 transition-[background,box-shadow] duration-300 ${dotClass}`} />
 
       {/* Theme toggle */}
       <button

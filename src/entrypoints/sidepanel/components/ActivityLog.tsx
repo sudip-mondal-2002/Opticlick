@@ -21,7 +21,7 @@ const tagMap: Record<string, { label: string; className: string }> = {
   think:      { label: '[THINK]',   className: 'text-sky-400' },
   act:        { label: '[ACT]',     className: 'text-amber-400' },
   observe:    { label: '[OBSERVE]', className: 'text-emerald-400' },
-  screenshot: { label: '[SNAP]',    className: 'text-violet-400' },
+  screenshot: { label: '[SNAP]',    className: 'text-violet-600 dark:text-violet-400' },
   error:      { label: '[ERR]',     className: 'text-rose-400' },
   info:       { label: '[THINK]',   className: 'text-sky-400' },
   ok:         { label: '[OBSERVE]', className: 'text-emerald-400' },
@@ -134,7 +134,7 @@ export function ActivityLog({ logs, logRef }: Props) {
                   </span>
                   <span className={`break-all transition-colors ${
                     isSnap
-                      ? 'text-violet-300 group-hover:text-violet-200 underline decoration-violet-700 underline-offset-2'
+                      ? 'text-violet-600 dark:text-violet-300 group-hover:text-violet-700 dark:group-hover:text-violet-200 underline decoration-violet-400 dark:decoration-violet-700 underline-offset-2'
                       : 'text-slate-600 dark:text-slate-300'
                   }`}>
                     {body}

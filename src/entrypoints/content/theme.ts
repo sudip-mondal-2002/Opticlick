@@ -19,9 +19,8 @@ const LIGHT: ContentTheme = {
   markFill:      'rgba(2, 132, 199, 0.07)',
   badgeBg:       '#0284c7',               // sky-600
   badgeText:     '#ffffff',
-  blockerBg:     'rgba(14, 165, 233, 0.14)',
-  blockerBorder: 'rgba(14, 165, 233, 0.6)',
-  bannerBg:      'rgba(2, 132, 199, 0.92)',
+  blockerBg:     'radial-gradient(ellipse at center, rgba(14, 165, 233, 0) 60%, rgba(14, 165, 233, 0.9) 120%)',
+  bannerBg:      'rgba(2, 132, 199, 0)',
 };
 
 const DARK: ContentTheme = {
@@ -29,9 +28,8 @@ const DARK: ContentTheme = {
   markFill:      'rgba(56, 189, 248, 0.08)',
   badgeBg:       '#0369a1',               // sky-700
   badgeText:     '#ffffff',
-  blockerBg:     'rgba(2, 132, 199, 0.20)',
-  blockerBorder: 'rgba(56, 189, 248, 0.5)',
-  bannerBg:      'rgba(3, 105, 161, 0.95)',
+  blockerBg:     'radial-gradient(ellipse at center, rgba(2, 132, 199, 0.20) 60%, rgba(2, 132, 199, 0.9) 120%)',
+  bannerBg:      'rgba(3, 105, 161, 0)',
 };
 
 export async function getTheme(): Promise<ContentTheme> {

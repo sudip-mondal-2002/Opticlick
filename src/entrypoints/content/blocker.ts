@@ -34,7 +34,6 @@ export async function installBlocker(): Promise<void> {
     z-index: 2147483646;
     pointer-events: none;
     background: ${theme.blockerBg};
-    border: 4px solid ${theme.blockerBorder};
     cursor: not-allowed;
     box-sizing: border-box;
   `;

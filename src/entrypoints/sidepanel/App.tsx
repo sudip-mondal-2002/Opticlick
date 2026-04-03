@@ -4,9 +4,6 @@ import { getSessions, getConversationHistory } from '@/utils/db';
 import { ThemeProvider } from './context/ThemeContext';
 import { ApiKeySetup } from './components/ApiKeySetup';
 import { Header } from './components/Header';
-import { PromptSection } from './components/PromptSection';
-import { ControlButtons } from './components/ControlButtons';
-import { ActivityLog } from './components/ActivityLog';
 import { StepFooter } from './components/StepFooter';
 import { ApiKeyFooter } from './components/ApiKeyFooter';
 
@@ -15,17 +12,18 @@ interface LogItem {
   level: string;
 }
 
-// ── Parsed history step (from IndexedDB conversation turns) ───────────────────
-
 interface HistoryStep {
-  kind: 'think' | 'act' | 'done' | 'prompt';
+  kind: 'think' | 'act' | 'done' | 'prompt' | 'observe' | 'screenshot';
   text: string;
 }
+
+// ── Parse model turn from IndexedDB ──────────────────────────────────────────
 
 function parseModelTurn(content: string): HistoryStep[] {
   try {
     const d = JSON.parse(content);
     const steps: HistoryStep[] = [];
+    steps.push({ kind: 'screenshot', text: 'Screenshot captured' });
     if (d.reasoning) {
       const summary = d.reasoning.replace(/\s+/g, ' ').trim();
       steps.push({ kind: 'think', text: summary.length > 240 ? summary.slice(0, 237) + '…' : summary });
@@ -49,7 +47,7 @@ function parseModelTurn(content: string): HistoryStep[] {
   }
 }
 
-// ── Relative date ──────────────────────────────────────────────────────────────
+// ── Relative date ─────────────────────────────────────────────────────────────
 
 function formatRelativeDate(ts: number): string {
   const diff = Date.now() - ts;
@@ -61,32 +59,81 @@ function formatRelativeDate(ts: number): string {
   return `${Math.floor(hours / 24)}d ago`;
 }
 
+// ── Log line parsing & styles ─────────────────────────────────────────────────
+
+function parseLine(message: string): { ts: string; body: string } {
+  const match = message.match(/^\[([^\]]+)\]\s*(.*)/s);
+  if (!match) return { ts: '', body: message };
+  return { ts: match[1], body: match[2] };
+}
+
+const tagMap: Record<string, { label: string; className: string }> = {
+  think:      { label: '[THINK]',   className: 'text-sky-400' },
+  act:        { label: '[ACT]',     className: 'text-amber-400' },
+  observe:    { label: '[OBSERVE]', className: 'text-emerald-400' },
+  screenshot: { label: '[SNAP]',    className: 'text-violet-600 dark:text-violet-400' },
+  error:      { label: '[ERR]',     className: 'text-rose-400' },
+  info:       { label: '[THINK]',   className: 'text-sky-400' },
+  ok:         { label: '[OBSERVE]', className: 'text-emerald-400' },
+  warn:       { label: '[ACT]',     className: 'text-amber-400' },
+};
+
+const historyStepStyle: Record<string, { label: string; className: string }> = {
+  think:      { label: '[THINK]',   className: 'text-sky-400/60' },
+  act:        { label: '[ACT]',     className: 'text-amber-400/60' },
+  done:       { label: '[DONE]',    className: 'text-emerald-400/60' },
+  prompt:     { label: '[TASK]',    className: 'text-violet-400/60' },
+  observe:    { label: '[OBSERVE]', className: 'text-emerald-400/60' },
+  screenshot: { label: '[SNAP]',    className: 'text-violet-400/60' },
+};
+
+// ── Screenshot modal ──────────────────────────────────────────────────────────
+
+function ScreenshotModal({ src, onClose }: { src: string; onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 bg-black/95 flex flex-col" onClick={onClose}>
+      <div
+        className="flex items-center justify-between px-3 py-2 bg-slate-900 border-b border-slate-700 shrink-0"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center gap-1.5">
+          <div className="w-2.5 h-2.5 rounded-full bg-[#ff5f57]" />
+          <div className="w-2.5 h-2.5 rounded-full bg-[#febc2e]" />
+          <div className="w-2.5 h-2.5 rounded-full bg-[#28c840]" />
+          <span className="ml-2 font-mono text-[10px] text-slate-500">page snapshot</span>
+        </div>
+        <button onClick={onClose} className="text-slate-600 hover:text-slate-300 font-mono text-[11px] transition-colors">
+          [esc]
+        </button>
+      </div>
+      <div className="flex-1 overflow-auto p-2" onClick={(e) => e.stopPropagation()}>
+        <img src={src} alt="Page snapshot" className="w-full rounded border border-slate-700/60" />
+      </div>
+      <div className="shrink-0 py-1.5 text-center">
+        <span className="font-mono text-[9px] text-slate-700">click outside to close</span>
+      </div>
+    </div>
+  );
+}
+
 // ── Icons ─────────────────────────────────────────────────────────────────────
 
-function AgentTabIcon() {
+function PlayIcon() {
   return (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <polygon points="5 3 19 12 5 21 5 3" />
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M8 5.14v14l11-7-11-7z" />
     </svg>
   );
 }
 
-function HistoryTabIcon() {
+function StopIcon() {
   return (
-    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="12" r="10" />
-      <polyline points="12 6 12 12 16 14" />
+    <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
+      <rect x="4" y="4" width="16" height="16" rx="2" />
     </svg>
   );
 }
 
-function BackIcon() {
-  return (
-    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-      <polyline points="15 18 9 12 15 6" />
-    </svg>
-  );
-}
 
 function ChevronIcon() {
   return (
@@ -96,21 +143,31 @@ function ChevronIcon() {
   );
 }
 
-// ── History session card ───────────────────────────────────────────────────────
-
-interface SessionCardProps {
-  session: Session;
-  onOpen: (session: Session) => void;
+function HistoryIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10" />
+      <polyline points="12 6 12 12 16 14" />
+    </svg>
+  );
 }
 
-function SessionCard({ session, onOpen }: SessionCardProps) {
+// ── Sessions overlay ──────────────────────────────────────────────────────────
+
+interface SessionsOverlayProps {
+  sessions: Session[];
+  onClose: () => void;
+  onResume: (session: Session) => void;
+}
+
+function SessionCard({ session, onOpen }: { session: Session; onOpen: (s: Session) => void }) {
   return (
     <button
       onClick={() => onOpen(session)}
       className="w-full text-left px-4 py-3 flex items-start gap-3 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors border-b border-slate-100 dark:border-slate-800/60 last:border-b-0 group"
     >
       <div className="mt-0.5 shrink-0 w-6 h-6 rounded-full bg-sky-100 dark:bg-sky-950/60 border border-sky-200 dark:border-sky-800/60 flex items-center justify-center text-sky-500">
-        <HistoryTabIcon />
+        <HistoryIcon />
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-[12px] font-medium text-slate-700 dark:text-slate-200 leading-snug line-clamp-2">
@@ -127,83 +184,38 @@ function SessionCard({ session, onOpen }: SessionCardProps) {
   );
 }
 
-// ── History detail view ────────────────────────────────────────────────────────
-
-const stepStyle: Record<string, { label: string; className: string }> = {
-  think:  { label: '[THINK]', className: 'text-sky-500 dark:text-sky-400' },
-  act:    { label: '[ACT]',   className: 'text-amber-500 dark:text-amber-400' },
-  done:   { label: '[DONE]',  className: 'text-emerald-500 dark:text-emerald-400' },
-  prompt: { label: '[TASK]',  className: 'text-violet-500 dark:text-violet-400' },
-};
-
-interface HistoryDetailProps {
-  session: Session;
-  steps: HistoryStep[];
-  loading: boolean;
-  onBack: () => void;
-  onResume: (session: Session) => void;
-}
-
-function HistoryDetail({ session, steps, loading, onBack, onResume }: HistoryDetailProps) {
+function SessionsOverlay({ sessions, onClose, onResume }: SessionsOverlayProps) {
   return (
-    <div className="flex flex-col h-full min-h-0">
-      {/* Detail header */}
+    <div className="absolute inset-0 z-30 flex flex-col bg-white dark:bg-slate-950">
       <div className="shrink-0 flex items-center gap-2 px-3 py-2.5 bg-slate-50 dark:bg-slate-900/60 border-b border-slate-200 dark:border-slate-800">
-        <button
-          onClick={onBack}
-          className="flex items-center gap-1 text-sky-500 hover:text-sky-600 dark:hover:text-sky-400 text-[11px] font-medium transition-colors"
-        >
-          <BackIcon />
-          Sessions
-        </button>
-        <span className="text-slate-300 dark:text-slate-700">·</span>
-        <span className="flex-1 min-w-0 text-[11px] text-slate-500 dark:text-slate-400 truncate">
-          {session.title}
+        <span className="flex-1 text-[12px] font-semibold text-slate-700 dark:text-slate-200">
+          Past Sessions
         </span>
         <button
-          onClick={() => onResume(session)}
-          className="shrink-0 text-[10px] font-semibold text-sky-500 hover:text-sky-600 dark:hover:text-sky-400 bg-sky-50 dark:bg-sky-950/50 border border-sky-200 dark:border-sky-800 rounded px-2 py-0.5 transition-colors"
+          onClick={onClose}
+          className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 text-[11px] font-medium transition-colors"
         >
-          Resume
+          Close
         </button>
       </div>
 
-      {/* Step feed */}
-      <div className="flex-1 overflow-y-auto log-scroll px-3 py-3 min-h-0">
-        {loading ? (
-          <div className="flex items-center gap-2 text-slate-400 dark:text-slate-600 text-[11px] font-mono mt-2">
-            <span className="animate-blink">_</span>
-            <span>Loading…</span>
-          </div>
-        ) : steps.length === 0 ? (
-          <p className="text-[11px] text-slate-400 dark:text-slate-600 italic mt-2">
-            No steps recorded for this session.
-          </p>
-        ) : (
-          <div className="space-y-0.5">
-            {steps.map((step, i) => {
-              const style = stepStyle[step.kind] ?? stepStyle.think;
-              return (
-                <div key={i} className="flex gap-2.5 items-baseline font-mono text-[11px] leading-[1.75]">
-                  <span className={`shrink-0 font-semibold ${style.className}`}>
-                    {style.label}
-                  </span>
-                  <span className="text-slate-600 dark:text-slate-300 break-words min-w-0">
-                    {step.text}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
+      {sessions.length === 0 ? (
+        <div className="flex flex-col items-center justify-center flex-1 gap-3 text-slate-400 dark:text-slate-600 px-8 text-center">
+          <HistoryIcon />
+          <p className="text-[12px]">No past sessions yet.</p>
+        </div>
+      ) : (
+        <div className="flex-1 overflow-y-auto log-scroll">
+          {sessions.map((session) => (
+            <SessionCard key={session.id} session={session} onOpen={(s) => { onResume(s); onClose(); }} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
 // ── Main AgentUI ───────────────────────────────────────────────────────────────
-
-type ActiveTab = 'agent' | 'history';
 
 function AgentUI() {
   const [apiKey, setApiKey] = useState<string | null>(null);
@@ -211,22 +223,23 @@ function AgentUI() {
   const [keyLoading, setKeyLoading] = useState(true);
 
   const [prompt, setPrompt] = useState('');
+  const [submittedPrompt, setSubmittedPrompt] = useState<string | null>(null);
   const [isRunning, setIsRunning] = useState(false);
   const [isError, setIsError] = useState(false);
   const [logs, setLogs] = useState<LogItem[]>([]);
   const [step, setStep] = useState(0);
   const [showKeyEdit, setShowKeyEdit] = useState(false);
-  const logRef = useRef<HTMLDivElement>(null);
+  const [previewSrc, setPreviewSrc] = useState<string | null>(null);
+  const feedRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const [sessions, setSessions] = useState<Session[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<number | null>(null);
-
-  const [activeTab, setActiveTab] = useState<ActiveTab>('agent');
-  const [historySession, setHistorySession] = useState<Session | null>(null);
   const [historySteps, setHistorySteps] = useState<HistoryStep[]>([]);
-  const [historyLoading, setHistoryLoading] = useState(false);
 
-  // ── API key ──────────────────────────────────────────────────────────────────
+  const [showSessions, setShowSessions] = useState(false);
+
+  // ── API key ────────────────────────────────────────────────────────────────
 
   useEffect(() => {
     chrome.storage.local.get('geminiApiKey').then(({ geminiApiKey }) => {
@@ -252,7 +265,7 @@ function AgentUI() {
     });
   };
 
-  // ── Agent state / logs ───────────────────────────────────────────────────────
+  // ── Agent state / logs ─────────────────────────────────────────────────────
 
   const refreshSessions = useCallback(async () => {
     const list = await getSessions();
@@ -292,15 +305,18 @@ function AgentUI() {
     })();
   }, [syncState, appendLog, refreshSessions]);
 
+  // Auto-scroll feed to bottom as logs arrive
   useEffect(() => {
-    if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight;
-  }, [logs]);
+    if (feedRef.current) feedRef.current.scrollTop = feedRef.current.scrollHeight;
+  }, [logs, historySteps, submittedPrompt]);
 
-  // ── Actions ──────────────────────────────────────────────────────────────────
+  // ── Actions ────────────────────────────────────────────────────────────────
 
   const handleRun = async () => {
     const trimmed = prompt.trim();
     if (!trimmed) { appendLog('Please enter a task prompt.', 'warn'); return; }
+    setSubmittedPrompt(trimmed);
+    setPrompt('');
     appendLog(`Starting: "${trimmed.slice(0, 60)}${trimmed.length > 60 ? '…' : ''}"`, 'observe');
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab) { appendLog('No active tab found.', 'error'); return; }
@@ -317,42 +333,53 @@ function AgentUI() {
 
   const handleNewChat = () => {
     setCurrentSessionId(null);
+    setHistorySteps([]);
     setLogs([]);
     setStep(0);
     setPrompt('');
+    setSubmittedPrompt(null);
+    textareaRef.current?.focus();
   };
 
-  const handleOpenHistory = async (session: Session) => {
-    setHistorySession(session);
-    setHistorySteps([]);
-    setHistoryLoading(true);
-    try {
-      const turns = await getConversationHistory(session.id!);
-      const steps: HistoryStep[] = [];
-      for (const turn of turns) {
-        if (turn.role === 'user') {
-          const match = turn.content.match(/User task:\s*(.+?)(?:\n|$)/);
-          if (match) steps.push({ kind: 'prompt', text: match[1].trim() });
-        } else if (turn.role === 'model') {
-          steps.push(...parseModelTurn(turn.content));
+  const handleResumeSession = async (session: Session) => {
+    setCurrentSessionId(session.id!);
+
+    setLogs([]);
+    setStep(0);
+    setSubmittedPrompt(null);
+    // Load history steps for the feed
+    const turns = await getConversationHistory(session.id!);
+    const steps: HistoryStep[] = [];
+    for (const turn of turns) {
+      if (turn.role === 'user') {
+        // "[Step N] Some action. Task: ..." or "[ACTION FAILED - Step N] ..."
+        const stepMatch = turn.content.match(/^\[(?:ACTION FAILED - )?Step \d+\]\s*(.+?)(?:\.\s*Task:.*)?$/s);
+        if (stepMatch) {
+          steps.push({ kind: 'observe', text: stepMatch[1].trim() });
+        } else {
+          const taskMatch = turn.content.match(/User task:\s*(.+?)(?:\n|$)/);
+          if (taskMatch) steps.push({ kind: 'prompt', text: taskMatch[1].trim() });
         }
+      } else if (turn.role === 'model') {
+        steps.push(...parseModelTurn(turn.content));
       }
-      setHistorySteps(steps);
-    } finally {
-      setHistoryLoading(false);
+    }
+    setHistorySteps(steps);
+  };
+
+  const handleScreenshotClick = async () => {
+    const { lastScreenshot } = await chrome.storage.session.get('lastScreenshot') as { lastScreenshot?: string };
+    if (lastScreenshot) setPreviewSrc(`data:image/png;base64,${lastScreenshot}`);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey && !isRunning) {
+      e.preventDefault();
+      handleRun();
     }
   };
 
-  const handleResumeSession = (session: Session) => {
-    setCurrentSessionId(session.id!);
-    setPrompt(session.title);
-    setLogs([]);
-    setStep(0);
-    setActiveTab('agent');
-    setHistorySession(null);
-  };
-
-  // ── Render ───────────────────────────────────────────────────────────────────
+  // ── Render ─────────────────────────────────────────────────────────────────
 
   if (keyLoading) return null;
 
@@ -370,109 +397,174 @@ function AgentUI() {
   const activeSession = sessions.find((s) => s.id === currentSessionId);
 
   return (
-    <div className="flex flex-col h-screen bg-white dark:bg-slate-950 overflow-hidden">
+    <div className="relative flex flex-col h-screen bg-white dark:bg-slate-950 overflow-hidden">
 
-      {/* ── Header ── */}
-      <Header isRunning={isRunning} isError={isError} />
+      {/* Screenshot modal */}
+      {previewSrc && <ScreenshotModal src={previewSrc} onClose={() => setPreviewSrc(null)} />}
 
-      {/* ── Tab bar ── */}
-      <div className="shrink-0 flex items-center bg-slate-50 dark:bg-slate-900/60 border-b border-slate-200 dark:border-slate-800">
-        <button
-          onClick={() => { setActiveTab('agent'); setHistorySession(null); }}
-          className={`flex items-center gap-1.5 px-4 py-2.5 text-[11.5px] font-semibold border-b-2 transition-colors ${
-            activeTab === 'agent'
-              ? 'border-sky-500 text-sky-600 dark:text-sky-400'
-              : 'border-transparent text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300'
-          }`}
-        >
-          <AgentTabIcon />
-          Agent
-        </button>
-        <button
-          onClick={() => { setActiveTab('history'); setHistorySession(null); }}
-          className={`flex items-center gap-1.5 px-4 py-2.5 text-[11.5px] font-semibold border-b-2 transition-colors ${
-            activeTab === 'history'
-              ? 'border-sky-500 text-sky-600 dark:text-sky-400'
-              : 'border-transparent text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300'
-          }`}
-        >
-          <HistoryTabIcon />
-          History
-          {sessions.length > 0 && (
-            <span className={`ml-0.5 text-[9px] font-bold px-1.5 py-0.5 rounded-full ${
-              activeTab === 'history'
-                ? 'bg-sky-100 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400'
-                : 'bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400'
-            }`}>
-              {sessions.length}
-            </span>
-          )}
-        </button>
-      </div>
+      {/* Sessions overlay */}
+      {showSessions && (
+        <SessionsOverlay
+          sessions={sessions}
+          onClose={() => setShowSessions(false)}
+          onResume={(s) => { handleResumeSession(s); setShowSessions(false); }}
+        />
+      )}
 
-      {/* ── Main content (flex-1, never overflows) ── */}
-      <div className="flex-1 overflow-hidden flex flex-col min-h-0">
+      {/* Header */}
+      <Header
+        isRunning={isRunning}
+        isError={isError}
+        sessionCount={sessions.length}
+        onShowSessions={() => setShowSessions(true)}
+      />
 
-        {activeTab === 'agent' ? (
-          <>
-            {/* Session continuation pill */}
-            {activeSession && (
-              <div className="shrink-0 flex items-center gap-2 px-3 py-1.5 bg-sky-50 dark:bg-sky-950/30 border-b border-sky-100 dark:border-sky-900/60 text-[11px]">
-                <span className="w-1.5 h-1.5 rounded-full bg-sky-400 shrink-0" />
-                <span className="text-slate-500 dark:text-slate-400 truncate flex-1 min-w-0">
-                  Continuing: <span className="text-slate-700 dark:text-slate-200 font-medium">{activeSession.title}</span>
-                </span>
-                <button
-                  onClick={handleNewChat}
-                  className="shrink-0 text-sky-500 hover:text-sky-600 dark:hover:text-sky-400 font-medium transition-colors"
+      {/* Session continuation pill */}
+      {activeSession && (
+        <div className="shrink-0 flex items-center gap-2 px-3 py-1.5 bg-sky-50 dark:bg-sky-950/30 border-b border-sky-100 dark:border-sky-900/60 text-[11px]">
+          <span className="w-1.5 h-1.5 rounded-full bg-sky-400 shrink-0" />
+          <span className="text-slate-500 dark:text-slate-400 truncate flex-1 min-w-0">
+            Continuing: <span className="text-slate-700 dark:text-slate-200 font-medium">{activeSession.title}</span>
+          </span>
+          <button
+            onClick={handleNewChat}
+            className="shrink-0 text-sky-500 hover:text-sky-600 dark:hover:text-sky-400 font-medium transition-colors"
+          >
+            New Chat
+          </button>
+        </div>
+      )}
+
+      {/* ── Unified chat feed ── */}
+      <div
+        ref={feedRef}
+        className="flex-1 overflow-y-auto log-scroll px-3 py-3 min-h-0 space-y-3"
+      >
+
+        {/* History section */}
+        {historySteps.length > 0 && (
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <div className="flex-1 h-px bg-slate-200 dark:bg-slate-800" />
+              <span className="text-[9px] font-semibold tracking-[1px] uppercase text-slate-400 dark:text-slate-600">
+                Past session
+              </span>
+              <div className="flex-1 h-px bg-slate-200 dark:bg-slate-800" />
+            </div>
+            <div className="font-mono text-[11px] leading-[1.75] space-y-0.5 opacity-70">
+              {historySteps.map((step, i) => {
+                const style = historyStepStyle[step.kind] ?? historyStepStyle.think;
+                return (
+                  <div key={i} className="flex gap-2.5 items-baseline">
+                    <span className={`shrink-0 font-semibold ${style.className}`}>{style.label}</span>
+                    <span className="text-slate-500 dark:text-slate-400 break-words min-w-0">{step.text}</span>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="mt-3 flex items-center gap-2">
+              <div className="flex-1 h-px bg-slate-200 dark:bg-slate-800" />
+              <span className="text-[9px] font-semibold tracking-[1px] uppercase text-slate-400 dark:text-slate-600">
+                New prompt
+              </span>
+              <div className="flex-1 h-px bg-slate-200 dark:bg-slate-800" />
+            </div>
+          </div>
+        )}
+
+        {/* User prompt bubble */}
+        {submittedPrompt && (
+          <div className="flex justify-end">
+            <div className="max-w-[85%] px-3 py-2 bg-sky-600 text-white rounded-[12px] rounded-tr-[4px] text-[12.5px] leading-[1.6] shadow-sm">
+              {submittedPrompt}
+            </div>
+          </div>
+        )}
+
+        {/* Live logs */}
+        {logs.length > 0 && (
+          <div className="font-mono text-[11px] leading-[1.8] space-y-0.5">
+            {logs.map((entry, i) => {
+              const { ts, body } = parseLine(entry.message);
+              const tag = tagMap[entry.level] ?? tagMap.info;
+              const isSnap = entry.level === 'screenshot';
+              return (
+                <div
+                  key={i}
+                  className={`flex gap-2.5 items-baseline ${isSnap ? 'cursor-pointer group' : ''}`}
+                  onClick={isSnap ? handleScreenshotClick : undefined}
+                  title={isSnap ? 'Click to preview screenshot' : undefined}
                 >
-                  New Chat
-                </button>
-              </div>
-            )}
-
-            {/* Prompt + controls */}
-            <div className="shrink-0">
-              <PromptSection prompt={prompt} onPromptChange={setPrompt} disabled={isRunning} />
-              <ControlButtons isRunning={isRunning} onRun={handleRun} onStop={handleStop} />
-            </div>
-
-            {/* Live log feed — fills all remaining space */}
-            <div className="flex-1 min-h-0 px-3 py-3">
-              <ActivityLog logs={logs} logRef={logRef} />
-            </div>
-          </>
-        ) : (
-          /* History tab */
-          historySession ? (
-            <HistoryDetail
-              session={historySession}
-              steps={historySteps}
-              loading={historyLoading}
-              onBack={() => setHistorySession(null)}
-              onResume={handleResumeSession}
-            />
-          ) : (
-            <div className="flex-1 overflow-y-auto log-scroll">
-              {sessions.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-full gap-3 text-slate-400 dark:text-slate-600 px-8 text-center">
-                  <HistoryTabIcon />
-                  <p className="text-[12px]">No past sessions yet. Run the agent on a task to see history here.</p>
+                  {ts && (
+                    <span className="shrink-0 text-slate-400 dark:text-[#444460] min-w-[68px] tabular-nums">
+                      {ts}
+                    </span>
+                  )}
+                  <span className={`shrink-0 font-medium ${tag.className}`}>{tag.label}</span>
+                  <span className={`break-all transition-colors ${
+                    isSnap
+                      ? 'text-violet-600 dark:text-violet-300 group-hover:text-violet-700 dark:group-hover:text-violet-200 underline decoration-violet-400 dark:decoration-violet-700 underline-offset-2'
+                      : 'text-slate-600 dark:text-slate-300'
+                  }`}>
+                    {body}
+                  </span>
                 </div>
-              ) : (
-                sessions.map((session) => (
-                  <SessionCard key={session.id} session={session} onOpen={handleOpenHistory} />
-                ))
-              )}
-            </div>
-          )
+              );
+            })}
+          </div>
+        )}
+
+        {/* Empty state */}
+        {historySteps.length === 0 && !submittedPrompt && logs.length === 0 && (
+          <div className="flex flex-col items-center justify-center h-full min-h-[120px] gap-2 text-slate-400 dark:text-slate-600 text-center">
+            <span className="font-mono text-[11px] flex items-center gap-1">
+              Waiting for agent<span className="animate-blink">_</span>
+            </span>
+            <span className="text-[10px]">Type a task below and press Run</span>
+          </div>
         )}
       </div>
 
-      {/* ── Step progress (only while running) ── */}
+      {/* Step progress */}
       {isRunning && step > 0 && <StepFooter step={step} />}
 
-      {/* ── API key footer ── */}
+      {/* ── Bottom input bar ── */}
+      <div className="shrink-0 px-3 pt-2 pb-3 bg-white dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800">
+        <div className="flex gap-2 items-end">
+          <textarea
+            ref={textareaRef}
+            rows={2}
+            className="flex-1 min-h-[44px] max-h-[120px] resize-none px-3 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-[10px] text-[12.5px] text-slate-800 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-600 leading-[1.5] outline-none font-sans transition-[border-color,box-shadow] focus:border-sky-600 focus:ring-2 focus:ring-sky-600/20 disabled:opacity-50 disabled:cursor-not-allowed"
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            onKeyDown={handleKeyDown}
+            disabled={isRunning}
+            placeholder={'Describe a task… (Enter to run, Shift+Enter for newline)'}
+          />
+          <div className="flex flex-col gap-1.5 shrink-0">
+            <button
+              className="flex items-center justify-center gap-1.5 px-3 py-2 text-[11px] font-semibold rounded-[8px] text-white bg-gradient-to-r from-sky-700 via-sky-500 to-sky-400 shadow-[0_2px_8px_rgba(14,165,233,0.3)] transition-all hover:brightness-105 active:scale-[0.97] disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none"
+              disabled={isRunning || !prompt.trim()}
+              onClick={handleRun}
+              title="Run agent"
+            >
+              <PlayIcon />
+              Run
+            </button>
+            <button
+              className="flex items-center justify-center gap-1.5 px-3 py-2 text-[11px] font-semibold rounded-[8px] text-rose-500 dark:text-rose-400 bg-slate-100 dark:bg-slate-900 border border-rose-200 dark:border-rose-900/60 transition-all hover:bg-rose-50 dark:hover:bg-rose-950/30 active:scale-[0.97] disabled:opacity-30 disabled:cursor-not-allowed"
+              disabled={!isRunning}
+              onClick={handleStop}
+              title="Stop agent"
+            >
+              <StopIcon />
+              Stop
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* API key footer */}
       <ApiKeyFooter
         maskedKey={maskedKey}
         showEdit={showKeyEdit}

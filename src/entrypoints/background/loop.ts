@@ -200,7 +200,6 @@ export async function runAgentLoop(tabId: number, userPrompt: string, existingSe
         await log(`${label}`, 'act');
 
         try {
-          await sendToTab(tabId, { type: 'UNBLOCK_INPUT' });
           await attachDebugger(tabId);
           await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchMouseEvent', {
             type: 'mouseWheel',
@@ -235,7 +234,6 @@ export async function runAgentLoop(tabId: number, userPrompt: string, existingSe
       if (decision.pressKey && decision.targetId == null) {
         await log(`Pressing key: ${decision.pressKey}`, 'act');
         try {
-          await sendToTab(tabId, { type: 'UNBLOCK_INPUT' });
           await attachDebugger(tabId);
           await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
             type: 'rawKeyDown',
@@ -295,8 +293,6 @@ export async function runAgentLoop(tabId: number, userPrompt: string, existingSe
         `Clicking element #${target.id} "${target.text}" at (${target.rect.x}, ${target.rect.y})`,
         'act',
       );
-
-      await sendToTab(tabId, { type: 'UNBLOCK_INPUT' });
 
       // Listen for new tabs opened by the click
       let newTabId: number | null = null;
