@@ -25,7 +25,7 @@ const MAX_EMPTY_RETRIES = 3;
 
 export async function runAgentLoop(tabId: number, userPrompt: string): Promise<void> {
   await setAgentState({ status: 'running', tabId, step: 0, prompt: userPrompt });
-  await log(`Agent started on tab ${tabId}`, 'ok');
+  await log(`Agent started`, 'observe');
 
   try {
     const { geminiApiKey } = await chrome.storage.local.get('geminiApiKey');
@@ -40,7 +40,7 @@ export async function runAgentLoop(tabId: number, userPrompt: string): Promise<v
       const urlMatch = userPrompt.match(/https?:\/\/[^\s"'<>]+/i);
       if (urlMatch) {
         const targetUrl = urlMatch[0].replace(/[.,;:!?)]+$/, '');
-        await log(`Tab is on a restricted page. Navigating to: ${targetUrl}`, 'ok');
+        await log(`Navigating to: ${targetUrl}`, 'act');
         await chrome.tabs.update(tabId, { url: targetUrl });
         await waitForTabLoad(tabId, 15_000, true);
       }
@@ -58,29 +58,23 @@ export async function runAgentLoop(tabId: number, userPrompt: string): Promise<v
       }
 
       await setAgentState({ step });
-      await log(`── Step ${step} ──────────────────────────`, 'info');
       chrome.runtime.sendMessage({ type: 'AGENT_STATE_CHANGE' }).catch(() => {});
 
       // 1. Wait for DOM to settle
-      await log('Waiting for DOM idle…');
       await waitForDOMIdle(tabId);
 
       // 2. Draw Set-of-Mark annotations
-      await log('Drawing Set-of-Mark annotations…');
       let drawResult: DrawMarksResult | undefined;
       try {
         drawResult = await sendToTab<DrawMarksResult>(tabId, { type: 'DRAW_MARKS' });
       } catch {
-        await log('Re-injecting content script after navigation…', 'warn');
+        await log('Re-injecting content script after navigation…', 'act');
         await ensureContentScript(tabId);
         drawResult = await sendToTab<DrawMarksResult>(tabId, { type: 'DRAW_MARKS' });
       }
 
       if (!drawResult) {
-        await log(
-          'drawResult is null/undefined — content script may not be responding from the main frame.',
-          'error',
-        );
+        await log('Content script not responding. Cannot annotate page.', 'error');
         break;
       }
 
@@ -95,31 +89,30 @@ export async function runAgentLoop(tabId: number, userPrompt: string): Promise<v
             'warn',
           );
           await sleep(waitMs);
-          // Re-run this step (don't increment step counter)
           step--;
           continue;
         }
         await log('No interactable elements found after retries. Giving up.', 'error');
         break;
       }
-      emptyRetries = 0; // reset on success
+      emptyRetries = 0;
 
-      await log(`Found ${coordinateMap.length} interactable elements.`);
       await chrome.storage.session.set({ coordinateMap });
 
       // 3. Capture annotated screenshot
-      await log('Capturing screenshot…');
       const base64Image = await captureScreenshot(tabId);
+      // Store for popup preview, keyed to current step
+      await chrome.storage.session.set({ lastScreenshot: base64Image, lastScreenshotStep: step });
+      await log('Screenshot captured — tap to preview', 'screenshot');
 
       // 4. Destroy overlay
       await sendToTab(tabId, { type: 'DESTROY_MARKS' });
-      await log('Overlay destroyed post-capture.');
 
       // 5. Fetch conversation history
       const history = await getConversationHistory(tabId);
 
-      // 6. Call Gemini
-      await log('Calling Gemini…');
+      // 6. Call Gemini — thinking tokens are logged as [THINK] inside callGemini
+      await log('Sending to Gemini…', 'observe');
       let decision;
       try {
         decision = await callGemini(geminiApiKey as string, base64Image, userPrompt, history, log);
@@ -132,15 +125,8 @@ export async function runAgentLoop(tabId: number, userPrompt: string): Promise<v
         continue;
       }
 
-      const extras = [
-        decision.typeText && `typeText="${decision.typeText.slice(0, 40)}"`,
-        decision.pressKey && `pressKey=${decision.pressKey}`,
-        decision.navigateUrl && `nav=${decision.navigateUrl}`,
-        decision.scroll && `scroll=${decision.scroll}`,
-      ].filter(Boolean).join(', ');
-      await log(
-        `Gemini → targetId=${decision.targetId}, done=${decision.done}${extras ? `, ${extras}` : ''}: ${decision.reasoning}`,
-      );
+      // Log the model's reasoning conclusion
+      await log(decision.reasoning, 'think');
       await appendConversationTurn(tabId, 'model', JSON.stringify(decision));
 
       // 7. If done with no final action, finish
@@ -150,14 +136,14 @@ export async function runAgentLoop(tabId: number, userPrompt: string): Promise<v
         decision.scroll ||
         decision.pressKey;
       if (decision.done && !hasFinalAction) {
-        await log('Task complete!', 'ok');
+        await log('Task complete!', 'observe');
         await setAgentState({ status: 'done' });
         break;
       }
 
       // 8a. Handle URL navigation
       if (decision.navigateUrl) {
-        await log(`Navigating to: ${decision.navigateUrl}`, 'ok');
+        await log(`Navigating to: ${decision.navigateUrl}`, 'act');
         try { await sendToTab(tabId, { type: 'UNBLOCK_INPUT' }); } catch { /* */ }
         await detachDebugger(tabId);
         await chrome.tabs.update(tabId, { url: decision.navigateUrl });
@@ -196,7 +182,7 @@ export async function runAgentLoop(tabId: number, userPrompt: string): Promise<v
         const label = decision.scrollTargetId
           ? `Scrolling ${decision.scroll} inside element #${decision.scrollTargetId}`
           : `Scrolling page ${decision.scroll}`;
-        await log(`${label}…`, 'ok');
+        await log(`${label}`, 'act');
 
         await sendToTab(tabId, { type: 'UNBLOCK_INPUT' });
         await attachDebugger(tabId);
@@ -220,7 +206,7 @@ export async function runAgentLoop(tabId: number, userPrompt: string): Promise<v
 
       // 8c. Handle standalone pressKey (no click target)
       if (decision.pressKey && decision.targetId == null) {
-        await log(`Pressing key: ${decision.pressKey}`, 'ok');
+        await log(`Pressing key: ${decision.pressKey}`, 'act');
         await sendToTab(tabId, { type: 'UNBLOCK_INPUT' });
         await attachDebugger(tabId);
         await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
@@ -259,7 +245,8 @@ export async function runAgentLoop(tabId: number, userPrompt: string): Promise<v
       }
 
       await log(
-        `Clicking element #${target.id} "${target.text}" at CSS (${target.rect.x}, ${target.rect.y})`,
+        `Clicking element #${target.id} "${target.text}" at (${target.rect.x}, ${target.rect.y})`,
+        'act',
       );
 
       await sendToTab(tabId, { type: 'UNBLOCK_INPUT' });
@@ -272,11 +259,10 @@ export async function runAgentLoop(tabId: number, userPrompt: string): Promise<v
       chrome.tabs.onCreated.addListener(newTabListener);
 
       await dispatchHardwareClick(tabId, target.rect.x, target.rect.y);
-      await log(`Hardware click dispatched to (${target.rect.x}, ${target.rect.y}).`, 'ok');
 
       // 10. Type text if requested
       if (decision.typeText) {
-        await log(`Typing: "${decision.typeText}"`);
+        await log(`Typing: "${decision.typeText}"`, 'act');
         await sleep(200);
         for (const char of decision.typeText) {
           await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
@@ -293,7 +279,7 @@ export async function runAgentLoop(tabId: number, userPrompt: string): Promise<v
 
       // 10b. Press key after click+type (e.g. Enter to submit)
       if (decision.pressKey) {
-        await log(`Pressing key: ${decision.pressKey}`, 'ok');
+        await log(`Pressing key: ${decision.pressKey}`, 'act');
         await sleep(100);
         await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
           type: 'rawKeyDown',
@@ -312,7 +298,7 @@ export async function runAgentLoop(tabId: number, userPrompt: string): Promise<v
 
       // 11. Follow new tab if opened
       if (newTabId) {
-        await log(`Click opened new tab (id=${newTabId}). Following it.`, 'ok');
+        await log(`Click opened new tab. Following it.`, 'observe');
         try { await sendToTab(tabId, { type: 'UNBLOCK_INPUT' }); } catch { /* */ }
         await detachDebugger(tabId);
 
@@ -339,7 +325,7 @@ export async function runAgentLoop(tabId: number, userPrompt: string): Promise<v
       await sleep(STEP_DELAY_MS);
 
       if (decision.done) {
-        await log('Final action executed. Task complete!', 'ok');
+        await log('Task complete!', 'observe');
         await setAgentState({ status: 'done' });
         break;
       }
@@ -351,6 +337,5 @@ export async function runAgentLoop(tabId: number, userPrompt: string): Promise<v
     try { await sendToTab(tabId, { type: 'UNBLOCK_INPUT' }); } catch { /* */ }
     await detachDebugger(tabId);
     chrome.runtime.sendMessage({ type: 'AGENT_STATE_CHANGE' }).catch(() => {});
-    await log('Agent loop ended. User input restored.', 'ok');
   }
 }

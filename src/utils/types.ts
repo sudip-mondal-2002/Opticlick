@@ -43,7 +43,7 @@ export interface AgentState {
 /** Log entry stored in chrome.storage.session. */
 export interface LogEntry {
   message: string;
-  level: 'info' | 'ok' | 'warn' | 'error';
+  level: 'think' | 'act' | 'observe' | 'screenshot' | 'info' | 'ok' | 'warn' | 'error';
   ts: number;
 }
 

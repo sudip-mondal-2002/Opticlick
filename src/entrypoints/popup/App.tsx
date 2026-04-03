@@ -96,7 +96,7 @@ function AgentUI() {
   const handleRun = async () => {
     const trimmed = prompt.trim();
     if (!trimmed) { appendLog('Please enter a task prompt.', 'warn'); return; }
-    appendLog(`Starting agent: "${trimmed.slice(0, 60)}${trimmed.length > 60 ? '…' : ''}"`, 'ok');
+    appendLog(`Starting agent: "${trimmed.slice(0, 60)}${trimmed.length > 60 ? '…' : ''}"`, 'observe');
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab) { appendLog('No active tab found.', 'error'); return; }
     setIsRunning(true);
@@ -105,7 +105,7 @@ function AgentUI() {
   };
 
   const handleStop = () => {
-    appendLog('Stop requested.', 'warn');
+    appendLog('Stop requested.', 'act');
     chrome.runtime.sendMessage({ type: 'STOP_AGENT' });
     setIsRunning(false);
   };
@@ -127,7 +127,7 @@ function AgentUI() {
   const maskedKey = apiKey.slice(0, 8) + '••••••••••••';
 
   return (
-    <div className="flex flex-col bg-sky-50 dark:bg-slate-950">
+    <div className="flex flex-col bg-white dark:bg-slate-950">
       <Header isRunning={isRunning} isError={isError} />
       <PromptSection prompt={prompt} onPromptChange={setPrompt} disabled={isRunning} />
       <ControlButtons isRunning={isRunning} onRun={handleRun} onStop={handleStop} />

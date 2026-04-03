@@ -5,8 +5,10 @@
 
 /* Custom animation tokens */
 @theme {
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
   --animate-pulse-dot: pulse-dot 1.6s ease-in-out infinite;
   --animate-pip-pulse: pip-pulse 1.4s ease-in-out infinite;
+  --animate-blink: blink 1.2s step-end infinite;
 }
 
 @keyframes pulse-dot {
@@ -19,6 +21,11 @@
   50%       { opacity: 0.4; }
 }
 
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0; }
+}
+
 /* Base */
 @layer base {
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -29,10 +36,10 @@
   }
 }
 
-/* Custom log scrollbar */
-.log-scroll { scrollbar-width: thin; scrollbar-color: #bae6fd transparent; }
+/* Terminal log scrollbar */
+.log-scroll { scrollbar-width: thin; scrollbar-color: #334155 transparent; }
 .log-scroll::-webkit-scrollbar { width: 4px; }
 .log-scroll::-webkit-scrollbar-track { background: transparent; }
-.log-scroll::-webkit-scrollbar-thumb { background: #bae6fd; border-radius: 2px; }
-.dark .log-scroll { scrollbar-color: #1e3a5f transparent; }
-.dark .log-scroll::-webkit-scrollbar-thumb { background: #1e3a5f; }
+.log-scroll::-webkit-scrollbar-thumb { background: #334155; border-radius: 2px; }
+.log-scroll:hover { scrollbar-color: #475569 transparent; }
+.log-scroll:hover::-webkit-scrollbar-thumb { background: #475569; }

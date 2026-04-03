@@ -7,6 +7,7 @@ import type { AgentDecision } from './types';
 const GEMINI_MODEL = 'gemini-3.1-flash-lite-preview';
 const MAX_API_RETRIES = 5;
 const RATE_LIMIT_DELAY_MS = 10_000;
+const THINKING_BUDGET = 4096;
 
 const SYSTEM_INSTRUCTIONS = `You are an autonomous web agent that can browse ANY website.
 
@@ -39,6 +40,20 @@ IMPORTANT:
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Extracts the first meaningful sentence from raw thinking tokens
+ * so the popup log stays concise.
+ */
+function summariseThinking(raw: string): string {
+  // Collapse whitespace, split on sentence boundaries
+  const clean = raw.replace(/\s+/g, ' ').trim();
+  const sentences = clean.split(/(?<=\.)\s+/);
+  const first = sentences.find((s) => s.length > 30) ?? clean;
+  if (first.length <= 260) return first;
+  const cut = first.lastIndexOf(' ', 260);
+  return first.slice(0, cut > 120 ? cut : 260) + '…';
 }
 
 export async function callGemini(
@@ -79,6 +94,9 @@ export async function callGemini(
     generationConfig: {
       temperature: 0.1,
       responseMimeType: 'application/json',
+      thinkingConfig: {
+        thinkingBudget: THINKING_BUDGET,
+      },
     },
   };
 
@@ -108,7 +126,24 @@ export async function callGemini(
       }
 
       const data = await resp.json();
-      const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+      const parts: Array<{ thought?: boolean; text: string }> =
+        data?.candidates?.[0]?.content?.parts ?? [];
+
+      // Log LLM thinking tokens as [THINK] entries
+      const thoughtText = parts
+        .filter((p) => p.thought)
+        .map((p) => p.text)
+        .join(' ');
+      if (thoughtText.trim()) {
+        await logFn(summariseThinking(thoughtText), 'think');
+      }
+
+      // The answer is in the non-thought parts
+      const rawText = parts
+        .filter((p) => !p.thought)
+        .map((p) => p.text)
+        .join('');
+
       if (!rawText) throw new Error('Empty response from Gemini.');
 
       return JSON.parse(rawText) as AgentDecision;
