@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Upload Target — Opticlick E2E Fixture</title>
+  <style>
+    body { font-family: sans-serif; padding: 16px; }
+    section { margin-bottom: 32px; border: 1px solid #ccc; padding: 16px; border-radius: 6px; }
+    h2 { margin: 0 0 12px; }
+    .status { font-size: 12px; color: #555; margin-top: 6px; }
+    .drop-zone {
+      border: 2px dashed #888;
+      border-radius: 6px;
+      padding: 24px;
+      text-align: center;
+      color: #666;
+      transition: background 0.2s;
+    }
+    .drop-zone.over { background: #e8f4ff; border-color: #0284c7; }
+    /* Avatar uploader — visually-hidden input triggered by a styled button */
+    #avatar-input { display: none; }
+    custom-upload { display: block; }
+  </style>
+</head>
+<body>
+
+<!-- ── Case 1: Plain visible file input (baseline) ─────────────────────────── -->
+<section id="case-plain">
+  <h2>1. Plain visible input</h2>
+  <input type="file" id="plain-input" name="plain">
+  <p class="status" id="plain-status">no file selected</p>
+  <script>
+    document.getElementById('plain-input').addEventListener('change', function () {
+      document.getElementById('plain-status').textContent =
+        this.files[0] ? this.files[0].name : 'no file selected';
+    });
+  </script>
+</section>
+
+<!-- ── Case 2: Hidden input triggered by a styled button (most common pattern) -->
+<!-- Gmail attachments, Dropbox, Notion all do this.                           -->
+<section id="case-hidden">
+  <h2>2. Hidden input — button triggers hidden <code>&lt;input&gt;</code></h2>
+  <button id="attach-btn" type="button">Attach file…</button>
+  <!-- Visually invisible but present in DOM; CDP can still target it by objectId -->
+  <input type="file" id="hidden-input" name="hidden"
+         style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0;">
+  <p class="status" id="hidden-status">no file selected</p>
+  <script>
+    document.getElementById('attach-btn').addEventListener('click', function () {
+      document.getElementById('hidden-input').click();
+    });
+    document.getElementById('hidden-input').addEventListener('change', function () {
+      document.getElementById('hidden-status').textContent =
+        this.files[0] ? this.files[0].name : 'no file selected';
+    });
+  </script>
+</section>
+
+<!-- ── Case 3: Dynamically created input on button click ───────────────────── -->
+<!-- Some frameworks (React file uploads, jQuery plugins) destroy and recreate  -->
+<!-- the input on every selection to allow re-selecting the same file.          -->
+<section id="case-dynamic">
+  <h2>3. Dynamic input — recreated on every "Browse" click</h2>
+  <button id="dynamic-btn" type="button">Browse…</button>
+  <p class="status" id="dynamic-status">no file selected</p>
+  <script>
+    window._dynamicUploadCount = 0;
+    document.getElementById('dynamic-btn').addEventListener('click', function () {
+      // Destroy previous input if any
+      const old = document.getElementById('dynamic-input');
+      if (old) old.remove();
+
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.id = 'dynamic-input';
+      input.name = 'dynamic';
+      input.style.cssText = 'position:absolute;left:-9999px;width:1px;height:1px;';
+      document.body.appendChild(input);
+
+      window._dynamicUploadCount++;
+
+      input.addEventListener('change', function () {
+        document.getElementById('dynamic-status').textContent =
+          input.files[0] ? input.files[0].name : 'cleared';
+      });
+
+      // Normally the browser would open a picker here; in tests CDP intercepts
+      input.click();
+    });
+  </script>
+</section>
+
+<!-- ── Case 4: Multiple inputs — avatar + document ─────────────────────────── -->
+<section id="case-multiple">
+  <h2>4. Multiple inputs — avatar (image/*) and document (any)</h2>
+  <button id="avatar-trigger" type="button">Upload avatar</button>
+  <input type="file" id="avatar-input" name="avatar" accept="image/*">
+  <p class="status" id="avatar-status">no avatar</p>
+  <br><br>
+  <label>Document: <input type="file" id="doc-input" name="document"></label>
+  <p class="status" id="doc-status">no document</p>
+  <script>
+    document.getElementById('avatar-trigger').addEventListener('click', function () {
+      document.getElementById('avatar-input').click();
+    });
+    document.getElementById('avatar-input').addEventListener('change', function () {
+      document.getElementById('avatar-status').textContent =
+        this.files[0] ? this.files[0].name : 'cleared';
+    });
+    document.getElementById('doc-input').addEventListener('change', function () {
+      document.getElementById('doc-status').textContent =
+        this.files[0] ? this.files[0].name : 'cleared';
+    });
+  </script>
+</section>
+
+<!-- ── Case 5: File input inside a Shadow DOM web component ────────────────── -->
+<!-- Tests that the agent can pierce open shadow roots to reach the input.      -->
+<section id="case-shadow">
+  <h2>5. Shadow DOM — input inside an open shadow root</h2>
+  <div id="shadow-host"></div>
+  <p class="status" id="shadow-status">no file selected</p>
+  <script>
+    (function () {
+      const host = document.getElementById('shadow-host');
+      const shadow = host.attachShadow({ mode: 'open' });
+      shadow.innerHTML = `
+        <style>
+          button { padding: 6px 12px; }
+          input[type=file] { display: none; }
+          p { font-size: 12px; color: #555; }
+        </style>
+        <button id="shadow-btn" type="button">Upload inside shadow</button>
+        <input type="file" id="shadow-input" name="shadow">
+        <p id="shadow-inner-status">no file selected</p>
+      `;
+      const btn = shadow.getElementById('shadow-btn');
+      const input = shadow.getElementById('shadow-input');
+      const innerStatus = shadow.getElementById('shadow-inner-status');
+      btn.addEventListener('click', () => input.click());
+      input.addEventListener('change', function () {
+        const name = input.files[0] ? input.files[0].name : 'cleared';
+        innerStatus.textContent = name;
+        // Also update the outer status for easier test assertions
+        document.getElementById('shadow-status').textContent = name;
+      });
+    })();
+  </script>
+</section>
+
+<!-- ── Case 6: Drag-and-drop zone with a hidden input fallback ─────────────── -->
+<section id="case-dragdrop">
+  <h2>6. Drag-and-drop zone (with hidden input fallback)</h2>
+  <div class="drop-zone" id="drop-zone" tabindex="0" role="button"
+       aria-label="Drop files here or click to browse">
+    Drop files here or click to browse
+  </div>
+  <input type="file" id="dropzone-input" name="dropzone"
+         style="display:none;" multiple>
+  <p class="status" id="dropzone-status">no file selected</p>
+  <script>
+    const zone = document.getElementById('drop-zone');
+    const dzInput = document.getElementById('dropzone-input');
+
+    zone.addEventListener('click', () => dzInput.click());
+    zone.addEventListener('dragover', (e) => { e.preventDefault(); zone.classList.add('over'); });
+    zone.addEventListener('dragleave', () => zone.classList.remove('over'));
+    zone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      zone.classList.remove('over');
+      const files = e.dataTransfer?.files;
+      if (files && files.length) {
+        document.getElementById('dropzone-status').textContent =
+          Array.from(files).map(f => f.name).join(', ');
+      }
+    });
+    dzInput.addEventListener('change', function () {
+      document.getElementById('dropzone-status').textContent =
+        this.files.length
+          ? Array.from(this.files).map(f => f.name).join(', ')
+          : 'cleared';
+    });
+  </script>
+</section>
+
+<!-- ── Case 7: Input inside a modal dialog (appears after button click) ──────  -->
+<section id="case-modal">
+  <h2>7. Modal dialog — input appears only after "Open dialog" is clicked</h2>
+  <button id="open-modal-btn" type="button">Open dialog</button>
+  <div id="modal-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);
+       display:none;align-items:center;justify-content:center;z-index:1000;">
+    <div style="background:#fff;padding:24px;border-radius:8px;min-width:300px;">
+      <h3 style="margin-top:0;">Upload from dialog</h3>
+      <input type="file" id="modal-input" name="modal">
+      <p class="status" id="modal-inner-status">no file selected</p>
+      <button id="close-modal-btn" type="button" style="margin-top:12px;">Close</button>
+    </div>
+  </div>
+  <p class="status" id="modal-status">dialog closed</p>
+  <script>
+    const overlay = document.getElementById('modal-overlay');
+    document.getElementById('open-modal-btn').addEventListener('click', function () {
+      overlay.style.display = 'flex';
+      document.getElementById('modal-status').textContent = 'dialog open';
+    });
+    document.getElementById('close-modal-btn').addEventListener('click', function () {
+      overlay.style.display = 'none';
+      document.getElementById('modal-status').textContent = 'dialog closed';
+    });
+    document.getElementById('modal-input').addEventListener('change', function () {
+      const name = this.files[0] ? this.files[0].name : 'cleared';
+      document.getElementById('modal-inner-status').textContent = name;
+      document.getElementById('modal-status').textContent = 'dialog open — file: ' + name;
+    });
+  </script>
+</section>
+
+<!-- ── Case 8: Multiple-file input with a change counter ───────────────────── -->
+<section id="case-multi-file">
+  <h2>8. Multi-file input + change event counter</h2>
+  <input type="file" id="multi-input" name="multi" multiple>
+  <p class="status" id="multi-status">no files selected</p>
+  <p class="status">change events: <span id="multi-change-count">0</span></p>
+  <script>
+    window._multiChangeCount = 0;
+    document.getElementById('multi-input').addEventListener('change', function () {
+      window._multiChangeCount++;
+      document.getElementById('multi-change-count').textContent = String(window._multiChangeCount);
+      document.getElementById('multi-status').textContent =
+        this.files.length
+          ? Array.from(this.files).map(f => f.name).join(', ')
+          : 'cleared';
+    });
+  </script>
+</section>
+
+<!-- ── Case 9: Input zeroed-out after upload (React-style reset pattern) ───── -->
+<!-- Some React components set value="" after onChange to allow re-uploading    -->
+<!-- the same file. Tests that CDP can still deliver files to a "fresh" input.  -->
+<section id="case-reset">
+  <h2>9. Auto-reset pattern — input value cleared after each change</h2>
+  <input type="file" id="reset-input" name="reset">
+  <p class="status" id="reset-status">no file selected</p>
+  <p class="status">upload count: <span id="reset-upload-count">0</span></p>
+  <script>
+    window._resetUploadCount = 0;
+    document.getElementById('reset-input').addEventListener('change', function () {
+      const name = this.files[0] ? this.files[0].name : '(no file)';
+      window._resetUploadCount++;
+      document.getElementById('reset-upload-count').textContent = String(window._resetUploadCount);
+      document.getElementById('reset-status').textContent = 'last uploaded: ' + name;
+      // Simulate React's controlled component resetting the value
+      this.value = '';
+    });
+  </script>
+</section>
+
+<!-- ── Click counter (used by dispatchHardwareClick tests) ───────────────────  -->
+<section id="case-click-counter">
+  <h2>Click counter (CDP hardware click test)</h2>
+  <button id="counter-btn" type="button">Click me</button>
+  <p class="status">clicks: <span id="click-count">0</span></p>
+  <script>
+    window._clicks = 0;
+    document.getElementById('counter-btn').addEventListener('click', function () {
+      window._clicks++;
+      document.getElementById('click-count').textContent = String(window._clicks);
+    });
+  </script>
+</section>
+
+<!-- ── Global test state summary (for easy page.evaluate() assertions) ──────── -->
+<script>
+  // window._uploadState — a unified map for test assertions
+  window._uploadState = {};
+  ['plain','hidden','dynamic','avatar','doc','shadow','dropzone','modal','multi','reset'].forEach(function(key) {
+    var inputId = key + '-input';
+    var statusId = key + '-status';
+    var input = document.getElementById(inputId);
+    if (input) {
+      input.addEventListener('change', function () {
+        window._uploadState[key] = input.files[0] ? input.files[0].name : null;
+      });
+    }
+  });
+</script>
+
+</body>
+</html>

@@ -22,7 +22,6 @@ import { formatTodoForPrompt } from './todo';
 const GEMINI_MODEL = 'gemini-3.1-flash-lite-preview';
 const MAX_API_RETRIES = 5;
 const RATE_LIMIT_DELAY_MS = 10_000;
-const THINKING_BUDGET = 8192;
 const THINKING_LEVEL = 'HIGH';
 
 // ─────────────────────────────────────────────────────────────────────────────

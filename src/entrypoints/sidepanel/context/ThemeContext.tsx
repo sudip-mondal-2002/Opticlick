@@ -25,7 +25,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     document.documentElement.classList.toggle('dark', theme === 'dark');
     try {
       localStorage.setItem('opticlick-theme', theme);
-    } catch {}
+    } catch { /* localStorage may be blocked in extensions */ }
     // Sync to chrome.storage.local so the content script can read it
     chrome.storage.local.set({ opticlickTheme: theme }).catch(() => {});
   }, [theme]);

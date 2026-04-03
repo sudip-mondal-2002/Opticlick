@@ -35,7 +35,7 @@ export async function waitForInjectableTab(tabId: number, timeoutMs = 30_000): P
       if (resolved) return;
       resolved = true;
       chrome.tabs.onUpdated.removeListener(listener);
-      err ? reject(err) : resolve();
+      if (err) { reject(err); } else { resolve(); }
     };
 
     const listener = (

@@ -1,0 +1,51 @@
+name: CI - Lint, Build and Test
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [develop]
+
+jobs:
+  ci:
+    name: Lint → Build → Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # ── Lint ─────────────────────────────────────────────────────────────────
+      - name: Lint
+        run: npm run lint
+
+      # ── Build (required before any tests) ────────────────────────────────────
+      - name: Build
+        run: npm run build
+
+      # ── Unit / Integration / DOM tests (no browser required) ─────────────────
+      - name: Test (unit, integration, dom)
+        run: npm test
+
+      # ── E2E tests ─────────────────────────────────────────────────────────────
+      # Chrome extensions cannot run in --headless mode — the flag disables all
+      # extensions. Instead we keep headless:false and let Xvfb (X Virtual
+      # Framebuffer) provide a virtual display for Chrome to render into.
+      #
+      # xvfb-run --auto-servernum  picks a free display number automatically so
+      # parallel runners never collide. --with-deps installs the OS libraries
+      # (libnss3, libglib2.0-0, etc.) that Playwright's Chromium needs on Ubuntu.
+      - name: Install Playwright Chromium
+        run: npx playwright install chromium --with-deps
+
+      - name: E2E tests (Xvfb virtual display)
+        run: xvfb-run --auto-servernum -- npm run test:e2e

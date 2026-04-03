@@ -89,9 +89,11 @@ export function getKeyCode(keyName: string): number {
 }
 
 // Clean up on debugger detach (tab closed / navigate)
-chrome.debugger.onDetach.addListener(({ tabId }) => {
-  if (tabId != null) attachedDebuggers.delete(tabId);
-});
+if (typeof chrome !== 'undefined' && chrome?.debugger?.onDetach) {
+  chrome.debugger.onDetach.addListener(({ tabId }) => {
+    if (tabId != null) attachedDebuggers.delete(tabId);
+  });
+}
 
 // ─── CDP-based file upload (DOM.setFileInputFiles) ───────────────────────────
 // This is the Puppeteer/Playwright approach: write a temp file to disk via
@@ -181,6 +183,11 @@ export async function cleanupTempFile(downloadId: number): Promise<void> {
  *
  * Throws if no <input type="file"> exists in the page.
  */
+/** @internal — test only. Clears the module-level attachedDebuggers Set between tests. */
+export function _resetAttachedDebuggers(): void {
+  attachedDebuggers.clear();
+}
+
 export async function setFileInputFiles(
   tabId: number,
   filePaths: string[],

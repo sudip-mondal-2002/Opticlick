@@ -22,7 +22,7 @@ export function isInteractable(el: Element): boolean {
 
   if (INTERACTIVE_ROLES.has(role)) return true;
 
-  if (el.hasAttribute('tabindex') && parseInt(el.getAttribute('tabindex')!, 10) >= 0)
+  if (el.hasAttribute('tabindex') && parseInt(el.getAttribute('tabindex') ?? '0', 10) >= 0)
     return true;
 
   try {
@@ -48,8 +48,9 @@ export function collectInteractables(root: Node, results: Element[] = []): Eleme
   while ((node = walker.nextNode())) {
     const el = node as Element;
     if (isInteractable(el)) results.push(el);
-    if ((el as HTMLElement).shadowRoot) {
-      collectInteractables((el as HTMLElement).shadowRoot!, results);
+    const shadowRoot = (el as HTMLElement).shadowRoot;
+    if (shadowRoot) {
+      collectInteractables(shadowRoot, results);
     }
   }
   return results;
@@ -64,7 +65,7 @@ export function getLabel(el: Element): string {
   const ariaLabelledBy = el.getAttribute('aria-labelledby');
   if (ariaLabelledBy) {
     const ref = document.getElementById(ariaLabelledBy);
-    if (ref) return ref.textContent!.trim().slice(0, 40);
+    if (ref) return (ref.textContent ?? '').trim().slice(0, 40);
   }
 
   if (tag === 'input') {

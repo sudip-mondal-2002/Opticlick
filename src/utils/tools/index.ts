@@ -16,7 +16,7 @@ import { DOM_TOOLS } from './dom';
 import { VFS_TOOLS } from './vfs';
 import { TODO_TOOLS } from './todo';
 import { CONTROL_TOOLS } from './control';
-import type { AgentAction, TodoItem, TodoUpdate } from '../types';
+import type { AgentAction, TodoItem } from '../types';
 
 /**
  * Full ordered tool list to pass to model.bindTools().

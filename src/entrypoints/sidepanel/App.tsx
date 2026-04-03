@@ -169,11 +169,12 @@ function AgentUI() {
   };
 
   const handleResumeSession = async (session: Session) => {
-    setCurrentSessionId(session.id!);
+    if (session.id == null) return;
+    setCurrentSessionId(session.id);
     setLogs([]);
     setStep(0);
     setSubmittedPrompt(null);
-    const turns = await getConversationHistory(session.id!);
+    const turns = await getConversationHistory(session.id);
     const steps: HistoryStep[] = [];
     for (const turn of turns) {
       if (turn.role === 'user') {
