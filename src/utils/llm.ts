@@ -48,7 +48,28 @@ RULES:
 - Call todo_update every turn: mark items done/in_progress and add observations.
 - You may combine any number of VFS/todo/DOM tool calls with AT MOST ONE UI action per turn.
 - Todo, VFS, and fetch_dom calls execute BEFORE the UI action.
-- Only call finish when the user's goal is fully accomplished.`;
+- Only call finish when the user's goal is fully accomplished.
+
+OPERATING RULES — RESILIENT NAVIGATION:
+- VERIFY NAVIGATION: After every click or navigate action, confirm the URL changed or the DOM
+  updated in a meaningful way. If the URL before and after is identical and no new content
+  appeared, treat the action as FAILED and do not count it as progress.
+- NO REPEAT FAILURES: Do not attempt the same failed click, scroll, or "Show More" action
+  more than 3 times in a row. After 3 identical failed attempts, PIVOT: switch to URL
+  manipulation (use navigate with a reconstructed URL such as google.com/search?q=…) or
+  try a completely different interaction path.
+- PREFER ORGANIC RESULTS: When a Google AI Overview / SGE summary box is present, prefer
+  the organic web-result <a> links below it over any AI-cited source links inside the
+  summary. If an AI-cited link fails to navigate (URL unchanged after click), immediately
+  fall back to the organic results section and select the top <a> result there instead.
+- PREFER SEMANTIC TARGETS: When multiple annotated elements overlap the same region, always
+  target the innermost semantic element (<a>, <button>, <input>) rather than a parent <div>
+  or layout container. A click on a <div> wrapper is less reliable than a click on the <a>
+  it contains.
+- FINISH AND STOP: Once the user's goal is fully accomplished, call finish() immediately and
+  do NOT take any further actions. Do not keep scrolling, clicking, or messaging after the
+  task is done. If you are waiting for an external response (e.g. a friend to reply to a
+  message), call wait() or finish() — do not send repeated messages while waiting.`;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types

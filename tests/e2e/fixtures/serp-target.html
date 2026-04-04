@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<!--
+  serp-target.html
+  ─────────────────────────────────────────────────────────────────────────────
+  Mock Google SERP (Search Engine Results Page) fixture for resilient-navigation
+  E2E tests.
+
+  Sections
+  ────────
+  1. AI Overview box  — click does NOT trigger navigation; used to test the
+                        "AI Overview pivot" scenario.
+  2. Organic results  — each result has a proper <a> tag with a real href;
+                        used to test tag-precision and fallback targeting.
+  3. Show More button — non-functional (click counter only); used to test
+                        DOM-delta / anti-loop detection.
+  4. State display    — reflects scroll position, click counts, and the last
+                        URL the agent would have navigated to; read by tests.
+-->
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Mock SERP — Opticlick Test Fixture</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, sans-serif; padding: 16px; background: #fff; }
+
+    /* ── search bar ──────────────────────────────────────────────────────── */
+    #search-bar {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 20px;
+    }
+    #search-input {
+      flex: 1;
+      padding: 10px 14px;
+      font-size: 16px;
+      border: 1px solid #dfe1e5;
+      border-radius: 24px;
+    }
+    #search-btn {
+      padding: 10px 20px;
+      background: #4285f4;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+
+    /* ── AI Overview box ─────────────────────────────────────────────────── */
+    #ai-overview {
+      border: 1px solid #e0e0e0;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 20px;
+      background: #f8f9fa;
+    }
+    #ai-overview h2 {
+      font-size: 13px;
+      color: #70757a;
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    #ai-overview p { font-size: 14px; color: #202124; line-height: 1.6; }
+
+    /* The AI-cited link — a <div> masquerading as a link to test tag precision */
+    .ai-citation {
+      display: inline-block;
+      margin-top: 10px;
+      padding: 6px 12px;
+      background: #e8f0fe;
+      border-radius: 16px;
+      font-size: 13px;
+      color: #1a73e8;
+      cursor: pointer;
+    }
+
+    /* ── organic results ─────────────────────────────────────────────────── */
+    #organic-results { margin-bottom: 20px; }
+    #organic-results h2 {
+      font-size: 13px;
+      color: #70757a;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 12px;
+    }
+    .result-item { margin-bottom: 20px; }
+    .result-item .result-url {
+      font-size: 12px;
+      color: #202124;
+      margin-bottom: 2px;
+    }
+    .result-item a.result-title {
+      display: block;
+      font-size: 18px;
+      color: #1a0dab;
+      text-decoration: none;
+      margin-bottom: 4px;
+    }
+    .result-item a.result-title:hover { text-decoration: underline; }
+    .result-item .result-snippet { font-size: 14px; color: #4d5156; line-height: 1.58; }
+
+    /* wrapper divs intentionally surround the <a> tags to test tag precision */
+    .result-wrapper { padding: 4px 0; }
+
+    /* ── show more button ────────────────────────────────────────────────── */
+    #show-more-btn {
+      display: block;
+      width: 200px;
+      padding: 12px;
+      margin: 20px auto;
+      background: #fff;
+      border: 1px solid #dadce0;
+      border-radius: 4px;
+      font-size: 14px;
+      color: #4285f4;
+      cursor: pointer;
+      text-align: center;
+    }
+
+    /* ── long content for scroll testing ─────────────────────────────────── */
+    #scroll-padding {
+      height: 1500px;
+      background: linear-gradient(to bottom, #f9f9f9, #ececec);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #999;
+      font-size: 14px;
+    }
+
+    /* ── state display ────────────────────────────────────────────────────── */
+    #state-display {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: #333;
+      color: #fff;
+      padding: 8px 16px;
+      font-size: 12px;
+      font-family: monospace;
+      display: flex;
+      gap: 24px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ── Search bar ──────────────────────────────────────────────────────── -->
+  <div id="search-bar">
+    <input
+      id="search-input"
+      type="text"
+      value="best coffee shops near me"
+      aria-label="Search input"
+    />
+    <button id="search-btn" type="button">Search</button>
+  </div>
+
+  <!-- ── AI Overview box ─────────────────────────────────────────────────── -->
+  <!--
+    Intentional trap: the citation link inside the AI box is a <div>, NOT an
+    <a> tag. Clicking it records a click but does NOT change the page URL.
+    The agent must detect that no navigation occurred and pivot to organic results.
+  -->
+  <section id="ai-overview" aria-label="AI Overview">
+    <h2>AI Overview</h2>
+    <p>
+      Based on user reviews and ratings, the top-rated coffee shops in your area
+      include Brew Haven, The Daily Grind, and Espresso Republic. Each offers a
+      variety of single-origin and blended roasts with comfortable seating.
+    </p>
+    <!-- This is a <div> styled as a link — tests tag-precision failure path -->
+    <div
+      id="ai-citation-link"
+      class="ai-citation"
+      role="link"
+      tabindex="0"
+      data-href="https://example.com/coffee-guide"
+      data-testid="ai-citation"
+    >
+      coffeeguide.example.com
+    </div>
+  </section>
+
+  <!-- ── Organic results ─────────────────────────────────────────────────── -->
+  <!--
+    Each result has a proper <a> tag wrapped inside a .result-wrapper <div>.
+    Tests verify the agent resolves to the <a>, not the outer <div>.
+  -->
+  <section id="organic-results" aria-label="Organic Results">
+    <h2>Web Results</h2>
+
+    <div class="result-item">
+      <div class="result-wrapper" data-testid="result-wrapper-1">
+        <div class="result-url">brewhaven.example.com</div>
+        <a
+          id="result-1-link"
+          class="result-title"
+          href="https://brewhaven.example.com"
+          data-testid="result-link-1"
+        >
+          Brew Haven — Best Coffee in Town
+        </a>
+        <p class="result-snippet">
+          Award-winning baristas, single-origin beans, and a cosy atmosphere.
+          Open 7am–9pm every day.
+        </p>
+      </div>
+    </div>
+
+    <div class="result-item">
+      <div class="result-wrapper" data-testid="result-wrapper-2">
+        <div class="result-url">dailygrind.example.com</div>
+        <a
+          id="result-2-link"
+          class="result-title"
+          href="https://dailygrind.example.com"
+          data-testid="result-link-2"
+        >
+          The Daily Grind — Specialty Coffee
+        </a>
+        <p class="result-snippet">
+          Freshly roasted every morning. Try our signature cold brew and house
+          pastries. Wi-Fi available.
+        </p>
+      </div>
+    </div>
+
+    <div class="result-item">
+      <div class="result-wrapper" data-testid="result-wrapper-3">
+        <div class="result-url">espressorepublic.example.com</div>
+        <a
+          id="result-3-link"
+          class="result-title"
+          href="https://espressorepublic.example.com"
+          data-testid="result-link-3"
+        >
+          Espresso Republic — Italian Tradition
+        </a>
+        <p class="result-snippet">
+          Authentic Italian espresso techniques, imported Arabica beans, and
+          handcrafted ceramics.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Show More button (non-functional) ───────────────────────────────── -->
+  <!--
+    This button deliberately does NOT load more results. It only increments a
+    counter. Tests verify that after MAX_PIVOT_RETRIES clicks with no DOM change,
+    the agent should stop retrying and switch strategy.
+  -->
+  <button id="show-more-btn" type="button" data-testid="show-more">
+    Show More Results
+  </button>
+
+  <!-- ── Long scroll content ─────────────────────────────────────────────── -->
+  <div id="scroll-padding">↓ Scroll down to test DOM-delta validation ↓</div>
+
+  <!-- ── State display (read by tests) ───────────────────────────────────── -->
+  <div id="state-display">
+    <span>scrollY: <strong id="scroll-y-display">0</strong></span>
+    <span>ai-clicks: <strong id="ai-click-count">0</strong></span>
+    <span>show-more-clicks: <strong id="show-more-count">0</strong></span>
+    <span>last-navigate: <strong id="last-navigate-url">—</strong></span>
+  </div>
+
+  <script>
+    // ── State tracking ───────────────────────────────────────────────────────
+    window._serpState = {
+      aiClicks: 0,
+      showMoreClicks: 0,
+      lastNavigateUrl: null,
+      scrollSnapshots: [],   // [{before, after}] — populated by test helpers
+    };
+
+    // ── Scroll Y tracker ─────────────────────────────────────────────────────
+    window.addEventListener('scroll', () => {
+      document.getElementById('scroll-y-display').textContent = String(Math.round(window.pageYOffset));
+    });
+
+    // ── AI citation click — does NOT navigate; records the click ─────────────
+    document.getElementById('ai-citation-link').addEventListener('click', () => {
+      window._serpState.aiClicks += 1;
+      document.getElementById('ai-click-count').textContent = String(window._serpState.aiClicks);
+      // Intentionally: no window.location change, no new page.
+      // The agent must detect this as a failed navigation.
+    });
+
+    // Keyboard support for the div[role=link]
+    document.getElementById('ai-citation-link').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        document.getElementById('ai-citation-link').click();
+      }
+    });
+
+    // ── Show More — non-functional counter only ──────────────────────────────
+    document.getElementById('show-more-btn').addEventListener('click', () => {
+      window._serpState.showMoreClicks += 1;
+      document.getElementById('show-more-count').textContent = String(window._serpState.showMoreClicks);
+      // Intentionally: no new results appended to the DOM.
+    });
+
+    // ── Search button — updates last-navigate-url without real navigation ────
+    document.getElementById('search-btn').addEventListener('click', () => {
+      const q = document.getElementById('search-input').value.trim();
+      if (q) {
+        const url = 'https://www.google.com/search?q=' + encodeURIComponent(q);
+        window._serpState.lastNavigateUrl = url;
+        document.getElementById('last-navigate-url').textContent = url;
+      }
+    });
+
+    // ── Organic result links — record clicks (actual navigation blocked in test)
+    document.querySelectorAll('a.result-title').forEach((a) => {
+      a.addEventListener('click', (e) => {
+        // In E2E tests, Playwright intercepts navigation separately.
+        // Here we just record the intended destination.
+        window._serpState.lastNavigateUrl = a.getAttribute('href');
+        document.getElementById('last-navigate-url').textContent = a.getAttribute('href');
+      });
+    });
+  </script>
+</body>
+</html>
