@@ -48,6 +48,18 @@ export default defineConfig({
           globals: true,
         },
       },
+      // ── E2E: real Chromium via Playwright (requires Xvfb on CI) ──────────
+      {
+        resolve: { alias: srcAlias },
+        test: {
+          name: 'e2e',
+          include: ['tests/e2e/**/*.test.ts'],
+          environment: 'node',
+          globals: true,
+          testTimeout: 60_000,
+          hookTimeout: 30_000,
+        },
+      },
     ],
     coverage: {
       provider: 'v8',
@@ -57,7 +69,8 @@ export default defineConfig({
         'src/utils/screenshot.ts',
         'src/utils/tab-helpers.ts',
       ],
-      reporter: ['text', 'html', 'lcov'],
+      reporter: ['text', 'html', 'lcov', 'json', 'json-summary'],
+      reportOnFailure: true,
     },
   },
 });

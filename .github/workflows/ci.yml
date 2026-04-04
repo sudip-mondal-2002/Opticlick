@@ -10,6 +10,9 @@ jobs:
   ci:
     name: Lint → Build → Test
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
 
     steps:
       - name: Checkout
@@ -32,9 +35,19 @@ jobs:
       - name: Build
         run: npm run build
 
-      # ── Unit / Integration / DOM tests (no browser required) ─────────────────
-      - name: Test (unit, integration, dom)
-        run: npm test
+      # ── Unit / Integration / DOM tests with coverage ─────────────────────────
+      # All vitest projects are defined in vitest.config.ts.
+      # `test:coverage` runs unit + integration + dom and writes:
+      #   coverage/coverage-summary.json  (machine-readable totals)
+      #   coverage/index.html             (browsable report)
+      - name: Test (unit, integration, dom) with coverage
+        run: npm run test:coverage
+
+      - name: Report coverage
+        uses: davelosert/vitest-coverage-report-action@v2
+        if: always()
+        with:
+          file-coverage-mode: changes
 
       # ── E2E tests ─────────────────────────────────────────────────────────────
       # Chrome extensions cannot run in --headless mode — the flag disables all
@@ -51,3 +64,4 @@ jobs:
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: xvfb-run --auto-servernum -- npm run test:e2e
+        # Runs `vitest run --project e2e` (defined in vitest.config.ts)
