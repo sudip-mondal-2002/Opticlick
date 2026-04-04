@@ -18,8 +18,8 @@ import { AGENT_TOOLS, parseToolCall } from './tools';
 import type { AgentAction, AgentResult, TodoItem } from './types';
 import type { VFSFile } from './db';
 import { formatTodoForPrompt } from './todo';
+import { DEFAULT_MODEL } from './models';
 
-const GEMINI_MODEL = 'gemini-3.1-flash-lite-preview';
 const MAX_API_RETRIES = 5;
 const RATE_LIMIT_DELAY_MS = 10_000;
 const THINKING_LEVEL = 'HIGH';
@@ -332,17 +332,28 @@ async function streamWithRetry(
 // Public API
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function createModel(apiKey: string): ChatGoogleGenerativeAI {
-  return new ChatGoogleGenerativeAI({
-    model: GEMINI_MODEL,
+export function createModel(apiKey: string, modelId?: string): ChatGoogleGenerativeAI {
+  const model = modelId ?? DEFAULT_MODEL;
+
+  // Extended thinking is supported only on Gemini 2.5 and 3.1 models.
+  // Gemini 4.x (Gemma) models do NOT support extended thinking.
+  const supportsThinking = !model.includes('gemini-4-');
+
+  const config: any = {
+    model,
     apiKey,
     temperature: 0.1,
     maxRetries: 0,
-    thinkingConfig: {
+  };
+
+  if (supportsThinking) {
+    config.thinkingConfig = {
       thinkingLevel: THINKING_LEVEL,
       includeThoughts: true,
-    },
-  });
+    };
+  }
+
+  return new ChatGoogleGenerativeAI(config);
 }
 
 export async function callModel(

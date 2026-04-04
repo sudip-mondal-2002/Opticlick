@@ -1,11 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type { AgentState, LogEntry, Session, AttachedFile } from '@/utils/types';
 import { getSessions, getConversationHistory } from '@/utils/db';
+import { DEFAULT_MODEL } from '@/utils/models';
 import { ThemeProvider } from './context/ThemeContext';
 import { ApiKeySetup } from './components/ApiKeySetup';
 import { Header } from './components/Header';
 import { StepFooter } from './components/StepFooter';
 import { ApiKeyFooter } from './components/ApiKeyFooter';
+import { ModelSelector } from './components/ModelSelector';
 import { ChatInput } from './components/ChatInput';
 import { ChatFeed } from './components/ChatFeed';
 import { SessionsOverlay } from './components/SessionsOverlay';
@@ -49,6 +51,8 @@ function AgentUI() {
   const [keyLoading, setKeyLoading] = useState(true);
   const [showKeyEdit, setShowKeyEdit] = useState(false);
 
+  const [selectedModel, setSelectedModel] = useState(DEFAULT_MODEL);
+
   const [submittedPrompt, setSubmittedPrompt] = useState<string | null>(null);
   const [pendingQuestion, setPendingQuestion] = useState<string | null>(null);
   const [replyInput, setReplyInput] = useState('');
@@ -69,8 +73,9 @@ function AgentUI() {
   // ── API key ────────────────────────────────────────────────────────────────
 
   useEffect(() => {
-    chrome.storage.local.get('geminiApiKey').then(({ geminiApiKey }) => {
+    chrome.storage.local.get(['geminiApiKey', 'selectedModel']).then(({ geminiApiKey, selectedModel }) => {
       setApiKey((geminiApiKey as string) || null);
+      setSelectedModel((selectedModel as string) || DEFAULT_MODEL);
       setKeyLoading(false);
     });
   }, []);
@@ -90,6 +95,11 @@ function AgentUI() {
       setApiKey(null);
       setShowKeyEdit(false);
     });
+  };
+
+  const handleModelChange = (modelId: string) => {
+    setSelectedModel(modelId);
+    chrome.storage.local.set({ selectedModel: modelId });
   };
 
   // ── Agent state / logs ─────────────────────────────────────────────────────
@@ -178,6 +188,7 @@ function AgentUI() {
       prompt,
       sessionId: currentSessionId ?? undefined,
       attachments: attachments.length ? attachments : undefined,
+      modelId: selectedModel,
     });
   };
 
@@ -326,6 +337,11 @@ function AgentUI() {
         textareaRef={textareaRef}
         onRun={handleRun}
         onStop={handleStop}
+      />
+
+      <ModelSelector
+        selectedModel={selectedModel}
+        onModelChange={handleModelChange}
       />
 
       <ApiKeyFooter

@@ -147,7 +147,7 @@ export interface AttachedFile {
 
 /** Messages flowing between popup / background / content. */
 export type Message =
-  | { type: 'START_AGENT'; tabId: number; prompt: string; sessionId?: number; attachments?: AttachedFile[] }
+  | { type: 'START_AGENT'; tabId: number; prompt: string; sessionId?: number; attachments?: AttachedFile[]; modelId?: string }
   | { type: 'STOP_AGENT' }
   | { type: 'AGENT_LOG'; message: string; level: string }
   | { type: 'AGENT_STATE_CHANGE' }

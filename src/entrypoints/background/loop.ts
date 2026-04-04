@@ -243,6 +243,7 @@ export async function runAgentLoop(
   userPrompt: string,
   existingSessionId?: number,
   attachments?: AttachedFile[],
+  modelId?: string,
 ): Promise<void> {
   const sessionId = existingSessionId ?? (await createSession(userPrompt));
   await setAgentState({ status: 'running', tabId, step: 0, prompt: userPrompt, sessionId });
@@ -294,7 +295,7 @@ export async function runAgentLoop(
       await setAgentState({ status: 'error' });
       return;
     }
-    const model = createModel(geminiApiKey as string);
+    const model = createModel(geminiApiKey as string, modelId);
 
     if (!(await isTabInjectable(tabId))) {
       const urlMatch = userPrompt.match(/https?:\/\/[^\s"'<>]+/i);

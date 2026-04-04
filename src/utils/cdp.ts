@@ -96,14 +96,49 @@ if (typeof chrome !== 'undefined' && chrome?.debugger?.onDetach) {
 }
 
 /**
+ * Clears the currently focused editable element in the page.
+ *
+ * Exported so this exact function can be called directly in DOM tests (jsdom),
+ * making the tests actually exercise the logic rather than just checking strings.
+ *
+ * - input / textarea  : native prototype value setter + input event (bypasses
+ *                       React/Vue/Angular synthetic event wrappers)
+ * - contenteditable   : execCommand('selectAll') so the subsequent
+ *                       Input.insertText replaces the selection. Direct
+ *                       innerHTML/textContent mutation is avoided because it
+ *                       breaks framework-managed rich editors (Gemini, Gmail…).
+ *
+ * Called via Runtime.evaluate in typeTextCDP; serialised with .toString().
+ */
+export function clearFocusedField(): void {
+  const el = document.activeElement as HTMLElement | null;
+  if (!el) return;
+
+  if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
+    // Native setter bypasses React's synthetic event system
+    const proto =
+      el instanceof HTMLInputElement
+        ? HTMLInputElement.prototype
+        : HTMLTextAreaElement.prototype;
+    const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set;
+    if (setter) setter.call(el, '');
+    else el.value = '';
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+  } else if (el.isContentEditable || el.contentEditable === 'true') {
+    // Select-all so Input.insertText replaces the entire content.
+    // execCommand is the only cross-framework way to establish a real selection
+    // in contenteditable (Gemini, Gmail, Notion, etc.).
+    document.execCommand('selectAll', false, undefined);
+  }
+}
+
+/**
  * Type text into the currently focused element via CDP.
  *
- * Uses Input.insertText which fires a proper `input` event and correctly
- * replaces any active selection (e.g. after Ctrl+A). Character-by-character
- * keyDown/keyUp does NOT replace selections in React/SPA inputs reliably.
- *
- * When clearField is true, Ctrl+A is dispatched first to select all existing
- * content so that Input.insertText replaces it.
+ * When clearField is true, clearFocusedField() is injected into the page via
+ * Runtime.evaluate first. It handles both regular inputs/textareas (native
+ * value setter) and contenteditable divs (select-all so insertText replaces).
+ * CDP key events are NOT used — they don't produce a real selection.
  */
 export async function typeTextCDP(
   tabId: number,
@@ -113,11 +148,9 @@ export async function typeTextCDP(
   await attachDebugger(tabId);
 
   if (clearField) {
-    await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
-      type: 'rawKeyDown', key: 'a', windowsVirtualKeyCode: 65, modifiers: CDP_MODIFIER.ctrl,
-    });
-    await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
-      type: 'keyUp', key: 'a', windowsVirtualKeyCode: 65, modifiers: CDP_MODIFIER.ctrl,
+    await chrome.debugger.sendCommand({ tabId }, 'Runtime.evaluate', {
+      expression: `(${clearFocusedField.toString()})()`,
+      awaitPromise: false,
     });
   }
 

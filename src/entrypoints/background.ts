@@ -92,9 +92,9 @@ export default defineBackground(() => {
         sendResponse({ started: false, reason: 'already_running' });
         return true;
       }
-      const { tabId, prompt, sessionId, attachments } = msg as { tabId: number; prompt: string; sessionId?: number; attachments?: import('@/utils/types').AttachedFile[] };
+      const { tabId, prompt, sessionId, attachments, modelId } = msg as { tabId: number; prompt: string; sessionId?: number; attachments?: import('@/utils/types').AttachedFile[]; modelId?: string };
       loopRunning = true;
-      runAgentLoop(tabId, prompt, sessionId, attachments)
+      runAgentLoop(tabId, prompt, sessionId, attachments, modelId)
         .catch(async (err) => {
           await log(`Fatal: ${(err as Error).message}`, 'error');
         })
