@@ -122,9 +122,10 @@ describe('LLM action decisions from annotated screenshots', () => {
     const result = await callModel(
       model,
       base64,
-      // Explicitly instruct the LLM to use the click tool with typeText so it
-      // does not split focusing and typing into separate turns.
-      'Call the click tool on element [1] (the Username input) and set typeText to "john_doe".',
+      // The agent emits at most one UI action per turn. The first step is to
+      // click element [1] to focus the username field; a subsequent turn would
+      // then emit the type action with the text.
+      'Focus the username field by clicking element [1].',
       [],
       async () => {},
       [],
@@ -137,8 +138,6 @@ describe('LLM action decisions from annotated screenshots', () => {
     const clickAction = findAction(result.actions, 'click');
     expect(clickAction, 'Expected a click action on the username field').toBeDefined();
     expect(clickAction!.targetId).toBe(1);
-    // typeText should carry the value requested (model may omit surrounding quotes)
-    expect(clickAction!.typeText ?? '').toContain('john_doe');
   }, 60_000);
 
   it('returns a navigate action with the correct URL when asked to visit a URL', async () => {

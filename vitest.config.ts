@@ -3,6 +3,12 @@ import path from 'path';
 
 const srcAlias = { '@': path.resolve(__dirname, 'src') };
 
+// Suppress console.log/info noise in test output; keep console.error/warn.
+const onConsoleLog = (_log: string, type: 'stdout' | 'stderr'): false | void => {
+  if (type === 'stderr') return;
+  return false;
+};
+
 export default defineConfig({
   resolve: { alias: srcAlias },
 
@@ -61,6 +67,7 @@ export default defineConfig({
         },
       },
     ],
+    onConsoleLog,
     coverage: {
       provider: 'v8',
       include: ['src/utils/**', 'src/entrypoints/content/**'],
