@@ -1,6 +1,35 @@
 import { log } from './agent-log';
 import { sleep } from './sleep';
 
+const TAB_DRAG_ERROR = 'Tabs cannot be edited right now';
+
+/**
+ * Wrapper around chrome.tabs.update that retries when Chrome rejects the call
+ * because the user is mid-drag on the tab strip.  The error is transient and
+ * always clears once the drag completes.
+ */
+export async function retryTabUpdate(
+  tabId: number,
+  props: chrome.tabs.UpdateProperties,
+  maxAttempts = 6,
+  retryDelayMs = 400,
+): Promise<chrome.tabs.Tab> {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await chrome.tabs.update(tabId, props);
+    } catch (err) {
+      const msg = (err as Error).message ?? '';
+      if (attempt < maxAttempts && msg.includes(TAB_DRAG_ERROR)) {
+        await sleep(retryDelayMs);
+        continue;
+      }
+      throw err;
+    }
+  }
+  // unreachable — loop always throws or returns
+  throw new Error('retryTabUpdate: exhausted attempts');
+}
+
 const UNINJECTABLE_PATTERNS = /^(about:|chrome:|chrome-extension:|edge:|brave:)/;
 
 export function sendToTab<T = unknown>(

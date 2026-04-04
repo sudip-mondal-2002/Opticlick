@@ -15,6 +15,7 @@ import {
   isTabInjectable,
   ensureContentScript,
   waitForTabLoad,
+  retryTabUpdate,
 } from '@/utils/tab-helpers';
 import { captureScreenshot } from '@/utils/screenshot';
 import { waitForDOMIdle } from '@/utils/dom-idle';
@@ -277,7 +278,7 @@ export async function runAgentLoop(
       if (urlMatch) {
         const targetUrl = urlMatch[0].replace(/[.,;:!?)]+$/, '');
         await log(`Navigating to: ${targetUrl}`, 'act');
-        await chrome.tabs.update(tabId, { url: targetUrl });
+        await retryTabUpdate(tabId, { url: targetUrl });
         await waitForTabLoad(tabId, 15_000, true);
       }
     }
@@ -444,7 +445,7 @@ export async function runAgentLoop(
           try {
             try { await sendToTab(tabId, { type: 'UNBLOCK_INPUT' }); } catch { /* */ }
             await detachDebugger(tabId);
-            await chrome.tabs.update(tabId, { url: uiAction.url });
+            await retryTabUpdate(tabId, { url: uiAction.url });
             await waitForTabLoad(tabId, 15_000, true);
             await ensureContentScript(tabId);
             await sendToTab(tabId, { type: 'BLOCK_INPUT' });
@@ -591,7 +592,7 @@ export async function runAgentLoop(
         try {
           try { await sendToTab(tabId, { type: 'UNBLOCK_INPUT' }); } catch { /* */ }
           await detachDebugger(tabId);
-          await chrome.tabs.update(tabId, { url: uiAction.url });
+          await retryTabUpdate(tabId, { url: uiAction.url });
           await waitForTabLoad(tabId, 15_000, true);
           await ensureContentScript(tabId);
           await sendToTab(tabId, { type: 'BLOCK_INPUT' });
@@ -860,7 +861,7 @@ export async function runAgentLoop(
           await detachDebugger(tabId);
           tabId = newTabId;
           await setAgentState({ tabId });
-          await chrome.tabs.update(tabId, { active: true });
+          await retryTabUpdate(tabId, { active: true });
           await waitForTabLoad(tabId);
           await ensureContentScript(tabId);
           await sendToTab(tabId, { type: 'BLOCK_INPUT' });
