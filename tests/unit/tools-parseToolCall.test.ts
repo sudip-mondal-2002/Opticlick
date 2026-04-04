@@ -186,13 +186,19 @@ describe('parseToolCall', () => {
     expect(result.ms).toBe(1500);
   });
 
-  it('covers all 15 named tool types', () => {
+  it('parses "ask_user"', () => {
+    const result = parseToolCall('ask_user', { question: 'Which account should I use?' }) as AgentAction & { type: 'ask_user' };
+    expect(result.type).toBe('ask_user');
+    expect(result.question).toBe('Which account should I use?');
+  });
+
+  it('covers all 16 named tool types', () => {
     const toolNames = [
       'click', 'type', 'navigate', 'scroll', 'press_key',
       'fetch_dom',
       'vfs_save_screenshot', 'vfs_write', 'vfs_delete', 'vfs_download',
       'todo_create', 'todo_update', 'todo_add',
-      'finish', 'wait',
+      'finish', 'wait', 'ask_user',
     ];
     for (const name of toolNames) {
       const minimalArgs: Record<string, unknown> = {
@@ -211,6 +217,7 @@ describe('parseToolCall', () => {
         todo_add: { items: [] },
         finish: {},
         wait: { ms: 100 },
+        ask_user: { question: 'What?' },
       }[name] as Record<string, unknown>;
       expect(parseToolCall(name, minimalArgs), `tool "${name}" should not return null`).not.toBeNull();
     }

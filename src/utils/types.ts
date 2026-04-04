@@ -96,6 +96,11 @@ export type AgentAction =
       type: 'wait';
       /** Milliseconds to pause before the next action (100–10 000). */
       ms: number;
+    }
+  | {
+      type: 'ask_user';
+      /** The clarification question to display to the user. */
+      question: string;
     };
 
 /** Structured result returned by callModel. */
@@ -157,6 +162,20 @@ export type Message =
       x: number;
       /** CSS-pixel center Y of the target element. */
       y: number;
+    }
+  | {
+      type: 'ASK_USER';
+      /** The question the agent wants to ask the user. */
+      question: string;
+    }
+  | {
+      type: 'USER_REPLY';
+      /** The user's answer to the agent's question. */
+      reply: string;
+    }
+  | {
+      type: 'PLAY_SOUND';
+      sound: 'finish' | 'ask';
     }
   | {
       type: 'UPLOAD_FILE';

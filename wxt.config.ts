@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   srcDir: 'src',
-  publicDir: '../public',
+  publicDir: 'public',
   vite: () => ({
     plugins: [react()],
   }),

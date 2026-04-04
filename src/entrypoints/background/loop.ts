@@ -599,10 +599,52 @@ export async function runAgentLoop(
       );
       const hasSideEffects = mutations.length > 0 || actions.some((a) => a.type === 'fetch_dom');
 
-      // 8. If done with no UI action, finish
+      // 8. Check for ask_user action — pause and wait for reply
+      const askAction = actions.find((a): a is Extract<AgentAction, { type: 'ask_user' }> => a.type === 'ask_user');
+      if (askAction) {
+        await log(`Question: ${askAction.question}`, 'observe');
+        chrome.runtime.sendMessage({ type: 'ASK_USER', question: askAction.question }).catch(() => {});
+        chrome.runtime.sendMessage({ type: 'PLAY_SOUND', sound: 'ask' }).catch(() => {});
+        // Wait for user reply (poll chrome.storage.session)
+        const sessionStorage = chrome.storage.session;
+        await sessionStorage.remove('userReply');
+        const reply = await new Promise<string>((resolve) => {
+          const interval = setInterval(() => {
+            void (async () => {
+              const state = await getAgentState();
+              if (!state || state.status !== 'running') {
+                clearInterval(interval);
+                resolve('');
+                return;
+              }
+              const data = await sessionStorage.get('userReply') as { userReply?: string };
+              if (data.userReply !== undefined) {
+                clearInterval(interval);
+                await sessionStorage.remove('userReply');
+                resolve(data.userReply);
+              }
+            })();
+          }, 500);
+        });
+        if (!reply) {
+          await log('Agent stopped while waiting for user reply.', 'warn');
+          break;
+        }
+        await log(`User replied: ${reply}`, 'observe');
+        await appendConversationTurn(
+          sessionId,
+          'user',
+          `[Step ${step}] User answered "${askAction.question}": ${reply}. Task: ${userPrompt}`,
+        );
+        await sleep(STEP_DELAY_MS);
+        continue;
+      }
+
+      // 8b. If done with no UI action, finish
       if (done && !uiAction) {
         await logFinishSummary(actions);
         await log('Task complete!', 'ok');
+        chrome.runtime.sendMessage({ type: 'PLAY_SOUND', sound: 'finish' }).catch(() => {});
         await setAgentState({ status: 'done' });
         break;
       }

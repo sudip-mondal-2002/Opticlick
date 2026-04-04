@@ -9,7 +9,7 @@ export { UI_TOOLS, clickTool, typeTool, navigateTool, scrollTool, pressKeyTool }
 export { DOM_TOOLS, fetchDOMTool } from './dom';
 export { VFS_TOOLS, vfsSaveScreenshotTool, vfsWriteTool, vfsDeleteTool, vfsDownloadTool } from './vfs';
 export { TODO_TOOLS, todoCreateTool, todoUpdateTool, todoAddTool } from './todo';
-export { CONTROL_TOOLS, finishTool, waitTool } from './control';
+export { CONTROL_TOOLS, finishTool, waitTool, askUserTool } from './control';
 
 import { UI_TOOLS } from './ui';
 import { DOM_TOOLS } from './dom';
@@ -111,6 +111,8 @@ export function parseToolCall(name: string, args: Record<string, any>): AgentAct
       return { type: 'finish', summary: args.summary as string | undefined };
     case 'wait':
       return { type: 'wait', ms: args.ms as number };
+    case 'ask_user':
+      return { type: 'ask_user', question: args.question as string };
 
     default:
       return null;

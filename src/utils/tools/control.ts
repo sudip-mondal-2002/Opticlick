@@ -49,4 +49,24 @@ export const waitTool = tool(
   },
 );
 
-export const CONTROL_TOOLS = [finishTool, waitTool] as const;
+export const askUserTool = tool(
+  async () => 'ok',
+  {
+    name: 'ask_user',
+    description:
+      'Pause the task and ask the user a clarification question before continuing. ' +
+      'Use when the goal is ambiguous, critical information is missing, or a decision ' +
+      'requires human judgement (e.g. which account to use, whether to confirm a destructive action). ' +
+      'The agent will resume automatically once the user replies. ' +
+      'Do NOT use for progress updates — only ask when you genuinely cannot proceed without the answer.',
+    schema: z.object({
+      question: z
+        .string()
+        .describe(
+          'The specific question to ask the user. Be concise and clear — one question at a time.',
+        ),
+    }),
+  },
+);
+
+export const CONTROL_TOOLS = [finishTool, waitTool, askUserTool] as const;

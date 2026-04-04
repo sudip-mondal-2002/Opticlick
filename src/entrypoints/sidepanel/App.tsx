@@ -50,6 +50,8 @@ function AgentUI() {
   const [showKeyEdit, setShowKeyEdit] = useState(false);
 
   const [submittedPrompt, setSubmittedPrompt] = useState<string | null>(null);
+  const [pendingQuestion, setPendingQuestion] = useState<string | null>(null);
+  const [replyInput, setReplyInput] = useState('');
   const [isRunning, setIsRunning] = useState(false);
   const [isError, setIsError] = useState(false);
   const [logs, setLogs] = useState<LogItem[]>([]);
@@ -111,14 +113,41 @@ function AgentUI() {
     if (['done', 'stopped', 'error'].includes(agentState.status)) refreshSessions();
   }, [refreshSessions]);
 
+  const playSound = useCallback((sound: 'finish' | 'ask') => {
+    const ctx = new AudioContext();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    if (sound === 'finish') {
+      // Two ascending tones
+      osc.frequency.setValueAtTime(520, ctx.currentTime);
+      osc.frequency.setValueAtTime(780, ctx.currentTime + 0.15);
+      gain.gain.setValueAtTime(0.25, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.45);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.45);
+    } else {
+      // Single attention tone
+      osc.frequency.setValueAtTime(660, ctx.currentTime);
+      gain.gain.setValueAtTime(0.2, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.3);
+    }
+    osc.onended = () => ctx.close();
+  }, []);
+
   useEffect(() => {
     const handler = (msg: Record<string, unknown>) => {
       if (msg.type === 'AGENT_LOG') appendLog(msg.message as string, (msg.level as string) || 'info');
       if (msg.type === 'AGENT_STATE_CHANGE') syncState();
+      if (msg.type === 'ASK_USER') setPendingQuestion(msg.question as string);
+      if (msg.type === 'PLAY_SOUND') playSound(msg.sound as 'finish' | 'ask');
     };
     chrome.runtime.onMessage.addListener(handler);
     return () => chrome.runtime.onMessage.removeListener(handler);
-  }, [appendLog, syncState]);
+  }, [appendLog, syncState, playSound]);
 
   useEffect(() => {
     (async () => {
@@ -156,6 +185,17 @@ function AgentUI() {
     appendLog('Stop requested.', 'act');
     chrome.runtime.sendMessage({ type: 'STOP_AGENT' });
     setIsRunning(false);
+    setPendingQuestion(null);
+    setReplyInput('');
+  };
+
+  const handleReply = () => {
+    const trimmed = replyInput.trim();
+    if (!trimmed) return;
+    appendLog(`You: ${trimmed}`, 'observe');
+    chrome.storage.session.set({ userReply: trimmed });
+    setPendingQuestion(null);
+    setReplyInput('');
   };
 
   const handleNewChat = () => {
@@ -251,6 +291,34 @@ function AgentUI() {
       />
 
       {isRunning && step > 0 && <StepFooter step={step} />}
+
+      {/* Agent question prompt */}
+      {pendingQuestion && (
+        <div className="shrink-0 border-t border-amber-200 dark:border-amber-800/60 bg-amber-50 dark:bg-amber-950/30 px-3 py-2.5 space-y-2">
+          <div className="flex items-start gap-2">
+            <span className="font-mono text-[10px] font-semibold text-amber-500 shrink-0 mt-0.5">[ASK]</span>
+            <span className="text-[12px] text-slate-700 dark:text-slate-200 leading-snug">{pendingQuestion}</span>
+          </div>
+          <div className="flex gap-2">
+            <input
+              autoFocus
+              type="text"
+              value={replyInput}
+              onChange={(e) => setReplyInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleReply(); } }}
+              placeholder="Type your reply…"
+              className="flex-1 min-w-0 rounded-md border border-amber-300 dark:border-amber-700 bg-white dark:bg-slate-900 px-2.5 py-1.5 text-[12px] text-slate-800 dark:text-slate-100 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-amber-400"
+            />
+            <button
+              onClick={handleReply}
+              disabled={!replyInput.trim()}
+              className="shrink-0 px-3 py-1.5 rounded-md bg-amber-500 hover:bg-amber-600 disabled:opacity-40 text-white text-[12px] font-medium transition-colors"
+            >
+              Reply
+            </button>
+          </div>
+        </div>
+      )}
 
       <ChatInput
         key={chatInputKey}
