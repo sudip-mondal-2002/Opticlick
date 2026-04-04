@@ -339,7 +339,14 @@ export function createModel(apiKey: string, modelId?: string): ChatGoogleGenerat
   // Gemini 4.x (Gemma) models do NOT support extended thinking.
   const supportsThinking = !model.includes('gemini-4-');
 
-  const config: any = {
+  interface ModelConfig {
+    model: string;
+    apiKey: string;
+    temperature: number;
+    maxRetries: number;
+    thinkingConfig?: { thinkingLevel: 'THINKING_LEVEL_UNSPECIFIED' | 'LOW' | 'MEDIUM' | 'HIGH'; includeThoughts: boolean };
+  }
+  const config: ModelConfig = {
     model,
     apiKey,
     temperature: 0.1,

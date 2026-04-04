@@ -13,7 +13,7 @@
     "test:integration": "vitest run --project integration",
     "test:dom": "vitest run --project dom",
     "test:watch": "vitest --project unit --project integration --project dom",
-    "test:coverage": "vitest run --project unit --project integration --project dom --coverage",
+    "test:coverage": "vitest run --project unit --project integration --project dom --project e2e --coverage",
     "test:e2e": "vitest run --project e2e",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix"

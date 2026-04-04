@@ -35,33 +35,23 @@ jobs:
       - name: Build
         run: npm run build
 
-      # ── Unit / Integration / DOM tests with coverage ─────────────────────────
-      # All vitest projects are defined in vitest.config.ts.
-      # `test:coverage` runs unit + integration + dom and writes:
-      #   coverage/coverage-summary.json  (machine-readable totals)
-      #   coverage/index.html             (browsable report)
-      - name: Test (unit, integration, dom) with coverage
-        run: npm run test:coverage
+      # ── Install Playwright browser (needed before any tests run) ─────────────
+      # --with-deps installs the OS libraries (libnss3, libglib2.0-0, etc.)
+      # that Playwright's Chromium needs on Ubuntu.
+      - name: Install Playwright Chromium
+        run: npx playwright install chromium --with-deps
+
+      # ── All tests with coverage (unit + integration + dom + e2e) ─────────────
+      # Chrome extensions cannot run in --headless mode — Xvfb provides a
+      # virtual display for the E2E tests. xvfb-run --auto-servernum picks a
+      # free display number so parallel runners never collide.
+      - name: Test all projects with coverage
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: xvfb-run --auto-servernum -- npm run test:coverage
 
       - name: Report coverage
         uses: davelosert/vitest-coverage-report-action@v2
         if: always()
         with:
           file-coverage-mode: changes
-
-      # ── E2E tests ─────────────────────────────────────────────────────────────
-      # Chrome extensions cannot run in --headless mode — the flag disables all
-      # extensions. Instead we keep headless:false and let Xvfb (X Virtual
-      # Framebuffer) provide a virtual display for Chrome to render into.
-      #
-      # xvfb-run --auto-servernum  picks a free display number automatically so
-      # parallel runners never collide. --with-deps installs the OS libraries
-      # (libnss3, libglib2.0-0, etc.) that Playwright's Chromium needs on Ubuntu.
-      - name: Install Playwright Chromium
-        run: npx playwright install chromium --with-deps
-
-      - name: E2E tests (Xvfb virtual display)
-        env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        run: xvfb-run --auto-servernum -- npm run test:e2e
-        # Runs `vitest run --project e2e` (defined in vitest.config.ts)

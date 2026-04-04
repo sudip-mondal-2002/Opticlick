@@ -82,7 +82,6 @@ describe('Tag Precision: annotator must surface semantic tags', () => {
     // interactive elements on the page and verify that for each organic result,
     // the annotated entry has tag 'a', not the surrounding 'div.result-wrapper'.
     const entries = await page.evaluate(() => {
-      const INTERACTIVE_TAGS = new Set(['a', 'button', 'input', 'select', 'textarea']);
       return Array.from(document.querySelectorAll('[data-testid^="result-link"]')).map((el) => ({
         tag: el.tagName.toLowerCase(),
         id: el.id,
