@@ -84,7 +84,7 @@ async function executeSideEffects(
         const fname = action.name.trim() || `step_${step}.png`;
         const saved = await writeVFSFile(sessionId, fname, base64Image, 'image/png');
         mutations.push(`Saved screenshot as "${saved.name}" (id: ${saved.id})`);
-        await log(`VFS: saved screenshot → "${saved.name}"`, 'act');
+        await log(`VFS: saved screenshot → "${saved.name}"`, 'info');
         break;
       }
 
@@ -95,20 +95,20 @@ async function executeSideEffects(
         );
         const saved = await writeVFSFile(sessionId, name, base64Content, mimeType);
         mutations.push(`Wrote "${saved.name}" (${saved.size} B, id: ${saved.id})`);
-        await log(`VFS: wrote "${saved.name}" (${saved.size} B)`, 'act');
+        await log(`VFS: wrote "${saved.name}" (${saved.size} B)`, 'info');
         break;
       }
 
       case 'vfs_delete': {
         await deleteVFSFile(action.fileId);
         mutations.push(`Deleted VFS file ${action.fileId}`);
-        await log(`VFS: deleted file ${action.fileId}`, 'act');
+        await log(`VFS: deleted file ${action.fileId}`, 'info');
         break;
       }
 
       case 'vfs_download': {
         const { url, name: nameHint } = action;
-        await log(`VFS: downloading ${url}`, 'act');
+        await log(`VFS: downloading ${url}`, 'info');
         try {
           const resp = await fetch(url);
           if (!resp.ok) throw new Error(`HTTP ${resp.status} for ${url}`);
@@ -118,7 +118,7 @@ async function executeSideEffects(
           const base64 = arrayBufferToBase64(await resp.arrayBuffer());
           const saved = await writeVFSFile(sessionId, filename, base64, mimeType);
           mutations.push(`Downloaded "${saved.name}" (${saved.size} B, id: ${saved.id})`);
-          await log(`VFS: downloaded → "${saved.name}" (${saved.size} B)`, 'act');
+          await log(`VFS: downloaded → "${saved.name}" (${saved.size} B)`, 'info');
         } catch (dlErr) {
           const msg = (dlErr as Error).message;
           mutations.push(`Download failed: ${msg}`);
@@ -143,6 +143,17 @@ async function executeSideEffects(
           .map((u) => `${u.id}→${u.status ?? 'note'}`)
           .join(', ');
         await log(`Todo updated: ${summary}`, 'info');
+        break;
+      }
+
+      case 'todo_add': {
+        const existingIds = new Set(updatedTodo.map((i) => i.id));
+        const newItems = (action.items as TodoItem[]).filter((i) => !existingIds.has(i.id));
+        if (newItems.length > 0) {
+          updatedTodo = [...updatedTodo, ...newItems];
+          await saveTodoToVFS(sessionId, updatedTodo);
+          await log(`Todo: added ${newItems.length} new item(s): ${newItems.map((i) => i.id).join(', ')}`, 'info');
+        }
         break;
       }
 
@@ -184,7 +195,7 @@ async function executeSideEffects(
       // ── Wait ─────────────────────────────────────────────────────────────
 
       case 'wait': {
-        await log(`Waiting ${action.ms} ms…`, 'observe');
+        await log(`Waiting ${action.ms} ms…`, 'act');
         await sleep(action.ms);
         mutations.push(`Waited ${action.ms} ms`);
         break;
@@ -240,13 +251,25 @@ export async function runAgentLoop(
     for (const file of attachments) {
       await saveVFSFile(sessionId, file.name, file.data, file.mimeType);
     }
-    await log(`Loaded ${attachments.length} attached file(s) into VFS`, 'info');
+    await log(`Loaded ${attachments.length} attached file(s) into VFS`, 'observe');
   }
 
   let currentTodo: TodoItem[] = (await loadTodoFromVFS(sessionId)) ?? [];
   if (currentTodo.length > 0) {
-    await log(`Resumed todo list: ${currentTodo.length} item(s) loaded from VFS`, 'info');
+    await log(`Resumed todo list: ${currentTodo.length} item(s) loaded from VFS`, 'observe');
   }
+
+  // Capture the starting URL so the LLM can use it as an orientation anchor.
+  let startingUrl = '';
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    startingUrl = tab.url ?? '';
+  } catch { /* tab may not be accessible yet; will stay empty */ }
+
+  // Augment every LLM call with the starting URL so the model can detect drift.
+  const anchoredPrompt = startingUrl
+    ? `${userPrompt}\n\n[CONTEXT: The task started on ${startingUrl}. If you are on an unrelated page, navigate back.]`
+    : userPrompt;
 
   await log(`Agent started`, 'observe');
 
@@ -393,7 +416,7 @@ export async function runAgentLoop(
           emptyResult = await callModel(
             model,
             plainScreenshot,
-            `${userPrompt}\n\n[SYSTEM NOTE: No interactable elements detected. Decide whether to navigate, scroll, press a key, or call finish if the goal is already achieved. Do NOT call click — there are no annotated elements.]`,
+            `${anchoredPrompt}\n\n[SYSTEM NOTE: No interactable elements detected. Decide whether to navigate, scroll, press a key, or call finish if the goal is already achieved. Do NOT call click — there are no annotated elements.]`,
             historyForEmpty,
             log,
             vfsFilesForEmpty,
@@ -425,7 +448,7 @@ export async function runAgentLoop(
 
         if (emptyResult.done) {
           await logFinishSummary(emptyResult.actions);
-          await log('Task complete!', 'observe');
+          await log('Task complete!', 'ok');
           await setAgentState({ status: 'done' });
           break;
         }
@@ -518,7 +541,7 @@ export async function runAgentLoop(
       // 6. Call LLM → AgentResult
       let result;
       try {
-        result = await callModel(model, base64Image, userPrompt, history, log, vfsFiles, inlineImages, currentTodo);
+        result = await callModel(model, base64Image, anchoredPrompt, history, log, vfsFiles, inlineImages, currentTodo);
       } catch (err) {
         await log(`LLM call failed: ${(err as Error).message}. Will retry step.`, 'error');
         await sleep(RATE_LIMIT_DELAY_MS);
@@ -550,6 +573,7 @@ export async function runAgentLoop(
       // Determine what kind of action(s) were requested
       const uiAction = actions.find((a) =>
         a.type === 'click' ||
+        a.type === 'type' ||
         a.type === 'navigate' ||
         a.type === 'scroll' ||
         a.type === 'press_key',
@@ -559,7 +583,7 @@ export async function runAgentLoop(
       // 8. If done with no UI action, finish
       if (done && !uiAction) {
         await logFinishSummary(actions);
-        await log('Task complete!', 'observe');
+        await log('Task complete!', 'ok');
         await setAgentState({ status: 'done' });
         break;
       }
@@ -573,7 +597,7 @@ export async function runAgentLoop(
         );
         if (done) {
           await logFinishSummary(actions);
-          await log('Task complete!', 'observe');
+          await log('Task complete!', 'ok');
           await setAgentState({ status: 'done' });
           break;
         }
@@ -663,7 +687,57 @@ export async function runAgentLoop(
         continue;
       }
 
-      // 8c. Standalone key press (no click target)
+      // 8c. Type text into focused element
+      if (uiAction.type === 'type') {
+        await log(`Typing: "${uiAction.text}"`, 'act');
+        try {
+          try { await sendToTab(tabId, { type: 'UNBLOCK_INPUT' }); } catch { /* */ }
+          await attachDebugger(tabId);
+
+          if (uiAction.clearField) {
+            // Select all existing content so the new text replaces it.
+            await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
+              type: 'rawKeyDown', key: 'a', windowsVirtualKeyCode: 65, modifiers: 2, // Ctrl+A
+            });
+            await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
+              type: 'keyUp', key: 'a', windowsVirtualKeyCode: 65, modifiers: 2,
+            });
+            await sleep(50);
+          }
+
+          await sleep(200);
+          for (const char of uiAction.text) {
+            await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
+              type: 'keyDown', text: char,
+            });
+            await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
+              type: 'keyUp', text: char,
+            });
+            await sleep(30);
+          }
+
+          try { await sendToTab(tabId, { type: 'BLOCK_INPUT' }); } catch { /* */ }
+          await appendConversationTurn(
+            sessionId,
+            'user',
+            `[Step ${step}] Typed: "${uiAction.text}". Task: ${userPrompt}`,
+          );
+        } catch (actErr) {
+          const errMsg = (actErr as Error).message;
+          await log(`Typing failed: ${errMsg}`, 'warn');
+          await appendConversationTurn(
+            sessionId,
+            'user',
+            `[ACTION FAILED - Step ${step}] Typing "${uiAction.text}" failed: "${errMsg}". Task: ${userPrompt}`,
+          );
+          try { await ensureContentScript(tabId); } catch { /* */ }
+          try { await sendToTab(tabId, { type: 'BLOCK_INPUT' }); } catch { /* */ }
+        }
+        await sleep(STEP_DELAY_MS);
+        continue;
+      }
+
+      // 8d. Standalone key press (no click target)
       if (uiAction.type === 'press_key') {
         await log(`Pressing key: ${uiAction.key}`, 'act');
         try {
@@ -811,40 +885,6 @@ export async function runAgentLoop(
             } catch { /* page may have navigated */ }
           }
 
-          if (uiAction.typeText && uiAction.clearField) {
-            // Select all existing content so the new text replaces it.
-            await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
-              type: 'rawKeyDown', key: 'a', windowsVirtualKeyCode: 65, modifiers: 2, // Ctrl+A
-            });
-            await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
-              type: 'keyUp', key: 'a', windowsVirtualKeyCode: 65, modifiers: 2,
-            });
-            await sleep(50);
-          }
-
-          if (uiAction.typeText) {
-            await log(`Typing: "${uiAction.typeText}"`, 'act');
-            await sleep(200);
-            for (const char of uiAction.typeText) {
-              await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
-                type: 'keyDown', text: char,
-              });
-              await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
-                type: 'keyUp', text: char,
-              });
-              await sleep(30);
-            }
-          }
-
-          if (uiAction.pressKey) {
-            await log(`Pressing key: ${uiAction.pressKey}`, 'act');
-            await sleep(100);
-            await pressKeyCDP(
-              tabId,
-              uiAction.pressKey,
-              uiAction.pressKey === 'Enter' || uiAction.pressKey === 'Return',
-            );
-          }
         } catch (actErr_) {
           actError = (actErr_ as Error).message;
           await log(`Action on #${target.id} failed: ${actError}`, 'warn');
@@ -890,7 +930,7 @@ export async function runAgentLoop(
 
         if (done) {
           await logFinishSummary(actions);
-          await log('Task complete!', 'observe');
+          await log('Task complete!', 'ok');
           await setAgentState({ status: 'done' });
           break;
         }

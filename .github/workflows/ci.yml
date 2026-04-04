@@ -48,4 +48,6 @@ jobs:
         run: npx playwright install chromium --with-deps
 
       - name: E2E tests (Xvfb virtual display)
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: xvfb-run --auto-servernum -- npm run test:e2e

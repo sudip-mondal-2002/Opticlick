@@ -18,7 +18,6 @@ describe('parseToolCall', () => {
     expect(result.type).toBe('click');
     expect(result.targetId).toBe(5);
     expect(result.modifier).toBeUndefined();
-    expect(result.typeText).toBeUndefined();
     expect(result.uploadFileId).toBeUndefined();
   });
 
@@ -26,18 +25,26 @@ describe('parseToolCall', () => {
     const result = parseToolCall('click', {
       targetId: 7,
       modifier: 'ctrl',
-      clearField: true,
-      typeText: 'hello world',
-      pressKey: 'Enter',
       uploadFileId: 'uuid-123',
     }) as AgentAction & { type: 'click' };
     expect(result.type).toBe('click');
     expect(result.targetId).toBe(7);
     expect(result.modifier).toBe('ctrl');
-    expect(result.clearField).toBe(true);
-    expect(result.typeText).toBe('hello world');
-    expect(result.pressKey).toBe('Enter');
     expect(result.uploadFileId).toBe('uuid-123');
+  });
+
+  it('parses "type" with text only', () => {
+    const result = parseToolCall('type', { text: 'hello world' }) as AgentAction & { type: 'type' };
+    expect(result.type).toBe('type');
+    expect(result.text).toBe('hello world');
+    expect(result.clearField).toBeUndefined();
+  });
+
+  it('parses "type" with clearField', () => {
+    const result = parseToolCall('type', { text: 'new text', clearField: true }) as AgentAction & { type: 'type' };
+    expect(result.type).toBe('type');
+    expect(result.text).toBe('new text');
+    expect(result.clearField).toBe(true);
   });
 
   it('parses "navigate"', () => {
@@ -136,6 +143,29 @@ describe('parseToolCall', () => {
     expect(result.updates).toEqual(updates);
   });
 
+  it('parses "todo_add" with items array', () => {
+    const items: TodoItem[] = [
+      { id: 'new-step', title: 'New sub-task', status: 'pending' },
+    ];
+    const result = parseToolCall('todo_add', { items }) as AgentAction & { type: 'todo_add' };
+    expect(result.type).toBe('todo_add');
+    expect(result.items).toEqual(items);
+  });
+
+  it('parses "todo_add" with an empty items array', () => {
+    const result = parseToolCall('todo_add', { items: [] }) as AgentAction & { type: 'todo_add' };
+    expect(result.type).toBe('todo_add');
+    expect(result.items).toEqual([]);
+  });
+
+  it('parses "todo_add" preserving status and optional notes', () => {
+    const items: TodoItem[] = [
+      { id: 'recovery-nav', title: 'Navigate back', status: 'in_progress', notes: 'got lost' },
+    ];
+    const result = parseToolCall('todo_add', { items }) as AgentAction & { type: 'todo_add' };
+    expect(result.items[0]).toMatchObject({ id: 'recovery-nav', status: 'in_progress', notes: 'got lost' });
+  });
+
   // ── Control ───────────────────────────────────────────────────────────────
 
   it('parses "finish" with summary', () => {
@@ -156,17 +186,18 @@ describe('parseToolCall', () => {
     expect(result.ms).toBe(1500);
   });
 
-  it('covers all 13 named tool types', () => {
+  it('covers all 15 named tool types', () => {
     const toolNames = [
-      'click', 'navigate', 'scroll', 'press_key',
+      'click', 'type', 'navigate', 'scroll', 'press_key',
       'fetch_dom',
       'vfs_save_screenshot', 'vfs_write', 'vfs_delete', 'vfs_download',
-      'todo_create', 'todo_update',
+      'todo_create', 'todo_update', 'todo_add',
       'finish', 'wait',
     ];
     for (const name of toolNames) {
       const minimalArgs: Record<string, unknown> = {
         click: { targetId: 1 },
+        type: { text: 'hello' },
         navigate: { url: 'https://x.com' },
         scroll: { direction: 'down' },
         press_key: { key: 'Enter' },
@@ -177,6 +208,7 @@ describe('parseToolCall', () => {
         vfs_download: { url: 'https://x.com' },
         todo_create: { items: [] },
         todo_update: { updates: [] },
+        todo_add: { items: [] },
         finish: {},
         wait: { ms: 100 },
       }[name] as Record<string, unknown>;

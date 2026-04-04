@@ -70,6 +70,66 @@ describe('applyTodoUpdates', () => {
   });
 });
 
+// ── todo_add deduplication logic ─────────────────────────────────────────────
+// The loop filters out items whose id already exists before appending.
+// These tests exercise the same pure logic inline.
+
+function applyTodoAdd(current: TodoItem[], incoming: TodoItem[]): TodoItem[] {
+  const existingIds = new Set(current.map((i) => i.id));
+  const newItems = incoming.filter((i) => !existingIds.has(i.id));
+  return [...current, ...newItems];
+}
+
+describe('todo_add deduplication', () => {
+  it('appends new items that do not exist yet', () => {
+    const result = applyTodoAdd(ITEMS, [{ id: 'step-4', title: 'Extra step', status: 'pending' }]);
+    expect(result).toHaveLength(4);
+    expect(result[3].id).toBe('step-4');
+  });
+
+  it('silently ignores items whose id already exists', () => {
+    const result = applyTodoAdd(ITEMS, [{ id: 'step-1', title: 'Duplicate', status: 'pending' }]);
+    expect(result).toHaveLength(3);
+    expect(result[0]).toEqual(ITEMS[0]); // original preserved, not overwritten
+  });
+
+  it('appends only the non-duplicate items from a mixed batch', () => {
+    const incoming: TodoItem[] = [
+      { id: 'step-2', title: 'Dup', status: 'pending' },
+      { id: 'step-99', title: 'New', status: 'pending' },
+    ];
+    const result = applyTodoAdd(ITEMS, incoming);
+    expect(result).toHaveLength(4);
+    expect(result[3].id).toBe('step-99');
+  });
+
+  it('returns the original array unchanged when incoming is empty', () => {
+    const result = applyTodoAdd(ITEMS, []);
+    expect(result).toEqual(ITEMS);
+  });
+
+  it('does not mutate the original array', () => {
+    const copy = [...ITEMS];
+    applyTodoAdd(ITEMS, [{ id: 'step-4', title: 'New', status: 'pending' }]);
+    expect(ITEMS).toEqual(copy);
+  });
+
+  it('appends to an empty list without error', () => {
+    const item: TodoItem = { id: 'first', title: 'First item', status: 'in_progress' };
+    const result = applyTodoAdd([], [item]);
+    expect(result).toEqual([item]);
+  });
+
+  it('preserves insertion order of new items', () => {
+    const incoming: TodoItem[] = [
+      { id: 'x', title: 'X', status: 'pending' },
+      { id: 'y', title: 'Y', status: 'pending' },
+    ];
+    const result = applyTodoAdd([], incoming);
+    expect(result.map((i) => i.id)).toEqual(['x', 'y']);
+  });
+});
+
 // ── formatTodoForPrompt ──────────────────────────────────────────────────────
 
 describe('formatTodoForPrompt', () => {

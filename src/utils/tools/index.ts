@@ -5,10 +5,10 @@
  * raw LangChain tool_calls into typed AgentAction objects.
  */
 
-export { UI_TOOLS, clickTool, navigateTool, scrollTool, pressKeyTool } from './ui';
+export { UI_TOOLS, clickTool, typeTool, navigateTool, scrollTool, pressKeyTool } from './ui';
 export { DOM_TOOLS, fetchDOMTool } from './dom';
 export { VFS_TOOLS, vfsSaveScreenshotTool, vfsWriteTool, vfsDeleteTool, vfsDownloadTool } from './vfs';
-export { TODO_TOOLS, todoCreateTool, todoUpdateTool } from './todo';
+export { TODO_TOOLS, todoCreateTool, todoUpdateTool, todoAddTool } from './todo';
 export { CONTROL_TOOLS, finishTool, waitTool } from './control';
 
 import { UI_TOOLS } from './ui';
@@ -56,10 +56,13 @@ export function parseToolCall(name: string, args: Record<string, any>): AgentAct
         type: 'click',
         targetId: args.targetId as number,
         modifier: args.modifier as 'ctrl' | 'meta' | 'shift' | 'alt' | undefined,
-        clearField: args.clearField as boolean | undefined,
-        typeText: args.typeText as string | undefined,
-        pressKey: args.pressKey as string | undefined,
         uploadFileId: args.uploadFileId as string | undefined,
+      };
+    case 'type':
+      return {
+        type: 'type',
+        text: args.text as string,
+        clearField: args.clearField as boolean | undefined,
       };
     case 'navigate':
       return { type: 'navigate', url: args.url as string };
@@ -100,6 +103,8 @@ export function parseToolCall(name: string, args: Record<string, any>): AgentAct
       return { type: 'todo_create', items: args.items as TodoItem[] };
     case 'todo_update':
       return { type: 'todo_update', updates: args.updates as TodoUpdateItem[] };
+    case 'todo_add':
+      return { type: 'todo_add', items: args.items as TodoItem[] };
 
     // ── Control ──────────────────────────────────────────────────────────────
     case 'finish':

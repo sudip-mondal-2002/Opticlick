@@ -58,17 +58,18 @@ export type AgentAction =
        * Use 'meta' for Cmd+Click on macOS or Win+Click on Windows.
        */
       modifier?: 'ctrl' | 'meta' | 'shift' | 'alt';
-      /**
-       * When true, selects all existing content (Ctrl+A) before typing,
-       * so typeText replaces the field value instead of appending to it.
-       */
-      clearField?: boolean;
-      /** Text to type into the element after clicking. */
-      typeText?: string;
-      /** Key to press after click+type, e.g. "Enter" to submit a form. */
-      pressKey?: string;
       /** VFS file ID or filename to inject into a file input. */
       uploadFileId?: string;
+    }
+  | {
+      type: 'type';
+      /** Text to type into the currently focused element (after a prior click). */
+      text: string;
+      /**
+       * When true, selects all existing content (Ctrl+A) before typing,
+       * so text replaces the field value instead of appending to it.
+       */
+      clearField?: boolean;
     }
   | { type: 'navigate'; url: string }
   | {
@@ -88,6 +89,7 @@ export type AgentAction =
   // ── Todo management ──────────────────────────────────────────────────────
   | { type: 'todo_create'; items: TodoItem[] }
   | { type: 'todo_update'; updates: TodoUpdate[] }
+  | { type: 'todo_add'; items: TodoItem[] }
   // ── Control ──────────────────────────────────────────────────────────────
   | { type: 'finish'; summary: string }
   | {

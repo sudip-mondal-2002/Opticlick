@@ -15,10 +15,10 @@ export const clickTool = tool(
   {
     name: 'click',
     description:
-      'Click an annotated element by its numeric ID. ' +
-      'Optionally type text into the focused element afterward, then optionally press a key. ' +
+      'Click an annotated element by its numeric ID to focus it. ' +
       'For file inputs, set uploadFileId to a VFS file ID or filename to inject the file ' +
-      'programmatically instead of opening an OS dialog.',
+      'programmatically instead of opening an OS dialog. ' +
+      'After clicking, use the type tool to enter text, or press_key to send a keyboard event.',
     schema: z.object({
       targetId: z.number().int().min(1).describe('Numeric ID from the annotated screenshot'),
       modifier: z
@@ -31,23 +31,32 @@ export const clickTool = tool(
           'Use "shift" to extend a selection. ' +
           'Omit for a plain click.',
         ),
-      clearField: z
-        .boolean()
-        .optional()
-        .describe(
-          'Set to true to select all existing text in the field (Ctrl+A) before typing, ' +
-          'so the new text REPLACES the current value instead of appending to it. ' +
-          'Always use this when typing into a search box, input, or textarea that may already have content.',
-        ),
-      typeText: z.string().optional().describe('Text to type into the element after clicking. WARNING: this APPENDS to existing field content — set clearField:true to replace it.'),
-      pressKey: z
-        .string()
-        .optional()
-        .describe('Key to press after click+type, e.g. "Enter" to submit a form, "Tab" to advance focus'),
       uploadFileId: z
         .string()
         .optional()
         .describe('VFS file ID or filename to inject into this file input (skips OS dialog)'),
+    }),
+  },
+);
+
+export const typeTool = tool(
+  async () => 'ok',
+  {
+    name: 'type',
+    description:
+      'Type text into the currently focused element (after a click). ' +
+      'By default, text APPENDS to existing content. ' +
+      'Use clearField:true to select all and REPLACE the existing value.',
+    schema: z.object({
+      text: z.string().describe('Text to type into the focused element'),
+      clearField: z
+        .boolean()
+        .optional()
+        .describe(
+          'Set to true to select all existing text (Ctrl+A) before typing, ' +
+          'so the new text REPLACES the current value instead of appending. ' +
+          'Always use this when typing into a search box, input, or textarea that may already have content.',
+        ),
     }),
   },
 );
@@ -97,4 +106,4 @@ export const pressKeyTool = tool(
   },
 );
 
-export const UI_TOOLS = [clickTool, navigateTool, scrollTool, pressKeyTool] as const;
+export const UI_TOOLS = [clickTool, typeTool, navigateTool, scrollTool, pressKeyTool] as const;

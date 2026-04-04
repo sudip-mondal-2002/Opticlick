@@ -10,5 +10,10 @@ export async function log(message: string, level = 'info'): Promise<void> {
   if (agentLog.length > 100) agentLog.splice(0, agentLog.length - 100);
   await chrome.storage.session.set({ agentLog });
 
-  chrome.runtime.sendMessage({ type: 'AGENT_LOG', message, level }).catch(() => {});
+  // Send to sidepanel for real-time display
+  chrome.runtime.sendMessage({ type: 'AGENT_LOG', message, level }).catch((err) => {
+    // Silently ignore if sidepanel not listening (common on startup)
+    if (err?.message?.includes('Could not establish connection')) return;
+    console.error('[Opticlick] Failed to send log to sidebar:', err?.message ?? err);
+  });
 }

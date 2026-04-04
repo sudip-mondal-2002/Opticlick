@@ -32,6 +32,15 @@ This project is a Manifest V3 (MV3) Chrome Extension that functions as an autono
 - **Chrome Debugger API:** Use `chrome.debugger` to send `Input.dispatchMouseEvent` sequences (`mouseMoved`, `mousePressed`, `mouseReleased`) to simulate true hardware interrupts.
 - **Coordinate Scaling:** **CRITICAL:** You must mathematically scale the LMM's target coordinates down by dividing them by `window.devicePixelRatio` before dispatching the CDP commands, otherwise clicks will miss on high-DPI/Retina displays.
 
+### 5. Agent Tools (UI Actions)
+- **Separate Click and Type Tools:** Click and type are now separate actions. Click focuses an element; type enters text into the focused element. This separation:
+  - Enables better loop detection — repeated clicks to the same element can be identified and pivoted away from
+  - Provides granular error handling — if click fails, type is not sent; if type fails, press_key can still be sent
+  - Makes debugging easier — the action history clearly shows which element was clicked and what text was typed
+- **UI Action Limit:** At most ONE UI action per turn (click, type, navigate, scroll, or press_key). Type must follow a click in sequence.
+- **Typical Workflow:** Click (focus) → Type (enter text) → Press_key (e.g. Enter to submit)
+- **Anti-Loop Rules:** The system tracks action history (`ActionRecord`) and uses `shouldPivot()` to detect repeated identical actions (3+ identical click/scroll pairs). When detected, the agent must switch strategies (navigate to a reconstructed URL, try a different interaction path).
+
 ## Development Workflow
 - Follow standard asynchronous ES6 conventions.
 - Manage message passing strictly with Promises using `chrome.runtime.sendMessage` and `chrome.tabs.sendMessage` to prevent race conditions during the task loop.
@@ -41,7 +50,9 @@ This project is a Manifest V3 (MV3) Chrome Extension that functions as an autono
 - **Always run tests after making changes.** After completing any code modification, run the relevant test suite before considering the task done.
 - Run unit tests with `npm test` and E2E tests with `npm run test:e2e` (or the equivalent commands in the project).
 - If tests fail, fix the failures before finishing — do not leave the codebase in a broken state.
+- **Write tests for every feature or bug fix.** New tools, actions, or pure utility functions must have corresponding unit tests. Integration or DOM tests are required when the change touches Chrome API wiring, content scripts, or the agent loop.
 - When adding new functionality, verify that existing tests still pass and that new behavior is covered by tests.
+- Test files live under `tests/unit/` (pure logic), `tests/integration/` (Chrome API stubs), or `tests/dom/` (jsdom). Match the file naming convention of existing tests (e.g. `tools-parseToolCall.test.ts`, `todo-pure.test.ts`).
 
 ## Keeping CLAUDE.md Up to Date
 

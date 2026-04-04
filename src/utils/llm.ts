@@ -3,13 +3,13 @@
  *
  * Public API:
  *   createModel(apiKey)  — create a configured ChatGoogleGenerativeAI instance
- *   callModel(...)       — assemble prompt, invoke model, parse tool calls → AgentResult
+ *   callModel(...)       — assemble prompt, stream model response, parse tool calls → AgentResult
  *
  * Internal pipeline (each step is its own function):
  *   buildHistory        — convert stored turns into LangChain BaseMessages
  *   buildUserMessage    — assemble the multipart human turn (text + images)
- *   invokeWithRetry     — call the model with exponential back-off
- *   parseResponse       — extract reasoning + typed AgentActions from the response
+ *   streamWithRetry     — stream the model with exponential back-off; flushes thinking tokens live
+ *   parseResponse       — extract reasoning + typed AgentActions from the merged stream chunks
  */
 
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
@@ -44,11 +44,17 @@ REASONING GUIDELINES:
 - Use wait when a page needs time to settle after an interaction before the next action.
 
 RULES:
-- Call todo_create on the FIRST step if no todo list exists yet — MANDATORY.
+- Call todo_create on the FIRST step if no todo list exists yet — MANDATORY. Always combine it with the primary UI action for that turn; never use todo_create as your only tool call.
 - Call todo_update every turn: mark items done/in_progress and add observations.
 - You may combine any number of VFS/todo/DOM tool calls with AT MOST ONE UI action per turn.
+- UI actions are: click, type, navigate, scroll, press_key. Type is used AFTER a click to enter text into the focused element.
 - Todo, VFS, and fetch_dom calls execute BEFORE the UI action.
-- Only call finish when the user's goal is fully accomplished.
+- When the task contains an explicit HTTP/HTTPS URL (e.g. "https://example.com"), call navigate with that URL immediately in the current turn.
+- When explicitly instructed to call finish, or when all todo items are done and the user's goal is fully accomplished, call finish immediately.
+
+OPERATING RULES — ORIENTATION:
+- ORIENTATION CHECK: At the start of every turn, ask yourself: "Is the current page directly relevant to completing the user's task?" If the answer is no (e.g. you ended up on a profile page, settings page, or unrelated site), do NOT keep clicking around. Immediately call navigate to return to the URL provided in [CONTEXT] or the last known relevant URL. One wrong click does not justify five more wrong clicks trying to recover organically.
+- SELF-CORRECTION: If your todo list shows an item as in_progress but the last 2 turns have not made progress on it, treat the current approach as blocked. Use todo_add to insert a recovery step (e.g. "navigate-back-to-issue") and execute it immediately.
 
 OPERATING RULES — RESILIENT NAVIGATION:
 - VERIFY NAVIGATION: After every click or navigate action, confirm the URL changed or the DOM
@@ -93,13 +99,37 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function summariseThinking(raw: string): string {
-  const clean = raw.replace(/\s+/g, ' ').trim();
-  const sentences = clean.split(/(?<=\.)\s+/);
-  const first = sentences.find((s) => s.length > 30) ?? clean;
-  if (first.length <= 260) return first;
-  const cut = first.lastIndexOf(' ', 260);
-  return first.slice(0, cut > 120 ? cut : 260) + '…';
+/**
+ * Return the index at which to flush the buffered thinking text.
+ * Flushes at the last sentence-end (. ! ?) if the buffer is long enough,
+ * otherwise at the last word boundary, otherwise 0 (don't flush yet).
+ * Exported for unit testing.
+ */
+export function thinkingFlushPoint(buf: string, minLen = 120): number {
+  if (buf.length < minLen) return 0;
+  // Walk backwards looking for a sentence-end followed by whitespace or end-of-string
+  for (let i = buf.length - 1; i >= minLen / 2; i--) {
+    if ('.!?'.includes(buf[i]) && (i + 1 >= buf.length || buf[i + 1] === ' ' || buf[i + 1] === '\n')) {
+      return i + 1;
+    }
+  }
+  // No sentence boundary — flush at last space to avoid splitting a word
+  const lastSpace = buf.lastIndexOf(' ');
+  return lastSpace > minLen / 2 ? lastSpace + 1 : 0;
+}
+
+/** Extract any thinking-token delta from a stream chunk. Exported for unit testing. */
+export function thinkingDeltaOf(chunk: AIMessageChunk): string {
+  // Gemini surfaces thinking either in additional_kwargs.thinking …
+  const fromKwargs = (chunk.additional_kwargs?.thinking as string | undefined) ?? '';
+  // … or as content-array blocks with type === 'thinking'
+  let fromContent = '';
+  if (Array.isArray(chunk.content)) {
+    for (const part of chunk.content as Array<{ type: string; thinking?: string }>) {
+      if (part.type === 'thinking' && part.thinking) fromContent += part.thinking;
+    }
+  }
+  return fromKwargs + fromContent;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -175,18 +205,10 @@ function buildUserMessage(
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Extract reasoning text and typed AgentActions from a raw model response.
- * Logs thinking tokens if the model surfaces them.
+ * Extract reasoning text and typed AgentActions from the merged stream response.
+ * Thinking tokens are NOT logged here — they are flushed live during streaming.
  */
-async function parseResponse(
-  response: AIMessageChunk,
-  logFn: LogFn,
-): Promise<{ reasoning: string; actions: AgentAction[] }> {
-  const thinking = response.additional_kwargs?.thinking as string | undefined;
-  if (thinking?.trim()) {
-    await logFn(summariseThinking(thinking), 'think');
-  }
-
+function parseResponse(response: AIMessageChunk): { reasoning: string; actions: AgentAction[] } {
   const reasoning =
     typeof response.content === 'string'
       ? response.content
@@ -212,10 +234,12 @@ async function parseResponse(
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Invoke the model and retry on failure with exponential back-off.
+ * Stream the model response with exponential back-off on failure.
+ * Thinking tokens are flushed to logFn at sentence boundaries as they arrive.
+ * Tool calls are collected across all chunks and parsed once the stream ends.
  * Rate-limit (429) errors use a longer base delay than general errors.
  */
-async function invokeWithRetry(
+async function streamWithRetry(
   modelWithTools: BoundModel,
   messages: BaseMessage[],
   logFn: LogFn,
@@ -224,8 +248,61 @@ async function invokeWithRetry(
 
   for (let attempt = 1; attempt <= MAX_API_RETRIES; attempt++) {
     try {
-      const response = await modelWithTools.invoke(messages);
-      return await parseResponse(response as AIMessageChunk, logFn);
+      const stream = await modelWithTools.stream(messages);
+      const chunks: AIMessageChunk[] = [];
+      let thinkingBuf = '';
+      let streamedThinkingChars = 0;
+
+      for await (const rawChunk of stream) {
+        const chunk = rawChunk as AIMessageChunk;
+
+        // Accumulate thinking tokens and flush at sentence boundaries
+        const delta = thinkingDeltaOf(chunk);
+        if (delta) {
+          thinkingBuf += delta;
+          streamedThinkingChars += delta.length;
+          const flushAt = thinkingFlushPoint(thinkingBuf);
+          if (flushAt > 0) {
+            await logFn(thinkingBuf.slice(0, flushAt).trim(), 'think');
+            thinkingBuf = thinkingBuf.slice(flushAt);
+          }
+        }
+
+        chunks.push(chunk);
+      }
+
+      // Flush any remaining buffered thinking from per-chunk streaming
+      if (thinkingBuf.trim()) {
+        await logFn(thinkingBuf.trim(), 'think');
+      }
+
+      if (chunks.length === 0) throw new Error('Empty stream response');
+
+      // Merge all chunks into a single message so tool_calls are fully assembled
+      const final = chunks.reduce((acc, c) => acc.concat(c));
+
+      // Fallback: some Gemini model versions only surface thinking in additional_kwargs
+      // of the final merged message, not in individual stream chunks.
+      // Split into paragraphs so long thinking is displayed as multiple log entries.
+      if (streamedThinkingChars === 0) {
+        const mergedThinking = (final.additional_kwargs?.thinking as string | undefined) ?? '';
+        if (mergedThinking.trim()) {
+          // Split on double newlines or sentence boundaries for readability
+          const paragraphs = mergedThinking.split(/\n\n+/).filter((p) => p.trim());
+          if (paragraphs.length > 3) {
+            // If many paragraphs, log the first one and summarize the rest
+            await logFn(paragraphs[0].trim(), 'think');
+            await logFn(`[${paragraphs.length - 1} more thinking steps…]`, 'think');
+          } else {
+            // Otherwise log each paragraph separately for progressive appearance
+            for (const para of paragraphs) {
+              await logFn(para.trim(), 'think');
+            }
+          }
+        }
+      }
+
+      return parseResponse(final);
     } catch (err) {
       lastError = err as Error;
       const isRateLimit =
@@ -262,7 +339,8 @@ export function createModel(apiKey: string): ChatGoogleGenerativeAI {
     temperature: 0.1,
     maxRetries: 0,
     thinkingConfig: {
-      thinkingLevel: THINKING_LEVEL
+      thinkingLevel: THINKING_LEVEL,
+      includeThoughts: true,
     },
   });
 }
@@ -284,6 +362,6 @@ export async function callModel(
   ];
 
   const modelWithTools = model.bindTools([...AGENT_TOOLS]);
-  const { reasoning, actions } = await invokeWithRetry(modelWithTools, messages, logFn);
-  return { reasoning, actions, done: actions.some((a) => a.type === 'finish') };
+  const { reasoning, actions } = await streamWithRetry(modelWithTools, messages, logFn);
+  return { reasoning, actions, done: actions.some((a: AgentAction) => a.type === 'finish') };
 }
