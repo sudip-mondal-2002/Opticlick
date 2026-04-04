@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LLM Test Fixture — Login</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: Arial, sans-serif;
+      background: #f5f5f5;
+      display: flex;
+      justify-content: center;
+      padding: 60px 20px;
+      margin: 0;
+    }
+    .card {
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+      padding: 40px;
+      width: 360px;
+    }
+    h2 { margin: 0 0 24px; font-size: 22px; color: #111; }
+    .form-row { margin-bottom: 20px; }
+    label { display: block; font-size: 13px; font-weight: 600; color: #444; margin-bottom: 6px; }
+    input[type="text"],
+    input[type="password"] {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+    .btn-row { display: flex; gap: 12px; margin-top: 24px; }
+    button {
+      flex: 1;
+      padding: 11px;
+      font-size: 14px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    .btn-primary { background: #2563eb; color: white; }
+    .btn-secondary { background: #e5e7eb; color: #333; }
+    .register-link { margin-top: 16px; text-align: center; font-size: 13px; }
+    .register-link a { color: #2563eb; text-decoration: none; }
+
+    /* ── Set-of-Mark badges (simulates the canvas overlay numbers) ── */
+    .som-wrapper {
+      position: relative;
+      display: inline-block;
+      width: 100%;
+    }
+    .som-wrapper-inline {
+      position: relative;
+      display: inline-block;
+    }
+    .som-badge {
+      position: absolute;
+      top: -10px;
+      left: -10px;
+      background: #2563eb;
+      color: white;
+      font-size: 11px;
+      font-weight: 700;
+      width: 20px;
+      height: 20px;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 10;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+    }
+    .som-outline {
+      outline: 2px solid #2563eb;
+      outline-offset: 2px;
+      border-radius: 4px;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2>Sign in to Acme Corp</h2>
+    <form>
+      <div class="form-row">
+        <label>Username</label>
+        <div class="som-wrapper">
+          <span class="som-badge">1</span>
+          <input id="username" type="text" class="som-outline" placeholder="Enter your username" />
+        </div>
+      </div>
+      <div class="form-row">
+        <label>Password</label>
+        <div class="som-wrapper">
+          <span class="som-badge">2</span>
+          <input id="password" type="password" class="som-outline" placeholder="Enter your password" />
+        </div>
+      </div>
+      <div class="btn-row">
+        <div class="som-wrapper-inline" style="flex:1">
+          <span class="som-badge">3</span>
+          <button type="submit" class="btn-primary som-outline" style="width:100%">Login</button>
+        </div>
+        <div class="som-wrapper-inline" style="flex:1">
+          <span class="som-badge">4</span>
+          <button type="button" class="btn-secondary som-outline" style="width:100%">Cancel</button>
+        </div>
+      </div>
+      <div class="register-link">
+        <div class="som-wrapper-inline">
+          <span class="som-badge">5</span>
+          <a href="/register" class="som-outline" style="padding: 2px 4px;">Register new account</a>
+        </div>
+      </div>
+    </form>
+  </div>
+</body>
+</html>
