@@ -95,6 +95,35 @@ if (typeof chrome !== 'undefined' && chrome?.debugger?.onDetach) {
   });
 }
 
+/**
+ * Type text into the currently focused element via CDP.
+ *
+ * Uses Input.insertText which fires a proper `input` event and correctly
+ * replaces any active selection (e.g. after Ctrl+A). Character-by-character
+ * keyDown/keyUp does NOT replace selections in React/SPA inputs reliably.
+ *
+ * When clearField is true, Ctrl+A is dispatched first to select all existing
+ * content so that Input.insertText replaces it.
+ */
+export async function typeTextCDP(
+  tabId: number,
+  text: string,
+  clearField = false,
+): Promise<void> {
+  await attachDebugger(tabId);
+
+  if (clearField) {
+    await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
+      type: 'rawKeyDown', key: 'a', windowsVirtualKeyCode: 65, modifiers: CDP_MODIFIER.ctrl,
+    });
+    await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
+      type: 'keyUp', key: 'a', windowsVirtualKeyCode: 65, modifiers: CDP_MODIFIER.ctrl,
+    });
+  }
+
+  await chrome.debugger.sendCommand({ tabId }, 'Input.insertText', { text });
+}
+
 // ─── CDP-based file upload (DOM.setFileInputFiles) ───────────────────────────
 // This is the Puppeteer/Playwright approach: write a temp file to disk via
 // chrome.downloads, pass the OS path to CDP, then clean up. It triggers the

@@ -7,7 +7,7 @@ import { callModel, createModel } from '@/utils/llm';
 import type { InlineImage } from '@/utils/llm';
 import { loadTodoFromVFS, saveTodoToVFS, applyTodoUpdates, TODO_VFS_FILENAME } from '@/utils/todo';
 import type { AgentAction, TodoItem } from '@/utils/types';
-import { attachDebugger, detachDebugger, dispatchHardwareClick, CDP_MODIFIER, getKeyCode, writeTempFile, cleanupTempFile } from '@/utils/cdp';
+import { attachDebugger, detachDebugger, dispatchHardwareClick, typeTextCDP, CDP_MODIFIER, getKeyCode, writeTempFile, cleanupTempFile } from '@/utils/cdp';
 import { log } from '@/utils/agent-log';
 import { getAgentState, setAgentState } from '@/utils/agent-state';
 import {
@@ -403,7 +403,16 @@ export async function runAgentLoop(
 
         // No interactable elements after retries — send plain screenshot.
         await log('No interactable elements found after retries. Sending screenshot to LLM for guidance…', 'warn');
-        const plainScreenshot = await captureScreenshot(tabId);
+        let plainScreenshot: string;
+        try {
+          plainScreenshot = await captureScreenshot(tabId);
+        } catch (snapErr) {
+          await log(`Screenshot failed: ${(snapErr as Error).message}. Retrying step…`, 'warn');
+          await appendConversationTurn(sessionId, 'user', `[Step ${step}] Screenshot capture failed: "${(snapErr as Error).message}". The page may still be loading. Task: ${userPrompt}`);
+          await sleep(1000);
+          step--;
+          continue;
+        }
         await chrome.storage.session.set({ lastScreenshot: plainScreenshot, lastScreenshotStep: step });
         await log('Screenshot captured — tap to preview', 'screenshot');
 
@@ -518,7 +527,17 @@ export async function runAgentLoop(
       await chrome.storage.session.set({ coordinateMap });
 
       // 3. Capture annotated screenshot
-      const base64Image = await captureScreenshot(tabId);
+      let base64Image: string;
+      try {
+        base64Image = await captureScreenshot(tabId);
+      } catch (snapErr) {
+        await log(`Screenshot failed: ${(snapErr as Error).message}. Retrying step…`, 'warn');
+        try { await sendToTab(tabId, { type: 'DESTROY_MARKS' }); } catch { /* */ }
+        await appendConversationTurn(sessionId, 'user', `[Step ${step}] Screenshot capture failed: "${(snapErr as Error).message}". The page may still be loading or navigating. Task: ${userPrompt}`);
+        await sleep(1000);
+        step--;
+        continue;
+      }
       await chrome.storage.session.set({ lastScreenshot: base64Image, lastScreenshotStep: step });
       await log('Screenshot captured — tap to preview', 'screenshot');
       await saveVFSFile(sessionId, `step_${step}.png`, base64Image, 'image/png');
@@ -692,29 +711,7 @@ export async function runAgentLoop(
         await log(`Typing: "${uiAction.text}"`, 'act');
         try {
           try { await sendToTab(tabId, { type: 'UNBLOCK_INPUT' }); } catch { /* */ }
-          await attachDebugger(tabId);
-
-          if (uiAction.clearField) {
-            // Select all existing content so the new text replaces it.
-            await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
-              type: 'rawKeyDown', key: 'a', windowsVirtualKeyCode: 65, modifiers: 2, // Ctrl+A
-            });
-            await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
-              type: 'keyUp', key: 'a', windowsVirtualKeyCode: 65, modifiers: 2,
-            });
-            await sleep(50);
-          }
-
-          await sleep(200);
-          for (const char of uiAction.text) {
-            await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
-              type: 'keyDown', text: char,
-            });
-            await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
-              type: 'keyUp', text: char,
-            });
-            await sleep(30);
-          }
+          await typeTextCDP(tabId, uiAction.text, uiAction.clearField ?? false);
 
           try { await sendToTab(tabId, { type: 'BLOCK_INPUT' }); } catch { /* */ }
           await appendConversationTurn(
