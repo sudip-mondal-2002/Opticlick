@@ -36,3 +36,29 @@ This project is a Manifest V3 (MV3) Chrome Extension that functions as an autono
 - Follow standard asynchronous ES6 conventions.
 - Manage message passing strictly with Promises using `chrome.runtime.sendMessage` and `chrome.tabs.sendMessage` to prevent race conditions during the task loop.
 - Validate DOM stability (e.g., using `MutationObserver` to wait for network/DOM idle) before commanding the annotation engine to draw marks.
+
+## Testing Requirements
+- **Always run tests after making changes.** After completing any code modification, run the relevant test suite before considering the task done.
+- Run unit tests with `npm test` and E2E tests with `npm run test:e2e` (or the equivalent commands in the project).
+- If tests fail, fix the failures before finishing — do not leave the codebase in a broken state.
+- When adding new functionality, verify that existing tests still pass and that new behavior is covered by tests.
+
+## Keeping CLAUDE.md Up to Date
+
+### When to update
+- After adding a new module, script, or architectural component to the extension.
+- After changing an API endpoint, LLM model, authentication method, or key configuration value.
+- After establishing a new architectural constraint or pattern that future changes must follow.
+- After deprecating or removing a rule that no longer applies.
+
+### What to update
+- **Overview:** Update if the extension's core purpose, technique, or primary model changes.
+- **LLM & API Configuration:** Update the model ID, endpoint, or auth strategy whenever they change.
+- **Architecture Constraints & Rules:** Add, modify, or remove numbered rules to reflect the current design decisions (e.g., new content script behaviour, new storage strategy, new CDP commands).
+- **Development Workflow / Testing Requirements:** Update if the test commands, tooling, or workflow steps change.
+
+### How to update
+1. Edit this file directly in the same commit/PR as the code change it describes.
+2. Be concise and prescriptive — write rules, not prose. Future agents must be able to follow them unambiguously.
+3. Remove outdated rules entirely rather than leaving stale guidance alongside new guidance.
+4. If a rule has important nuance or a known exception, capture it inline with a brief note (e.g., `**CRITICAL:**`, `**NOTE:**`).
