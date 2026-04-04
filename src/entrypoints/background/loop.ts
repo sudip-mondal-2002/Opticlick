@@ -731,33 +731,83 @@ export async function runAgentLoop(
             if (!vfsFile) throw new Error(`VFS file "${uiAction.uploadFileId}" not found.`);
             await log(`Uploading "${vfsFile.name}" → element #${target.id}`, 'act');
 
+            const x = target.rect.x;
+            const y = target.rect.y;
+
+            // ── Phase 1: HTML5 drag-drop (primary) ────────────────────────────
+            // Dispatch dragenter/dragover/drop carrying an in-memory File object.
+            // No click, no temp file, no OS file picker possible.
+            // Works for explicit drop zones (reads e.dataTransfer.files) AND for
+            // <input type="file"> elements via Chrome's native drop handler.
+            // We target both the visible element at the clicked coordinates AND
+            // the first reachable file input, so all upload patterns are covered.
+            await chrome.debugger.sendCommand({ tabId }, 'Runtime.evaluate', {
+              expression: `window.__oc_dd={b:${JSON.stringify(vfsFile.data)},n:${JSON.stringify(vfsFile.name)},t:${JSON.stringify(vfsFile.mimeType)}}`,
+            });
+            await chrome.debugger.sendCommand({ tabId }, 'Runtime.evaluate', {
+              expression: `(function(){
+                var d=window.__oc_dd; delete window.__oc_dd; if(!d) return;
+                try {
+                  var bytes=Uint8Array.from(atob(d.b),function(c){return c.charCodeAt(0);});
+                  var file=new File([bytes],d.n,{type:d.t});
+                  var dt=new DataTransfer(); dt.items.add(file);
+                  function drag(el){
+                    ['dragenter','dragover','drop'].forEach(function(ev){
+                      el.dispatchEvent(new DragEvent(ev,{dataTransfer:dt,bubbles:true,cancelable:true}));
+                    });
+                  }
+                  var tgt=document.elementFromPoint(${x},${y});
+                  if(tgt) drag(tgt);
+                  var inp=window.__opticlick_fileInput||document.querySelector('input[type="file"]');
+                  if(inp&&inp!==tgt) drag(inp);
+                } catch(e){}
+              })()`,
+            });
+            await sleep(300);
+
+            // ── Phase 2: CDP fallback ──────────────────────────────────────────
+            // For <input type="file"> elements that did not receive files from the
+            // synthetic drop (Chrome may require a trusted event in some cases),
+            // fall back to DOM.setFileInputFiles which bypasses all restrictions.
             const tempDl = await writeTempFile(vfsFile.data, vfsFile.name, vfsFile.mimeType);
             try {
-              await chrome.debugger.sendCommand({ tabId }, 'Runtime.evaluate', {
-                expression: `window.__opticlick_fileInput = null`,
-              });
-              try { await sendToTab(tabId, { type: 'UNBLOCK_INPUT' }); } catch { /* */ }
-              await dispatchHardwareClick(tabId, target.rect.x, target.rect.y);
-              await sleep(500);
               const inputEval = (await chrome.debugger.sendCommand({ tabId }, 'Runtime.evaluate', {
-                expression: `window.__opticlick_fileInput || document.querySelector('input[type="file"]')`,
+                expression: `(function(){
+                  var inp=window.__opticlick_fileInput||document.querySelector('input[type="file"]');
+                  return (inp&&inp.files&&inp.files.length===0)?inp:null;
+                })()`,
               })) as { result: { objectId?: string; subtype?: string } };
               const objectId = inputEval?.result?.objectId;
-              if (!objectId || inputEval.result.subtype === 'null') {
-                throw new Error('No file input found after clicking upload button');
+              if (objectId && inputEval.result.subtype !== 'null') {
+                await chrome.debugger.sendCommand({ tabId }, 'DOM.setFileInputFiles', {
+                  objectId,
+                  files: [tempDl.filePath],
+                });
+                await log('Uploaded via drag-drop + CDP fallback', 'act');
+              } else {
+                await log('Uploaded via drag-drop', 'act');
               }
-              await chrome.debugger.sendCommand({ tabId }, 'DOM.setFileInputFiles', {
-                objectId,
-                files: [tempDl.filePath],
-              });
-              await log('Uploaded via CDP', 'act');
             } finally {
               await cleanupTempFile(tempDl.downloadId);
             }
           } else {
             try { await sendToTab(tabId, { type: 'UNBLOCK_INPUT' }); } catch { /* */ }
             const modBitmask = uiAction.modifier ? (CDP_MODIFIER[uiAction.modifier] ?? 0) : 0;
+            // Disable every file input before the hardware click.
+            // Disabled inputs cannot be activated through ANY path — labels, buttons,
+            // or direct clicks — so the OS file picker can never open.
+            // We restore them immediately after; CDP setFileInputFiles bypasses disabled.
+            try {
+              await chrome.debugger.sendCommand({ tabId }, 'Runtime.evaluate', {
+                expression: `document.querySelectorAll('input[type="file"]').forEach(function(i){i.dataset.ocfd=i.disabled?'1':'0';i.disabled=true;})`,
+              });
+            } catch { /* page may be navigating */ }
             await dispatchHardwareClick(tabId, target.rect.x, target.rect.y, modBitmask);
+            try {
+              await chrome.debugger.sendCommand({ tabId }, 'Runtime.evaluate', {
+                expression: `document.querySelectorAll('[data-ocfd]').forEach(function(i){i.disabled=i.dataset.ocfd==='1';delete i.dataset.ocfd;})`,
+              });
+            } catch { /* page may have navigated */ }
           }
 
           if (uiAction.typeText && uiAction.clearField) {

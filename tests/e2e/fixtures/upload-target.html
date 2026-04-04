@@ -270,6 +270,58 @@
   </script>
 </section>
 
+<!-- ── Case 10: Label with for= pointing to hidden input ─────────────────── -->
+<section id="case-label-for">
+  <h2>10. Label for= hidden input</h2>
+  <input type="file" id="label-for-input" style="position:absolute;left:-9999px;">
+  <label for="label-for-input" id="label-for-btn" style="cursor:pointer;padding:8px 16px;background:#eee;border-radius:4px;">Choose file</label>
+  <p class="status" id="label-for-status">no file selected</p>
+  <script>
+    document.getElementById('label-for-input').addEventListener('change', function () {
+      document.getElementById('label-for-status').textContent =
+        this.files[0] ? this.files[0].name : 'no file selected';
+    });
+  </script>
+</section>
+
+<!-- ── Case 11: Label wrapping a file input ─────────────────────────────── -->
+<section id="case-label-wrap">
+  <h2>11. Label wrapping input</h2>
+  <label id="wrapping-label" style="cursor:pointer;padding:8px 16px;background:#eee;border-radius:4px;display:inline-block;">
+    Upload here
+    <input type="file" id="wrapped-input" style="display:none">
+  </label>
+  <p class="status" id="wrapped-status">no file selected</p>
+  <script>
+    document.getElementById('wrapped-input').addEventListener('change', function () {
+      document.getElementById('wrapped-status').textContent =
+        this.files[0] ? this.files[0].name : 'no file selected';
+    });
+  </script>
+</section>
+
+<!-- ── Case 12: showOpenFilePicker() ────────────────────────────────────── -->
+<section id="case-picker">
+  <h2>12. showOpenFilePicker()</h2>
+  <button id="picker-btn">Open Picker</button>
+  <p class="status" id="picker-status">no pick</p>
+  <script>
+    document.getElementById('picker-btn').addEventListener('click', async function () {
+      try {
+        const handles = await window.showOpenFilePicker();
+        document.getElementById('picker-status').textContent = 'picked: ' + handles[0].name;
+      } catch (e) {
+        document.getElementById('picker-status').textContent = 'error: ' + e.name;
+      }
+    });
+  </script>
+</section>
+
+<!-- ── Dialog attempt tracker (for file-dialog-block tests) ───────────────── -->
+<script>
+  window._dialogAttempts = 0;
+</script>
+
 <!-- ── Global test state summary (for easy page.evaluate() assertions) ──────── -->
 <script>
   // window._uploadState — a unified map for test assertions
