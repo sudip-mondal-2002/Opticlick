@@ -38,7 +38,7 @@ describe('createModel', () => {
   });
 
   it('should use provided modelId when specified', () => {
-    const customModelId = 'gemini-2.5-flash';
+    const customModelId = 'gemini-4-31b';
     createModel(testApiKey, customModelId);
     expect(ChatGoogleGenerativeAI).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -80,10 +80,7 @@ describe('createModel', () => {
   it('should handle different model IDs correctly', () => {
     const modelIds = [
       'gemini-3.1-flash-lite-preview',
-      'gemini-2.5-flash',
-      'gemini-2.5-flash-lite',
       'gemini-4-31b',
-      'gemini-4-26b',
     ];
 
     for (const modelId of modelIds) {

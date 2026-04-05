@@ -8,8 +8,8 @@ import {
 
 describe('models utilities', () => {
   describe('AVAILABLE_MODELS', () => {
-    it('should contain 4 models', () => {
-      expect(AVAILABLE_MODELS).toHaveLength(4);
+    it('should contain 2 models', () => {
+      expect(AVAILABLE_MODELS).toHaveLength(2);
     });
 
     it('should have required properties for each model', () => {
@@ -43,7 +43,6 @@ describe('models utilities', () => {
   describe('getModelLabel', () => {
     it('should return the label for a valid model ID', () => {
       expect(getModelLabel('gemini-3.1-flash-lite-preview')).toBe('Gemini 3.1 Flash Lite');
-      expect(getModelLabel('gemini-2.5-flash')).toBe('Gemini 2.5 Flash');
       expect(getModelLabel('gemini-4-31b')).toBe('Gemma 4 31B');
     });
 
@@ -63,9 +62,6 @@ describe('models utilities', () => {
     it('should return the description for a valid model ID', () => {
       const flashLiteDesc = getModelDescription('gemini-3.1-flash-lite-preview');
       expect(flashLiteDesc).toContain('Fast');
-
-      const flash25Desc = getModelDescription('gemini-2.5-flash');
-      expect(flash25Desc).toContain('Balanced');
     });
 
     it('should return empty string if model not found', () => {

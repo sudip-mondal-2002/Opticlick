@@ -4,12 +4,9 @@
 This project is a Manifest V3 (MV3) Chrome Extension that functions as an autonomous web agent. It uses the "Set-of-Mark" visual prompting technique and the Gemini 3.1 Pro model to navigate the web, analyze pages via screenshots, and execute actions by simulating hardware-level clicks via the Chrome DevTools Protocol.
 
 ## LLM & API Configuration
-- **Model Selection:** Users can choose from 5 available Gemini/Gemma models via the side panel dropdown:
+- **Model Selection:** Users can choose from 2 available Gemini/Gemma models via the side panel dropdown:
   - Gemini 3.1 Flash Lite (default) — `gemini-3.1-flash-lite-preview`
-  - Gemini 2.5 Flash — `gemini-2.5-flash`
-  - Gemini 2.5 Flash Lite — `gemini-2.5-flash-lite`
   - Gemma 4 31B — `gemini-4-31b`
-  - Gemma 4 26B — `gemini-4-26b`
 - **Model Persistence:** Selected model is stored in `chrome.storage.local` and persists across sessions. Default is Gemini 3.1 Flash Lite.
 - **Authentication:** Before running tests or API calls, ensure the user has provided a valid Gemini API token or Google Cloud service credential in the local environment variables.
 - **Multimodal Payload:** The LMM takes the user's prompt alongside a base64-encoded screenshot and returns a target ID in structured JSON.

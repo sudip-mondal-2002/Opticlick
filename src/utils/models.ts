@@ -15,16 +15,6 @@ export const AVAILABLE_MODELS: ModelOption[] = [
     description: 'Fast and efficient for most tasks',
   },
   {
-    id: 'gemini-2.5-flash',
-    label: 'Gemini 2.5 Flash',
-    description: 'Balanced speed and capabilities',
-  },
-  {
-    id: 'gemini-2.5-flash-lite',
-    label: 'Gemini 2.5 Flash Lite',
-    description: 'Lightweight version',
-  },
-  {
     id: 'gemini-4-31b',
     label: 'Gemma 4 31B',
     description: 'Larger model with enhanced reasoning',
