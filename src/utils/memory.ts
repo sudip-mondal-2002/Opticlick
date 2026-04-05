@@ -21,8 +21,12 @@ export function formatMemoryForPrompt(entries: MemoryEntry[]): string {
   const grouped = new Map<string, MemoryEntry[]>();
   for (const entry of entries) {
     const cat = entry.category || 'other';
-    if (!grouped.has(cat)) grouped.set(cat, []);
-    grouped.get(cat)!.push(entry);
+    let list = grouped.get(cat);
+    if (!list) {
+      list = [];
+      grouped.set(cat, list);
+    }
+    list.push(entry);
   }
 
   const lines: string[] = [];

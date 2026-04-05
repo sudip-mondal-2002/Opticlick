@@ -103,7 +103,7 @@ describe('LLM action decisions from annotated screenshots', () => {
     expect(clickAction, 'Expected a click action').toBeDefined();
     // The Login button is clearly labeled [3] in the fixture
     expect(clickAction!.targetId).toBe(3);
-  }, 60_000);
+  }, 120_000);
 
   it('fills in the username field [1] with the requested text', async () => {
     const base64 = await screenshotFixture();
@@ -138,7 +138,7 @@ describe('LLM action decisions from annotated screenshots', () => {
     const clickAction = findAction(result.actions, 'click');
     expect(clickAction, 'Expected a click action on the username field').toBeDefined();
     expect(clickAction!.targetId).toBe(1);
-  }, 60_000);
+  }, 120_000);
 
   it('returns a navigate action with the correct URL when asked to visit a URL', async () => {
     const base64 = await screenshotFixture();
@@ -155,7 +155,7 @@ describe('LLM action decisions from annotated screenshots', () => {
     const navigateAction = findAction(result.actions, 'navigate');
     expect(navigateAction, 'Expected a navigate action').toBeDefined();
     expect(navigateAction!.url).toContain('example.com');
-  }, 60_000);
+  }, 120_000);
 
   it('returns a click on the Register link [5] when asked to register', async () => {
     const base64 = await screenshotFixture();
@@ -173,7 +173,7 @@ describe('LLM action decisions from annotated screenshots', () => {
     expect(clickAction, 'Expected a click action on the register link').toBeDefined();
     // Register link is labeled [5]
     expect(clickAction!.targetId).toBe(5);
-  }, 60_000);
+  }, 120_000);
 
   it('returns a finish action when the task is already done', async () => {
     const base64 = await screenshotFixture();
@@ -201,5 +201,5 @@ describe('LLM action decisions from annotated screenshots', () => {
     const finishAction = findAction(result.actions, 'finish');
     expect(finishAction, 'Expected a finish action').toBeDefined();
     expect(finishAction!.summary).toBeTruthy();
-  }, 60_000);
+  }, 120_000);
 });

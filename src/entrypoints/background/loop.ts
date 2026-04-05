@@ -7,7 +7,7 @@ import type { MemoryEntry } from '@/utils/db';
 import { callModel, createAnyModel } from '@/utils/llm';
 import type { InlineImage } from '@/utils/llm';
 import { loadTodoFromVFS, saveTodoToVFS, applyTodoUpdates, TODO_VFS_FILENAME } from '@/utils/todo';
-import { loadScratchpadFromVFS, saveScratchpadToVFS, upsertScratchpadEntry, deleteScratchpadEntry, SCRATCHPAD_VFS_FILENAME } from '@/utils/scratchpad';
+import { loadScratchpadFromVFS, saveScratchpadToVFS, upsertScratchpadEntry, deleteScratchpadEntry } from '@/utils/scratchpad';
 import type { ScratchpadEntry } from '@/utils/scratchpad';
 import type { AgentAction, TodoItem } from '@/utils/types';
 import { attachDebugger, detachDebugger, dispatchHardwareClick, dispatchScrollWheel, typeTextCDP, CDP_MODIFIER, getKeyCode, writeTempFile, cleanupTempFile } from '@/utils/cdp';
