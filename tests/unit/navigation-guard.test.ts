@@ -8,10 +8,82 @@ import {
   isSemanticTarget,
   pickMostSemanticEntry,
   navigationSucceeded,
+  computeScrollDelta,
   MAX_PIVOT_RETRIES,
   SCROLL_DELTA_THRESHOLD_PX,
+  SCROLL_STEP_PX,
 } from '@/utils/navigation-guard';
 import type { ActionRecord } from '@/utils/navigation-guard';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// computeScrollDelta — direction → (deltaX, deltaY)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe('computeScrollDelta', () => {
+  it('direction "down" → positive deltaY, zero deltaX', () => {
+    const { deltaX, deltaY } = computeScrollDelta('down');
+    expect(deltaY).toBe(SCROLL_STEP_PX);
+    expect(deltaX).toBe(0);
+  });
+
+  it('direction "up" → negative deltaY, zero deltaX', () => {
+    const { deltaX, deltaY } = computeScrollDelta('up');
+    expect(deltaY).toBe(-SCROLL_STEP_PX);
+    expect(deltaX).toBe(0);
+  });
+
+  it('direction "right" → positive deltaX, zero deltaY', () => {
+    const { deltaX, deltaY } = computeScrollDelta('right');
+    expect(deltaX).toBe(SCROLL_STEP_PX);
+    expect(deltaY).toBe(0);
+  });
+
+  it('direction "left" → negative deltaX, zero deltaY', () => {
+    const { deltaX, deltaY } = computeScrollDelta('left');
+    expect(deltaX).toBe(-SCROLL_STEP_PX);
+    expect(deltaY).toBe(0);
+  });
+
+  it('up and down produce opposite deltaY values', () => {
+    const up = computeScrollDelta('up');
+    const down = computeScrollDelta('down');
+    expect(down.deltaY).toBe(-up.deltaY);
+    expect(down.deltaX).toBe(0);
+    expect(up.deltaX).toBe(0);
+  });
+
+  it('left and right produce opposite deltaX values', () => {
+    const left = computeScrollDelta('left');
+    const right = computeScrollDelta('right');
+    expect(right.deltaX).toBe(-left.deltaX);
+    expect(right.deltaY).toBe(0);
+    expect(left.deltaY).toBe(0);
+  });
+
+  it('never produces both deltaX and deltaY non-zero (axis-locked)', () => {
+    for (const dir of ['up', 'down', 'left', 'right'] as const) {
+      const { deltaX, deltaY } = computeScrollDelta(dir);
+      expect(deltaX === 0 || deltaY === 0).toBe(true);
+    }
+  });
+
+  it('uses SCROLL_STEP_PX magnitude for all four directions', () => {
+    for (const dir of ['up', 'down', 'left', 'right'] as const) {
+      const { deltaX, deltaY } = computeScrollDelta(dir);
+      expect(Math.abs(deltaX) + Math.abs(deltaY)).toBe(SCROLL_STEP_PX);
+    }
+  });
+
+  it('vertical directions produce zero deltaX', () => {
+    expect(computeScrollDelta('up').deltaX).toBe(0);
+    expect(computeScrollDelta('down').deltaX).toBe(0);
+  });
+
+  it('horizontal directions produce zero deltaY', () => {
+    expect(computeScrollDelta('left').deltaY).toBe(0);
+    expect(computeScrollDelta('right').deltaY).toBe(0);
+  });
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // scrollDeltaIsSignificant

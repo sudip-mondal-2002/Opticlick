@@ -7,7 +7,9 @@ import { callModel, createModel } from '@/utils/llm';
 import type { InlineImage } from '@/utils/llm';
 import { loadTodoFromVFS, saveTodoToVFS, applyTodoUpdates, TODO_VFS_FILENAME } from '@/utils/todo';
 import type { AgentAction, TodoItem } from '@/utils/types';
-import { attachDebugger, detachDebugger, dispatchHardwareClick, typeTextCDP, CDP_MODIFIER, getKeyCode, writeTempFile, cleanupTempFile } from '@/utils/cdp';
+import { attachDebugger, detachDebugger, dispatchHardwareClick, dispatchScrollWheel, typeTextCDP, CDP_MODIFIER, getKeyCode, writeTempFile, cleanupTempFile } from '@/utils/cdp';
+import { shouldPivot, scrollDeltaIsSignificant, computeScrollDelta, MAX_PIVOT_RETRIES } from '@/utils/navigation-guard';
+import type { ActionRecord } from '@/utils/navigation-guard';
 import { log } from '@/utils/agent-log';
 import { getAgentState, setAgentState } from '@/utils/agent-state';
 import {
@@ -319,6 +321,7 @@ export async function runAgentLoop(
     chrome.debugger.onEvent.addListener(fileChooserGuard);
 
     let emptyRetries = 0;
+    const actionHistory: ActionRecord[] = [];
     for (let step = 1; step <= MAX_STEPS; step++) {
       const state = await getAgentState();
       if (!state || state.status !== 'running') {
@@ -490,23 +493,47 @@ export async function runAgentLoop(
             try { await sendToTab(tabId, { type: 'BLOCK_INPUT' }); } catch { /* */ }
           }
         } else if (uiAction.type === 'scroll') {
-          const isVert = uiAction.direction === 'up' || uiAction.direction === 'down';
-          const sign = uiAction.direction === 'up' || uiAction.direction === 'left' ? -1 : 1;
-          const label = `Scrolling page ${uiAction.direction}`;
-          await log(label, 'act');
-          try {
-            try { await sendToTab(tabId, { type: 'UNBLOCK_INPUT' }); } catch { /* */ }
-            await attachDebugger(tabId);
-            await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchMouseEvent', {
-              type: 'mouseWheel', x: 600, y: 400,
-              deltaX: isVert ? 0 : sign * 500,
-              deltaY: isVert ? sign * 500 : 0,
-            });
-            await sleep(300);
-            try { await sendToTab(tabId, { type: 'BLOCK_INPUT' }); } catch { /* */ }
-            await appendConversationTurn(sessionId, 'user', `[Step ${step}] ${label}. Task: ${userPrompt}`);
-          } catch (scrollErr) {
-            await log(`Scroll failed: ${(scrollErr as Error).message}`, 'warn');
+          const scrollTargetId = uiAction.scrollTargetId;
+          if (shouldPivot(actionHistory, 'scroll', scrollTargetId)) {
+            await log(`Scroll pivot: same scroll repeated ${MAX_PIVOT_RETRIES} times with no progress.`, 'warn');
+            await appendConversationTurn(
+              sessionId,
+              'user',
+              `[PIVOT REQUIRED - Step ${step}] This scroll has been attempted ${MAX_PIVOT_RETRIES} times with no progress. Try a different approach (navigate directly, interact with a different element, or call finish). Task: ${userPrompt}`,
+            );
+          } else {
+            const { deltaX, deltaY } = computeScrollDelta(uiAction.direction);
+            const label = `Scrolling page ${uiAction.direction}`;
+            await log(label, 'act');
+            try {
+              try { await sendToTab(tabId, { type: 'UNBLOCK_INPUT' }); } catch { /* */ }
+              await attachDebugger(tabId);
+              let beforeY = 0;
+              try {
+                const r = await chrome.debugger.sendCommand({ tabId }, 'Runtime.evaluate', {
+                  expression: 'window.scrollY', returnByValue: true,
+                }) as { result: { value: number } };
+                beforeY = r?.result?.value ?? 0;
+              } catch { /* measurement failure is non-fatal */ }
+              await dispatchScrollWheel(tabId, 600, 400, deltaX, deltaY);
+              await sleep(300);
+              let afterY = 0;
+              try {
+                const r = await chrome.debugger.sendCommand({ tabId }, 'Runtime.evaluate', {
+                  expression: 'window.scrollY', returnByValue: true,
+                }) as { result: { value: number } };
+                afterY = r?.result?.value ?? 0;
+              } catch { /* measurement failure is non-fatal */ }
+              const moved = scrollDeltaIsSignificant(beforeY, afterY);
+              const feedback = moved
+                ? label
+                : `${label} — page did not move (already at limit or content not scrollable)`;
+              try { await sendToTab(tabId, { type: 'BLOCK_INPUT' }); } catch { /* */ }
+              await appendConversationTurn(sessionId, 'user', `[Step ${step}] ${feedback}. Task: ${userPrompt}`);
+            } catch (scrollErr) {
+              await log(`Scroll failed: ${(scrollErr as Error).message}`, 'warn');
+            }
+            actionHistory.push({ type: 'scroll', targetId: scrollTargetId });
           }
         } else if (uiAction.type === 'press_key') {
           await log(`Pressing key: ${uiAction.key}`, 'act');
@@ -704,35 +731,68 @@ export async function runAgentLoop(
 
       // 8b. Scroll
       if (uiAction.type === 'scroll') {
-        const isVertical = uiAction.direction === 'up' || uiAction.direction === 'down';
-        const sign = uiAction.direction === 'up' || uiAction.direction === 'left' ? -1 : 1;
-        const deltaX = isVertical ? 0 : sign * 500;
-        const deltaY = isVertical ? sign * 500 : 0;
+        const scrollTargetId = uiAction.scrollTargetId;
+
+        // Anti-loop pivot check: bail out before dispatching if same scroll repeated too many times.
+        if (shouldPivot(actionHistory, 'scroll', scrollTargetId)) {
+          await log(`Scroll pivot: same scroll repeated ${MAX_PIVOT_RETRIES} times with no progress.`, 'warn');
+          await appendConversationTurn(
+            sessionId,
+            'user',
+            `[PIVOT REQUIRED - Step ${step}] This scroll has been attempted ${MAX_PIVOT_RETRIES} times with no progress. Try a different approach (navigate directly, interact with a different element, or call finish). Task: ${userPrompt}`,
+          );
+          await sleep(STEP_DELAY_MS);
+          continue;
+        }
+
+        const { deltaX, deltaY } = computeScrollDelta(uiAction.direction);
 
         let scrollX = 600;
         let scrollY = 400;
-        if (uiAction.scrollTargetId != null) {
-          const scrollTarget = coordinateMap.find((c) => c.id === uiAction.scrollTargetId);
+        if (scrollTargetId != null) {
+          const scrollTarget = coordinateMap.find((c) => c.id === scrollTargetId);
           if (scrollTarget) { scrollX = scrollTarget.rect.x; scrollY = scrollTarget.rect.y; }
         }
 
-        const label = uiAction.scrollTargetId
-          ? `Scrolling ${uiAction.direction} inside element #${uiAction.scrollTargetId}`
+        const label = scrollTargetId
+          ? `Scrolling ${uiAction.direction} inside element #${scrollTargetId}`
           : `Scrolling page ${uiAction.direction}`;
         await log(label, 'act');
 
         try {
           try { await sendToTab(tabId, { type: 'UNBLOCK_INPUT' }); } catch { /* */ }
           await attachDebugger(tabId);
-          await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchMouseEvent', {
-            type: 'mouseWheel', x: scrollX, y: scrollY, deltaX, deltaY,
-          });
+
+          // Measure scroll Y before dispatch to detect no-op scrolls.
+          let beforeY = 0;
+          try {
+            const r = await chrome.debugger.sendCommand({ tabId }, 'Runtime.evaluate', {
+              expression: 'window.scrollY', returnByValue: true,
+            }) as { result: { value: number } };
+            beforeY = r?.result?.value ?? 0;
+          } catch { /* measurement failure is non-fatal */ }
+
+          await dispatchScrollWheel(tabId, scrollX, scrollY, deltaX, deltaY);
           await sleep(300);
+
+          let afterY = 0;
+          try {
+            const r = await chrome.debugger.sendCommand({ tabId }, 'Runtime.evaluate', {
+              expression: 'window.scrollY', returnByValue: true,
+            }) as { result: { value: number } };
+            afterY = r?.result?.value ?? 0;
+          } catch { /* measurement failure is non-fatal */ }
+
+          const moved = scrollDeltaIsSignificant(beforeY, afterY);
+          const feedback = moved
+            ? label
+            : `${label} — page did not move (already at limit or content not scrollable)`;
+
           try { await sendToTab(tabId, { type: 'BLOCK_INPUT' }); } catch { /* */ }
           await appendConversationTurn(
             sessionId,
             'user',
-            `[Step ${step}] ${label}. Task: ${userPrompt}`,
+            `[Step ${step}] ${feedback}. Task: ${userPrompt}`,
           );
         } catch (actErr) {
           const errMsg = (actErr as Error).message;
@@ -745,6 +805,10 @@ export async function runAgentLoop(
           try { await ensureContentScript(tabId); } catch { /* */ }
           try { await sendToTab(tabId, { type: 'BLOCK_INPUT' }); } catch { /* */ }
         }
+
+        // Record for anti-loop tracking regardless of success/failure.
+        actionHistory.push({ type: 'scroll', targetId: scrollTargetId });
+
         await sleep(STEP_DELAY_MS);
         continue;
       }

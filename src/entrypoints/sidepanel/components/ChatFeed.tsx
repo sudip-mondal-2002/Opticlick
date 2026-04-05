@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { RefObject } from 'react';
+import ReactMarkdown from 'react-markdown';
 
 export interface LogItem {
   message: string;
@@ -135,23 +136,25 @@ export function ChatFeed({ feedRef, historySteps, submittedPrompt, logs }: Props
               return (
                 <div
                   key={i}
-                  className={`flex gap-2.5 items-baseline ${isSnap ? 'cursor-pointer group' : ''}`}
+                  className={`flex gap-2.5 items-start ${isSnap ? 'cursor-pointer group' : ''}`}
                   onClick={isSnap ? handleScreenshotClick : undefined}
                   title={isSnap ? 'Click to preview screenshot' : undefined}
                 >
                   {ts && (
-                    <span className="shrink-0 text-slate-400 dark:text-[#444460] min-w-[68px] tabular-nums">
+                    <span className="shrink-0 text-slate-400 dark:text-[#444460] min-w-[68px] tabular-nums pt-0.5">
                       {ts}
                     </span>
                   )}
-                  <span className={`shrink-0 font-medium ${tag.className}`}>{tag.label}</span>
-                  <span className={`break-all transition-colors ${
-                    isSnap
-                      ? 'text-violet-600 dark:text-violet-300 group-hover:text-violet-700 dark:group-hover:text-violet-200 underline decoration-violet-400 dark:decoration-violet-700 underline-offset-2'
-                      : 'text-slate-600 dark:text-slate-300'
-                  }`}>
-                    {body}
-                  </span>
+                  <span className={`shrink-0 font-medium pt-0.5 ${tag.className}`}>{tag.label}</span>
+                  {isSnap ? (
+                    <span className="break-words transition-colors text-violet-600 dark:text-violet-300 group-hover:text-violet-700 dark:group-hover:text-violet-200 underline decoration-violet-400 dark:decoration-violet-700 underline-offset-2">
+                      {body}
+                    </span>
+                  ) : (
+                    <div className="log-md break-words min-w-0 text-slate-600 dark:text-slate-300">
+                      <ReactMarkdown>{body}</ReactMarkdown>
+                    </div>
+                  )}
                 </div>
               );
             })}

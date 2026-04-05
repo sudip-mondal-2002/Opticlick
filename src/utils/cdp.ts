@@ -157,6 +157,41 @@ export async function typeTextCDP(
   await chrome.debugger.sendCommand({ tabId }, 'Input.insertText', { text });
 }
 
+/**
+ * Simulate a hardware mouse-wheel scroll event via CDP.
+ *
+ * Convention for deltaX/deltaY (matches DOM WheelEvent):
+ *   deltaY > 0 → scroll down (scrollY increases)
+ *   deltaY < 0 → scroll up
+ *   deltaX > 0 → scroll right
+ *   deltaX < 0 → scroll left
+ *
+ * Use computeScrollDelta() from navigation-guard to derive the deltas from a
+ * direction string.
+ *
+ * @param tabId  Target tab
+ * @param cssX   X position in CSS pixels (viewport-relative) for the event
+ * @param cssY   Y position in CSS pixels (viewport-relative) for the event
+ * @param deltaX Horizontal scroll delta in CSS pixels
+ * @param deltaY Vertical scroll delta in CSS pixels
+ */
+export async function dispatchScrollWheel(
+  tabId: number,
+  cssX: number,
+  cssY: number,
+  deltaX: number,
+  deltaY: number,
+): Promise<void> {
+  await attachDebugger(tabId);
+  await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchMouseEvent', {
+    type: 'mouseWheel',
+    x: cssX,
+    y: cssY,
+    deltaX,
+    deltaY,
+  });
+}
+
 // ─── CDP-based file upload (DOM.setFileInputFiles) ───────────────────────────
 // This is the Puppeteer/Playwright approach: write a temp file to disk via
 // chrome.downloads, pass the OS path to CDP, then clean up. It triggers the

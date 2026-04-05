@@ -28,9 +28,38 @@ export const MAX_PIVOT_RETRIES = 3;
  */
 export const SCROLL_DELTA_THRESHOLD_PX = 50;
 
+/**
+ * CSS-pixel magnitude used for each mouseWheel scroll step.
+ * Applied to deltaX or deltaY depending on direction.
+ */
+export const SCROLL_STEP_PX = 500;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Scroll / DOM delta helpers
 // ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Compute CDP mouse-wheel delta values for a given scroll direction.
+ *
+ * Convention (matches DOM WheelEvent):
+ *   deltaY > 0  → scroll down (window.scrollY increases)
+ *   deltaY < 0  → scroll up   (window.scrollY decreases)
+ *   deltaX > 0  → scroll right
+ *   deltaX < 0  → scroll left
+ *
+ * @param direction One of 'up' | 'down' | 'left' | 'right'
+ * @returns { deltaX, deltaY } ready for Input.dispatchMouseEvent
+ */
+export function computeScrollDelta(
+  direction: 'up' | 'down' | 'left' | 'right',
+): { deltaX: number; deltaY: number } {
+  const isVertical = direction === 'up' || direction === 'down';
+  const sign = direction === 'up' || direction === 'left' ? -1 : 1;
+  return {
+    deltaX: isVertical ? 0 : sign * SCROLL_STEP_PX,
+    deltaY: isVertical ? sign * SCROLL_STEP_PX : 0,
+  };
+}
 
 /**
  * Returns true when a scroll action moved the page by at least

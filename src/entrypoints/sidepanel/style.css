@@ -38,6 +38,20 @@
   }
 }
 
+/* Markdown rendering inside log entries */
+.log-md { line-height: 1.6; }
+.log-md p { margin: 0 0 0.25em; }
+.log-md p:last-child { margin-bottom: 0; }
+.log-md h1, .log-md h2, .log-md h3,
+.log-md h4, .log-md h5, .log-md h6 { font-size: inherit; font-weight: 700; margin: 0.3em 0 0.1em; }
+.log-md ul, .log-md ol { margin: 0.2em 0; padding-left: 1.2em; }
+.log-md li { margin: 0.1em 0; }
+.log-md strong { font-weight: 700; }
+.log-md em { font-style: italic; }
+.log-md code { font-family: inherit; background: rgba(100,116,139,0.15); border-radius: 2px; padding: 0 2px; }
+.log-md pre { white-space: pre-wrap; word-break: break-all; }
+.log-md hr { border: none; border-top: 1px solid currentColor; opacity: 0.2; margin: 0.4em 0; }
+
 /* Terminal log scrollbar */
 .log-scroll { scrollbar-width: thin; scrollbar-color: #334155 transparent; }
 .log-scroll::-webkit-scrollbar { width: 4px; }
