@@ -2,10 +2,13 @@
  * Main agent loop — Think → Annotate → Capture → Reason → Act.
  */
 
-import { appendConversationTurn, createSession, getConversationHistory, touchSession, saveVFSFile, writeVFSFile, listVFSFiles, clearVFSFiles, getVFSFile, deleteVFSFile } from '@/utils/db';
+import { appendConversationTurn, createSession, getConversationHistory, touchSession, saveVFSFile, writeVFSFile, listVFSFiles, clearVFSFiles, getVFSFile, deleteVFSFile, getAllMemories, upsertMemory, deleteMemory } from '@/utils/db';
+import type { MemoryEntry } from '@/utils/db';
 import { callModel, createAnyModel } from '@/utils/llm';
 import type { InlineImage } from '@/utils/llm';
 import { loadTodoFromVFS, saveTodoToVFS, applyTodoUpdates, TODO_VFS_FILENAME } from '@/utils/todo';
+import { loadScratchpadFromVFS, saveScratchpadToVFS, upsertScratchpadEntry, deleteScratchpadEntry, SCRATCHPAD_VFS_FILENAME } from '@/utils/scratchpad';
+import type { ScratchpadEntry } from '@/utils/scratchpad';
 import type { AgentAction, TodoItem } from '@/utils/types';
 import { attachDebugger, detachDebugger, dispatchHardwareClick, dispatchScrollWheel, typeTextCDP, CDP_MODIFIER, getKeyCode, writeTempFile, cleanupTempFile } from '@/utils/cdp';
 import { shouldPivot, scrollDeltaIsSignificant, computeScrollDelta, MAX_PIVOT_RETRIES } from '@/utils/navigation-guard';
@@ -75,8 +78,12 @@ async function executeSideEffects(
   coordinateMap: CoordinateEntry[],
   currentTodo: TodoItem[],
   userPrompt: string,
-): Promise<{ updatedTodo: TodoItem[]; mutations: string[] }> {
+  memoryEntries: MemoryEntry[],
+  scratchpadEntries: ScratchpadEntry[],
+): Promise<{ updatedTodo: TodoItem[]; mutations: string[]; updatedMemory: MemoryEntry[]; updatedScratchpad: ScratchpadEntry[] }> {
   let updatedTodo = currentTodo;
+  let updatedMemory = memoryEntries;
+  let updatedScratchpad = scratchpadEntries;
   const mutations: string[] = [];
 
   for (const action of actions) {
@@ -204,13 +211,52 @@ async function executeSideEffects(
         break;
       }
 
+      // ── Memory ────────────────────────────────────────────────────────────
+
+      case 'memory_upsert': {
+        const entry = await upsertMemory(action.key, action.values, action.category, action.sourceUrl);
+        // Update local copy so subsequent turns in this loop see the new memory
+        const idx = updatedMemory.findIndex((m) => m.key === entry.key);
+        if (idx >= 0) updatedMemory = [...updatedMemory.slice(0, idx), entry, ...updatedMemory.slice(idx + 1)];
+        else updatedMemory = [...updatedMemory, entry];
+        mutations.push(`Memory: saved "${entry.key}" = [${entry.values.join(', ')}]`);
+        await log(`Memory: saved "${entry.key}" → [${entry.values.join(', ')}]`, 'info');
+        break;
+      }
+
+      case 'memory_delete': {
+        await deleteMemory(action.key);
+        updatedMemory = updatedMemory.filter((m) => m.key !== action.key);
+        mutations.push(`Memory: deleted "${action.key}"`);
+        await log(`Memory: deleted "${action.key}"`, 'info');
+        break;
+      }
+
+      // ── Scratchpad ────────────────────────────────────────────────────────
+
+      case 'note_write': {
+        updatedScratchpad = upsertScratchpadEntry(updatedScratchpad, action.key, action.value);
+        await saveScratchpadToVFS(sessionId, updatedScratchpad);
+        mutations.push(`Scratchpad: saved note "${action.key}"`);
+        await log(`Scratchpad: saved note "${action.key}"`, 'info');
+        break;
+      }
+
+      case 'note_delete': {
+        updatedScratchpad = deleteScratchpadEntry(updatedScratchpad, action.key);
+        await saveScratchpadToVFS(sessionId, updatedScratchpad);
+        mutations.push(`Scratchpad: deleted note "${action.key}"`);
+        await log(`Scratchpad: deleted note "${action.key}"`, 'info');
+        break;
+      }
+
       // UI actions and finish are handled by the caller
       default:
         break;
     }
   }
 
-  return { updatedTodo, mutations };
+  return { updatedTodo, mutations, updatedMemory, updatedScratchpad };
 }
 
 /** Press a key via CDP (rawKeyDown + keyUp). */
@@ -261,6 +307,16 @@ export async function runAgentLoop(
   let currentTodo: TodoItem[] = (await loadTodoFromVFS(sessionId)) ?? [];
   if (currentTodo.length > 0) {
     await log(`Resumed todo list: ${currentTodo.length} item(s) loaded from VFS`, 'observe');
+  }
+
+  let memoryEntries: MemoryEntry[] = await getAllMemories();
+  if (memoryEntries.length > 0) {
+    await log(`Long-term memory: ${memoryEntries.length} entries loaded`, 'observe');
+  }
+
+  let currentScratchpad: ScratchpadEntry[] = await loadScratchpadFromVFS(sessionId);
+  if (currentScratchpad.length > 0) {
+    await log(`Resumed scratchpad: ${currentScratchpad.length} note(s) loaded from VFS`, 'observe');
   }
 
   // Capture the starting URL so the LLM can use it as an orientation anchor.
@@ -437,6 +493,8 @@ export async function runAgentLoop(
             vfsFilesForEmpty,
             [],
             currentTodo,
+            memoryEntries,
+            currentScratchpad,
           );
         } catch (err) {
           await log(`LLM call failed: ${(err as Error).message}. Giving up.`, 'error');
@@ -449,7 +507,7 @@ export async function runAgentLoop(
         emptyRetries = 0;
 
         // Process side-effects (todo, VFS, DOM) — coordinateMap is empty here.
-        const { updatedTodo: newTodo } = await executeSideEffects(
+        const { updatedTodo: newTodo, updatedMemory: newMem, updatedScratchpad: newScratchpad } = await executeSideEffects(
           emptyResult.actions,
           sessionId,
           tabId,
@@ -458,8 +516,12 @@ export async function runAgentLoop(
           [],
           currentTodo,
           userPrompt,
+          memoryEntries,
+          currentScratchpad,
         );
         currentTodo = newTodo;
+        memoryEntries = newMem;
+        currentScratchpad = newScratchpad;
 
         if (emptyResult.done) {
           await logFinishSummary(emptyResult.actions);
@@ -590,7 +652,7 @@ export async function runAgentLoop(
       // 6. Call LLM → AgentResult
       let result;
       try {
-        result = await callModel(model, base64Image, anchoredPrompt, history, log, vfsFiles, inlineImages, currentTodo);
+        result = await callModel(model, base64Image, anchoredPrompt, history, log, vfsFiles, inlineImages, currentTodo, memoryEntries, currentScratchpad);
       } catch (err) {
         await log(`LLM call failed: ${(err as Error).message}. Will retry step.`, 'error');
         await sleep(RATE_LIMIT_DELAY_MS);
@@ -607,7 +669,7 @@ export async function runAgentLoop(
       await touchSession(sessionId);
 
       // 7. Execute side-effects (VFS, todo, fetch_dom)
-      const { updatedTodo, mutations } = await executeSideEffects(
+      const { updatedTodo, mutations, updatedMemory, updatedScratchpad } = await executeSideEffects(
         actions,
         sessionId,
         tabId,
@@ -616,8 +678,12 @@ export async function runAgentLoop(
         coordinateMap,
         currentTodo,
         userPrompt,
+        memoryEntries,
+        currentScratchpad,
       );
       currentTodo = updatedTodo;
+      memoryEntries = updatedMemory;
+      currentScratchpad = updatedScratchpad;
 
       // Determine what kind of action(s) were requested
       const uiAction = actions.find((a) =>

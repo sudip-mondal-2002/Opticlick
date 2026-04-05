@@ -46,6 +46,15 @@ This project is a Manifest V3 (MV3) Chrome Extension that functions as an autono
 - **Typical Workflow:** Click (focus) → Type (enter text) → Press_key (e.g. Enter to submit)
 - **Anti-Loop Rules:** The system tracks action history (`ActionRecord`) and uses `shouldPivot()` to detect repeated identical actions (3+ identical click/scroll pairs). When detected, the agent must switch strategies (navigate to a reconstructed URL, try a different interaction path).
 
+### 6. Persistent Memory
+- **Purpose:** Cross-session memory that lets the agent remember facts about the user (accounts, preferences, display names, etc.) across sessions.
+- **Storage:** IndexedDB `memory` object store (`DB_VERSION = 4`). Each entry is a `MemoryEntry` with `key` (namespaced, e.g. `"github/username"`), `values` (string array for multi-account support), `category`, optional `sourceUrl`, and timestamps.
+- **Agent Tools:** `memory_upsert` (save/merge values) and `memory_delete` (remove entry). Defined in `src/utils/tools/memory.ts`.
+- **Context Injection:** All memory entries are loaded at loop start (`getAllMemories()`) and injected into every LLM prompt as a `── Long-term Memory ──` context block via `formatMemoryForPrompt()` in `src/utils/memory.ts`.
+- **Upsert Semantics:** When the agent calls `memory_upsert` with an existing key, new values are merged and deduplicated into the existing array. This naturally handles multi-account discovery.
+- **Module layout:** DB CRUD in `src/utils/db.ts`, formatting in `src/utils/memory.ts`, tool schemas in `src/utils/tools/memory.ts`, action handling in `src/entrypoints/background/loop.ts`.
+- **Security Rule:** The LLM is instructed to NEVER store passwords, tokens, or API keys in memory.
+
 ## Development Workflow
 - Follow standard asynchronous ES6 conventions.
 - Manage message passing strictly with Promises using `chrome.runtime.sendMessage` and `chrome.tabs.sendMessage` to prevent race conditions during the task loop.

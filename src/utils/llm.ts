@@ -17,8 +17,11 @@ import { ChatOllama } from '@langchain/ollama';
 import { HumanMessage, SystemMessage, AIMessage, type BaseMessage, type AIMessageChunk } from '@langchain/core/messages';
 import { AGENT_TOOLS, parseToolCall } from './tools';
 import type { AgentAction, AgentResult, TodoItem } from './types';
-import type { VFSFile } from './db';
+import type { VFSFile, MemoryEntry } from './db';
 import { formatTodoForPrompt } from './todo';
+import { formatMemoryForPrompt } from './memory';
+import { formatScratchpadForPrompt } from './scratchpad';
+import type { ScratchpadEntry } from './scratchpad';
 import { DEFAULT_MODEL, OLLAMA_BASE_URL, isOllamaModel, ollamaModelName } from './models';
 
 const MAX_API_RETRIES = 5;
@@ -76,7 +79,26 @@ OPERATING RULES — RESILIENT NAVIGATION:
 - FINISH AND STOP: Once the user's goal is fully accomplished, call finish() immediately and
   do NOT take any further actions. Do not keep scrolling, clicking, or messaging after the
   task is done. If you are waiting for an external response (e.g. a friend to reply to a
-  message), call wait() or finish() — do not send repeated messages while waiting.`;
+  message), call wait() or finish() — do not send repeated messages while waiting.
+
+MEMORY GUIDELINES:
+- You have a persistent long-term memory that survives across sessions. Its current contents are shown in each prompt.
+- When you discover NEW useful information about the user, call memory_upsert to save it.
+- Examples worth remembering: usernames, email addresses, display names, locale/timezone, organization memberships, commonly used accounts.
+- If you see the user is logged in on a site, remember their account info (username, display name, email).
+- Do NOT store passwords, tokens, API keys, or other sensitive credentials.
+- Use descriptive namespaced keys like "github/username", "google/email", "twitter/handle".
+- If a value changes (e.g. user changed their display name), call memory_upsert with the new value — it will be merged.
+- Call memory_delete to remove stale or incorrect entries.
+
+SCRATCHPAD GUIDELINES:
+- You have an in-session scratchpad for accumulating intermediate findings within the current task.
+- Call note_write PROACTIVELY whenever you discover partial results: items found while scrolling, data extracted from a page, running totals, or anything you need to remember for the next turn.
+- When gathering a list across multiple scrolls or pages, ALWAYS update the scratchpad with ALL items found so far (not just the new ones) before moving on.
+- The scratchpad is shown in every subsequent prompt so you will not lose track of accumulated data.
+- The scratchpad is cleared at session end — use memory_upsert instead for facts to keep across sessions.
+- Use short descriptive keys: "issues_found", "emails_collected", "search_results", "count".`;
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -164,6 +186,16 @@ function todoContextBlock(todo: TodoItem[]): string {
   return '\n\n── Todo List — not created yet. Call todo_create this turn. ──';
 }
 
+/** Render the memory store as a context block. */
+function memoryContextBlock(entries: MemoryEntry[]): string {
+  return formatMemoryForPrompt(entries);
+}
+
+/** Render the scratchpad as a context block. */
+function scratchpadContextBlock(entries: ScratchpadEntry[]): string {
+  return formatScratchpadForPrompt(entries);
+}
+
 /**
  * Build the multipart human turn: task description, VFS listing, todo state,
  * optional reference images, and the annotated screenshot.
@@ -179,13 +211,15 @@ function buildUserMessage(
   currentTodo: TodoItem[],
   inlineImages: InlineImage[],
   base64Image: string,
+  memoryEntries: MemoryEntry[] = [],
+  scratchpadEntries: ScratchpadEntry[] = [],
   ollamaFormat = false,
 ): HumanMessage {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const content: Array<any> = [
     {
       type: 'text',
-      text: `User task: ${userPrompt}${vfsContextBlock(vfsFiles)}${todoContextBlock(currentTodo)}`,
+      text: `User task: ${userPrompt}${vfsContextBlock(vfsFiles)}${todoContextBlock(currentTodo)}${memoryContextBlock(memoryEntries)}${scratchpadContextBlock(scratchpadEntries)}`,
     },
   ];
 
@@ -406,12 +440,14 @@ export async function callModel(
   vfsFiles: VFSFile[] = [],
   inlineImages: InlineImage[] = [],
   currentTodo: TodoItem[] = [],
+  memoryEntries: MemoryEntry[] = [],
+  scratchpadEntries: ScratchpadEntry[] = [],
 ): Promise<AgentResult> {
   const ollamaFormat = model instanceof ChatOllama;
   const messages: BaseMessage[] = [
     new SystemMessage(SYSTEM_INSTRUCTIONS),
     ...buildHistory(history),
-    buildUserMessage(userPrompt, vfsFiles, currentTodo, inlineImages, base64Image, ollamaFormat),
+    buildUserMessage(userPrompt, vfsFiles, currentTodo, inlineImages, base64Image, memoryEntries, scratchpadEntries, ollamaFormat),
   ];
 
   const modelWithTools = model.bindTools([...AGENT_TOOLS]);

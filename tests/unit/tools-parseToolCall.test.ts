@@ -166,6 +166,49 @@ describe('parseToolCall', () => {
     expect(result.items[0]).toMatchObject({ id: 'recovery-nav', status: 'in_progress', notes: 'got lost' });
   });
 
+  // ── Memory ────────────────────────────────────────────────────────────────
+
+  it('parses "memory_upsert" with all fields', () => {
+    const result = parseToolCall('memory_upsert', {
+      key: 'github/username',
+      values: ['sudip-mondal-2002'],
+      category: 'account',
+      sourceUrl: 'https://github.com',
+    }) as AgentAction & { type: 'memory_upsert' };
+    expect(result.type).toBe('memory_upsert');
+    expect(result.key).toBe('github/username');
+    expect(result.values).toEqual(['sudip-mondal-2002']);
+    expect(result.category).toBe('account');
+    expect(result.sourceUrl).toBe('https://github.com');
+  });
+
+  it('parses "memory_upsert" without optional sourceUrl', () => {
+    const result = parseToolCall('memory_upsert', {
+      key: 'locale/timezone',
+      values: ['Asia/Kolkata'],
+      category: 'preference',
+    }) as AgentAction & { type: 'memory_upsert' };
+    expect(result.type).toBe('memory_upsert');
+    expect(result.sourceUrl).toBeUndefined();
+  });
+
+  it('parses "memory_upsert" with multiple values', () => {
+    const result = parseToolCall('memory_upsert', {
+      key: 'google/email',
+      values: ['personal@gmail.com', 'work@company.com'],
+      category: 'account',
+    }) as AgentAction & { type: 'memory_upsert' };
+    expect(result.values).toEqual(['personal@gmail.com', 'work@company.com']);
+  });
+
+  it('parses "memory_delete"', () => {
+    const result = parseToolCall('memory_delete', {
+      key: 'github/username',
+    }) as AgentAction & { type: 'memory_delete' };
+    expect(result.type).toBe('memory_delete');
+    expect(result.key).toBe('github/username');
+  });
+
   // ── Control ───────────────────────────────────────────────────────────────
 
   it('parses "finish" with summary', () => {
@@ -192,11 +235,12 @@ describe('parseToolCall', () => {
     expect(result.question).toBe('Which account should I use?');
   });
 
-  it('covers all 16 named tool types', () => {
+  it('covers all 18 named tool types', () => {
     const toolNames = [
       'click', 'type', 'navigate', 'scroll', 'press_key',
       'fetch_dom',
       'vfs_save_screenshot', 'vfs_write', 'vfs_delete', 'vfs_download',
+      'memory_upsert', 'memory_delete',
       'todo_create', 'todo_update', 'todo_add',
       'finish', 'wait', 'ask_user',
     ];
@@ -212,6 +256,8 @@ describe('parseToolCall', () => {
         vfs_write: { name: 'x.txt', content: '' },
         vfs_delete: { fileId: 'id' },
         vfs_download: { url: 'https://x.com' },
+        memory_upsert: { key: 'test/key', values: ['v'], category: 'other' },
+        memory_delete: { key: 'test/key' },
         todo_create: { items: [] },
         todo_update: { updates: [] },
         todo_add: { items: [] },

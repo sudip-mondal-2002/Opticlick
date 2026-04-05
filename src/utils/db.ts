@@ -5,10 +5,11 @@
 import type { Session } from './types';
 
 const DB_NAME = 'OpticlickDB';
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 const STORE_NAME = 'conversations';
 const SESSIONS_STORE = 'sessions';
 const VFS_STORE = 'vfs_files';
+const MEMORY_STORE = 'memory';
 
 interface ConversationTurn {
   id?: number;
@@ -32,6 +33,9 @@ function openDB(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains(VFS_STORE)) {
         const vfsStore = db.createObjectStore(VFS_STORE, { keyPath: 'id' });
         vfsStore.createIndex('by-session', 'sessionId', { unique: false });
+      }
+      if (!db.objectStoreNames.contains(MEMORY_STORE)) {
+        db.createObjectStore(MEMORY_STORE, { keyPath: 'key' });
       }
     };
     req.onsuccess = (e) => resolve((e.target as IDBOpenDBRequest).result);
@@ -209,6 +213,101 @@ export async function clearVFSFiles(sessionId: number, excludeNames: string[] = 
         cursor.continue();
       }
     };
+    tx.oncomplete = () => resolve();
+    tx.onerror = (e) => reject((e.target as IDBTransaction).error);
+  });
+}
+
+// ─── Persistent Memory ──────────────────────────────────────────────────────
+
+export interface MemoryEntry {
+  /** Namespaced identifier, e.g. "github/username" or "google/email". */
+  key: string;
+  /** One or more values — supports multi-account scenarios. */
+  values: string[];
+  /** Broad category: account, preference, fact, other. */
+  category: string;
+  /** URL where this information was discovered. */
+  sourceUrl?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/**
+ * Insert or merge a memory entry.
+ * If the key already exists, new values are merged (deduplicated) into the
+ * existing array and metadata is updated.
+ */
+export async function upsertMemory(
+  key: string,
+  values: string[],
+  category = 'other',
+  sourceUrl?: string,
+): Promise<MemoryEntry> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(MEMORY_STORE, 'readwrite');
+    const store = tx.objectStore(MEMORY_STORE);
+    const getReq = store.get(key);
+    getReq.onsuccess = (e) => {
+      const existing = (e.target as IDBRequest).result as MemoryEntry | undefined;
+      const now = Date.now();
+      let entry: MemoryEntry;
+      if (existing) {
+        // Merge values, deduplicate
+        const merged = [...new Set([...existing.values, ...values])];
+        entry = {
+          ...existing,
+          values: merged,
+          category,
+          updatedAt: now,
+          ...(sourceUrl !== undefined && { sourceUrl }),
+        };
+      } else {
+        entry = {
+          key,
+          values: [...new Set(values)],
+          category,
+          sourceUrl,
+          createdAt: now,
+          updatedAt: now,
+        };
+      }
+      store.put(entry);
+      tx.oncomplete = () => resolve(entry);
+    };
+    tx.onerror = (e) => reject((e.target as IDBTransaction).error);
+  });
+}
+
+export async function getMemory(key: string): Promise<MemoryEntry | undefined> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(MEMORY_STORE, 'readonly');
+    const req = tx.objectStore(MEMORY_STORE).get(key);
+    req.onsuccess = (e) => resolve((e.target as IDBRequest).result as MemoryEntry | undefined);
+    req.onerror = (e) => reject((e.target as IDBRequest).error);
+  });
+}
+
+export async function getAllMemories(): Promise<MemoryEntry[]> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(MEMORY_STORE, 'readonly');
+    const req = tx.objectStore(MEMORY_STORE).getAll();
+    req.onsuccess = (e) => {
+      const entries = (e.target as IDBRequest).result as MemoryEntry[];
+      resolve(entries.sort((a, b) => b.updatedAt - a.updatedAt));
+    };
+    req.onerror = (e) => reject((e.target as IDBRequest).error);
+  });
+}
+
+export async function deleteMemory(key: string): Promise<void> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(MEMORY_STORE, 'readwrite');
+    tx.objectStore(MEMORY_STORE).delete(key);
     tx.oncomplete = () => resolve();
     tx.onerror = (e) => reject((e.target as IDBTransaction).error);
   });

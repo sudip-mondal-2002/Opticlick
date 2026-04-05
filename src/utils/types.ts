@@ -22,6 +22,15 @@ export interface DrawMarksResult {
   dpr: number;
 }
 
+/** A single entry in the agent's in-session scratchpad. */
+export interface ScratchpadEntry {
+  /** Short descriptive key, e.g. "issues_found", "search_results". */
+  key: string;
+  /** The accumulated or updated value for this note. */
+  value: string;
+  updatedAt: number;
+}
+
 /** A single item in the agent's task todo list. */
 export interface TodoItem {
   /** Short kebab-case identifier, e.g. "navigate-to-login". */
@@ -86,6 +95,12 @@ export type AgentAction =
   | { type: 'vfs_write'; name: string; content: string; mimeType?: string }
   | { type: 'vfs_delete'; fileId: string }
   | { type: 'vfs_download'; url: string; name?: string }
+  // ── Memory management ─────────────────────────────────────────────────────
+  | { type: 'memory_upsert'; key: string; values: string[]; category: string; sourceUrl?: string }
+  | { type: 'memory_delete'; key: string }
+  // ── Scratchpad ────────────────────────────────────────────────────────────
+  | { type: 'note_write'; key: string; value: string }
+  | { type: 'note_delete'; key: string }
   // ── Todo management ──────────────────────────────────────────────────────
   | { type: 'todo_create'; items: TodoItem[] }
   | { type: 'todo_update'; updates: TodoUpdate[] }

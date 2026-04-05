@@ -49,7 +49,7 @@ describe('models utilities', () => {
   describe('getModelLabel', () => {
     it('should return the label for a valid Gemini model ID', () => {
       expect(getModelLabel('gemini-3.1-flash-lite-preview')).toBe('Gemini 3.1 Flash Lite');
-      expect(getModelLabel('gemini-4-31b')).toBe('Gemma 4 31B');
+      expect(getModelLabel('gemma-4-31b-it')).toBe('Gemma 4 31B');
     });
 
     it('should return the ID itself if model not found', () => {
@@ -99,7 +99,7 @@ describe('models utilities', () => {
 
     it('should return false for Gemini model IDs', () => {
       expect(isOllamaModel('gemini-3.1-flash-lite-preview')).toBe(false);
-      expect(isOllamaModel('gemini-4-31b')).toBe(false);
+      expect(isOllamaModel('gemma-4-31b-it')).toBe(false);
     });
 
     it('should return false for empty string', () => {

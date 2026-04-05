@@ -8,13 +8,17 @@
 export { UI_TOOLS, clickTool, typeTool, navigateTool, scrollTool, pressKeyTool } from './ui';
 export { DOM_TOOLS, fetchDOMTool } from './dom';
 export { VFS_TOOLS, vfsSaveScreenshotTool, vfsWriteTool, vfsDeleteTool, vfsDownloadTool } from './vfs';
+export { MEMORY_TOOLS, memoryUpsertTool, memoryDeleteTool } from './memory';
 export { TODO_TOOLS, todoCreateTool, todoUpdateTool, todoAddTool } from './todo';
+export { SCRATCHPAD_TOOLS, noteWriteTool, noteDeleteTool } from './scratchpad';
 export { CONTROL_TOOLS, finishTool, waitTool, askUserTool } from './control';
 
 import { UI_TOOLS } from './ui';
 import { DOM_TOOLS } from './dom';
 import { VFS_TOOLS } from './vfs';
+import { MEMORY_TOOLS } from './memory';
 import { TODO_TOOLS } from './todo';
+import { SCRATCHPAD_TOOLS } from './scratchpad';
 import { CONTROL_TOOLS } from './control';
 import type { AgentAction, TodoItem } from '../types';
 
@@ -30,6 +34,8 @@ import type { AgentAction, TodoItem } from '../types';
  */
 export const AGENT_TOOLS = [
   ...TODO_TOOLS,
+  ...MEMORY_TOOLS,
+  ...SCRATCHPAD_TOOLS,
   ...VFS_TOOLS,
   ...DOM_TOOLS,
   ...UI_TOOLS,
@@ -105,6 +111,24 @@ export function parseToolCall(name: string, args: Record<string, any>): AgentAct
       return { type: 'todo_update', updates: args.updates as TodoUpdateItem[] };
     case 'todo_add':
       return { type: 'todo_add', items: args.items as TodoItem[] };
+
+    // ── Scratchpad ────────────────────────────────────────────────────────────
+    case 'note_write':
+      return { type: 'note_write', key: args.key as string, value: args.value as string };
+    case 'note_delete':
+      return { type: 'note_delete', key: args.key as string };
+
+    // ── Memory ────────────────────────────────────────────────────────────────
+    case 'memory_upsert':
+      return {
+        type: 'memory_upsert',
+        key: args.key as string,
+        values: args.values as string[],
+        category: args.category as string,
+        sourceUrl: args.sourceUrl as string | undefined,
+      };
+    case 'memory_delete':
+      return { type: 'memory_delete', key: args.key as string };
 
     // ── Control ──────────────────────────────────────────────────────────────
     case 'finish':
