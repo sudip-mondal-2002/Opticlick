@@ -55,6 +55,12 @@ This project is a Manifest V3 (MV3) Chrome Extension that functions as an autono
 - **Module layout:** DB CRUD in `src/utils/db.ts`, formatting in `src/utils/memory.ts`, tool schemas in `src/utils/tools/memory.ts`, action handling in `src/entrypoints/background/loop.ts`.
 - **Security Rule:** The LLM is instructed to NEVER store passwords, tokens, or API keys in memory.
 
+### 7. In-Session Scratchpad Memory
+- **Purpose:** Short-term memory for accumulating intermediate findings (e.g. issues extracted across multiple pages) during a single thread/session. Does NOT persist across sessions.
+- **Storage:** Synced to VFS as `__scratchpad.json` to survive service worker restarts. Cleared automatically on session completion.
+- **Agent Tools:** `note_write` (save/update note) and `note_delete` (remove note). Defined in `src/utils/tools/scratchpad.ts`.
+- **Context Injection:** Injected into every LLM prompt as a `── Scratchpad ──` block via `formatScratchpadForPrompt()` in `src/utils/scratchpad.ts`.
+
 ## Development Workflow
 - Follow standard asynchronous ES6 conventions.
 - Manage message passing strictly with Promises using `chrome.runtime.sendMessage` and `chrome.tabs.sendMessage` to prevent race conditions during the task loop.
