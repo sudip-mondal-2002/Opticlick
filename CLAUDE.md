@@ -6,7 +6,7 @@ This project is a Manifest V3 (MV3) Chrome Extension that functions as an autono
 ## LLM & API Configuration
 - **Model Selection:** Users can choose from Gemini/Gemma cloud models or locally-running Ollama models via the side panel dropdown:
   - Gemini 3.1 Flash Lite (default) — `gemini-3.1-flash-lite-preview`
-  - Gemma 4 31B — `gemini-4-31b`
+  - Gemma 4 31B — `gemini-4-31b-it`
   - Any Ollama models detected at `http://localhost:11434` (shown under "Ollama (Local)" section; requires models that support tool calling)
 - **Model Persistence:** Selected model is stored in `chrome.storage.local` and persists across sessions. Default is Gemini 3.1 Flash Lite.
 - **Ollama Detection:** On extension load, the side panel queries `http://localhost:11434/api/tags` (3 s timeout) to discover local models. If Ollama models are found and no Gemini key is stored, the first Ollama model is auto-selected. Internal Ollama model IDs use an `ollama:<name>` prefix (`isOllamaModel`, `ollamaModelId`, `ollamaModelName` helpers in `src/utils/models.ts`).

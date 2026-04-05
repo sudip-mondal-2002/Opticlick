@@ -20,7 +20,7 @@ export const AVAILABLE_MODELS: ModelOption[] = [
     provider: 'gemini',
   },
   {
-    id: 'gemini-4-31b',
+    id: 'gemini-4-31b-it',
     label: 'Gemma 4 31B',
     description: 'Larger model with enhanced reasoning',
     provider: 'gemini',
