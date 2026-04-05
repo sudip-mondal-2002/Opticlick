@@ -1,12 +1,13 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import type { AgentState, LogEntry, Session, AttachedFile } from '@/utils/types';
 import { getSessions, getConversationHistory } from '@/utils/db';
-import { DEFAULT_MODEL } from '@/utils/models';
+import { DEFAULT_MODEL, fetchOllamaModels, isOllamaModel } from '@/utils/models';
+import type { ModelOption } from '@/utils/models';
 import { ThemeProvider } from './context/ThemeContext';
 import { ApiKeySetup } from './components/ApiKeySetup';
+import { ApiKeyOverlay } from './components/ApiKeyOverlay';
 import { Header } from './components/Header';
 import { StepFooter } from './components/StepFooter';
-import { ApiKeyFooter } from './components/ApiKeyFooter';
 import { ModelSelector } from './components/ModelSelector';
 import { ChatInput } from './components/ChatInput';
 import { ChatFeed } from './components/ChatFeed';
@@ -47,11 +48,11 @@ function parseModelTurn(content: string): HistoryStep[] {
 
 function AgentUI() {
   const [apiKey, setApiKey] = useState<string | null>(null);
-  const [keyInput, setKeyInput] = useState('');
   const [keyLoading, setKeyLoading] = useState(true);
-  const [showKeyEdit, setShowKeyEdit] = useState(false);
+  const [showApiKeys, setShowApiKeys] = useState(false);
 
   const [selectedModel, setSelectedModel] = useState(DEFAULT_MODEL);
+  const [ollamaModels, setOllamaModels] = useState<ModelOption[]>([]);
 
   const [submittedPrompt, setSubmittedPrompt] = useState<string | null>(null);
   const [pendingQuestion, setPendingQuestion] = useState<string | null>(null);
@@ -73,27 +74,34 @@ function AgentUI() {
   // ── API key ────────────────────────────────────────────────────────────────
 
   useEffect(() => {
-    chrome.storage.local.get(['geminiApiKey', 'selectedModel']).then(({ geminiApiKey, selectedModel }) => {
-      setApiKey((geminiApiKey as string) || null);
-      setSelectedModel((selectedModel as string) || DEFAULT_MODEL);
+    (async () => {
+      const [{ geminiApiKey, selectedModel: stored }, ollama] = await Promise.all([
+        chrome.storage.local.get(['geminiApiKey', 'selectedModel']),
+        fetchOllamaModels(),
+      ]);
+      const key = (geminiApiKey as string) || null;
+      setApiKey(key);
+      setOllamaModels(ollama);
+      // If no Gemini key and a Gemini model is stored, auto-select the first running Ollama model
+      let model = (stored as string) || DEFAULT_MODEL;
+      if (!key && !isOllamaModel(model)) {
+        const firstRunning = ollama.find((m) => m.running);
+        if (firstRunning) model = firstRunning.id;
+      }
+      setSelectedModel(model);
       setKeyLoading(false);
-    });
+    })();
   }, []);
 
-  const saveKey = () => {
-    const trimmed = keyInput.trim();
-    if (!trimmed) return;
-    chrome.storage.local.set({ geminiApiKey: trimmed }).then(() => {
-      setApiKey(trimmed);
-      setKeyInput('');
-      setShowKeyEdit(false);
+  const saveKey = (key: string) => {
+    chrome.storage.local.set({ geminiApiKey: key }).then(() => {
+      setApiKey(key);
     });
   };
 
   const clearKey = () => {
     chrome.storage.local.remove('geminiApiKey').then(() => {
       setApiKey(null);
-      setShowKeyEdit(false);
     });
   };
 
@@ -247,17 +255,17 @@ function AgentUI() {
 
   if (keyLoading) return null;
 
-  if (!apiKey) {
+  // Require API key setup only when no Gemini key AND no Ollama model is selected
+  if (!apiKey && !isOllamaModel(selectedModel)) {
     return (
       <div className="flex flex-col h-screen bg-white dark:bg-slate-950 overflow-hidden">
         <div className="flex-1 overflow-y-auto">
-          <ApiKeySetup keyInput={keyInput} onKeyInputChange={setKeyInput} onSave={saveKey} />
+          <ApiKeySetup onSave={saveKey} />
         </div>
       </div>
     );
   }
 
-  const maskedKey = apiKey.slice(0, 8) + '••••••••••••';
   const activeSession = sessions.find((s) => s.id === currentSessionId);
 
   return (
@@ -271,11 +279,21 @@ function AgentUI() {
         />
       )}
 
+      {showApiKeys && (
+        <ApiKeyOverlay
+          apiKey={apiKey}
+          onSave={saveKey}
+          onClear={clearKey}
+          onClose={() => setShowApiKeys(false)}
+        />
+      )}
+
       <Header
         isRunning={isRunning}
         isError={isError}
         sessionCount={sessions.length}
         onShowSessions={() => setShowSessions(true)}
+        onShowApiKeys={() => setShowApiKeys(true)}
       />
 
       {/* Session continuation pill */}
@@ -342,18 +360,10 @@ function AgentUI() {
       <ModelSelector
         selectedModel={selectedModel}
         onModelChange={handleModelChange}
+        ollamaModels={ollamaModels}
+        hasGeminiKey={!!apiKey}
       />
 
-      <ApiKeyFooter
-        maskedKey={maskedKey}
-        showEdit={showKeyEdit}
-        keyInput={keyInput}
-        onKeyInputChange={setKeyInput}
-        onShowEdit={() => setShowKeyEdit(true)}
-        onSave={saveKey}
-        onClear={clearKey}
-        onCancel={() => { setShowKeyEdit(false); setKeyInput(''); }}
-      />
     </div>
   );
 }

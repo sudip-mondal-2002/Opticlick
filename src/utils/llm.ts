@@ -13,12 +13,13 @@
  */
 
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
+import { ChatOllama } from '@langchain/ollama';
 import { HumanMessage, SystemMessage, AIMessage, type BaseMessage, type AIMessageChunk } from '@langchain/core/messages';
 import { AGENT_TOOLS, parseToolCall } from './tools';
 import type { AgentAction, AgentResult, TodoItem } from './types';
 import type { VFSFile } from './db';
 import { formatTodoForPrompt } from './todo';
-import { DEFAULT_MODEL } from './models';
+import { DEFAULT_MODEL, OLLAMA_BASE_URL, isOllamaModel, ollamaModelName } from './models';
 
 const MAX_API_RETRIES = 5;
 const RATE_LIMIT_DELAY_MS = 10_000;
@@ -89,7 +90,9 @@ export interface InlineImage {
 }
 
 type LogFn = (msg: string, level?: string) => Promise<void>;
-type BoundModel = ReturnType<ChatGoogleGenerativeAI['bindTools']>;
+export type AnyModel = ChatGoogleGenerativeAI | ChatOllama;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type BoundModel = any;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -164,6 +167,11 @@ function todoContextBlock(todo: TodoItem[]): string {
 /**
  * Build the multipart human turn: task description, VFS listing, todo state,
  * optional reference images, and the annotated screenshot.
+ *
+ * @param ollamaFormat - When true, images use the OpenAI-compatible
+ *   `{ type: 'image_url', image_url: { url: '...' } }` format required by
+ *   @langchain/ollama. When false (default), uses the Gemini-native
+ *   `{ type: 'image', url: '...' }` format.
  */
 function buildUserMessage(
   userPrompt: string,
@@ -171,13 +179,20 @@ function buildUserMessage(
   currentTodo: TodoItem[],
   inlineImages: InlineImage[],
   base64Image: string,
+  ollamaFormat = false,
 ): HumanMessage {
-  const content: Array<{ type: string; text?: string; url?: string }> = [
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const content: Array<any> = [
     {
       type: 'text',
       text: `User task: ${userPrompt}${vfsContextBlock(vfsFiles)}${todoContextBlock(currentTodo)}`,
     },
   ];
+
+  const imageBlock = (dataUrl: string) =>
+    ollamaFormat
+      ? { type: 'image_url', image_url: { url: dataUrl } }
+      : { type: 'image', url: dataUrl };
 
   if (inlineImages.length > 0) {
     content.push({
@@ -186,7 +201,7 @@ function buildUserMessage(
     });
     for (const img of inlineImages) {
       content.push({ type: 'text', text: `[${img.name}]` });
-      content.push({ type: 'image', url: `data:${img.mimeType};base64,${img.data}` });
+      content.push(imageBlock(`data:${img.mimeType};base64,${img.data}`));
     }
   }
 
@@ -194,7 +209,7 @@ function buildUserMessage(
     type: 'text',
     text: '\n\nAnalyze the annotated screenshot and call the appropriate tools.',
   });
-  content.push({ type: 'image', url: `data:image/png;base64,${base64Image}` });
+  content.push(imageBlock(`data:image/png;base64,${base64Image}`));
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return new HumanMessage({ content: content as any });
@@ -363,8 +378,27 @@ export function createModel(apiKey: string, modelId?: string): ChatGoogleGenerat
   return new ChatGoogleGenerativeAI(config);
 }
 
+export function createOllamaModel(modelId: string): ChatOllama {
+  return new ChatOllama({
+    model: ollamaModelName(modelId),
+    baseUrl: OLLAMA_BASE_URL,
+    temperature: 0.1,
+  });
+}
+
+/**
+ * Unified factory — returns a Gemini or Ollama model depending on the model ID.
+ * For Ollama models, apiKey is ignored (may be null).
+ * For Gemini models, apiKey is required.
+ */
+export function createAnyModel(apiKey: string | null, modelId: string): AnyModel {
+  if (isOllamaModel(modelId)) return createOllamaModel(modelId);
+  if (!apiKey) throw new Error('Gemini API key required for Gemini models');
+  return createModel(apiKey, modelId);
+}
+
 export async function callModel(
-  model: ChatGoogleGenerativeAI,
+  model: AnyModel,
   base64Image: string,
   userPrompt: string,
   history: { role: string; content: string }[] = [],
@@ -373,10 +407,11 @@ export async function callModel(
   inlineImages: InlineImage[] = [],
   currentTodo: TodoItem[] = [],
 ): Promise<AgentResult> {
+  const ollamaFormat = model instanceof ChatOllama;
   const messages: BaseMessage[] = [
     new SystemMessage(SYSTEM_INSTRUCTIONS),
     ...buildHistory(history),
-    buildUserMessage(userPrompt, vfsFiles, currentTodo, inlineImages, base64Image),
+    buildUserMessage(userPrompt, vfsFiles, currentTodo, inlineImages, base64Image, ollamaFormat),
   ];
 
   const modelWithTools = model.bindTools([...AGENT_TOOLS]);

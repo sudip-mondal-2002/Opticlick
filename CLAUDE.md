@@ -4,11 +4,13 @@
 This project is a Manifest V3 (MV3) Chrome Extension that functions as an autonomous web agent. It uses the "Set-of-Mark" visual prompting technique and the Gemini 3.1 Pro model to navigate the web, analyze pages via screenshots, and execute actions by simulating hardware-level clicks via the Chrome DevTools Protocol.
 
 ## LLM & API Configuration
-- **Model Selection:** Users can choose from 2 available Gemini/Gemma models via the side panel dropdown:
+- **Model Selection:** Users can choose from Gemini/Gemma cloud models or locally-running Ollama models via the side panel dropdown:
   - Gemini 3.1 Flash Lite (default) — `gemini-3.1-flash-lite-preview`
   - Gemma 4 31B — `gemini-4-31b`
+  - Any Ollama models detected at `http://localhost:11434` (shown under "Ollama (Local)" section; requires models that support tool calling)
 - **Model Persistence:** Selected model is stored in `chrome.storage.local` and persists across sessions. Default is Gemini 3.1 Flash Lite.
-- **Authentication:** Before running tests or API calls, ensure the user has provided a valid Gemini API token or Google Cloud service credential in the local environment variables.
+- **Ollama Detection:** On extension load, the side panel queries `http://localhost:11434/api/tags` (3 s timeout) to discover local models. If Ollama models are found and no Gemini key is stored, the first Ollama model is auto-selected. Internal Ollama model IDs use an `ollama:<name>` prefix (`isOllamaModel`, `ollamaModelId`, `ollamaModelName` helpers in `src/utils/models.ts`).
+- **Authentication:** A Gemini API key is required only when a Gemini model is selected. Ollama models run locally and require no API key. The background loop (`loop.ts`) and the side panel gate both check `isOllamaModel(modelId)` before enforcing the key requirement.
 - **Multimodal Payload:** The LMM takes the user's prompt alongside a base64-encoded screenshot and returns a target ID in structured JSON.
 
 ## Architecture Constraints & Rules

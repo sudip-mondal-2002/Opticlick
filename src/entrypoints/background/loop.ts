@@ -3,12 +3,13 @@
  */
 
 import { appendConversationTurn, createSession, getConversationHistory, touchSession, saveVFSFile, writeVFSFile, listVFSFiles, clearVFSFiles, getVFSFile, deleteVFSFile } from '@/utils/db';
-import { callModel, createModel } from '@/utils/llm';
+import { callModel, createAnyModel } from '@/utils/llm';
 import type { InlineImage } from '@/utils/llm';
 import { loadTodoFromVFS, saveTodoToVFS, applyTodoUpdates, TODO_VFS_FILENAME } from '@/utils/todo';
 import type { AgentAction, TodoItem } from '@/utils/types';
 import { attachDebugger, detachDebugger, dispatchHardwareClick, dispatchScrollWheel, typeTextCDP, CDP_MODIFIER, getKeyCode, writeTempFile, cleanupTempFile } from '@/utils/cdp';
 import { shouldPivot, scrollDeltaIsSignificant, computeScrollDelta, MAX_PIVOT_RETRIES } from '@/utils/navigation-guard';
+import { isOllamaModel, DEFAULT_MODEL } from '@/utils/models';
 import type { ActionRecord } from '@/utils/navigation-guard';
 import { log } from '@/utils/agent-log';
 import { getAgentState, setAgentState } from '@/utils/agent-state';
@@ -292,12 +293,13 @@ export async function runAgentLoop(
 
   try {
     const { geminiApiKey } = await chrome.storage.local.get('geminiApiKey');
-    if (!geminiApiKey) {
+    const usingOllama = isOllamaModel(modelId ?? '');
+    if (!geminiApiKey && !usingOllama) {
       await log('No Gemini API key set. Open the extension and add your key.', 'error');
       await setAgentState({ status: 'error' });
       return;
     }
-    const model = createModel(geminiApiKey as string, modelId);
+    const model = createAnyModel((geminiApiKey as string) || null, modelId ?? DEFAULT_MODEL);
 
     if (!(await isTabInjectable(tabId))) {
       const urlMatch = userPrompt.match(/https?:\/\/[^\s"'<>]+/i);

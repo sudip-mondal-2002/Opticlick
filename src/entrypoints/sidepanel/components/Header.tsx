@@ -5,6 +5,7 @@ interface Props {
   isError: boolean;
   sessionCount: number;
   onShowSessions: () => void;
+  onShowApiKeys: () => void;
 }
 
 function SunIcon() {
@@ -31,7 +32,7 @@ function MoonIcon() {
   );
 }
 
-export function Header({ isRunning, isError, sessionCount, onShowSessions }: Props) {
+export function Header({ isRunning, isError, sessionCount, onShowSessions, onShowApiKeys }: Props) {
   const { theme, toggleTheme } = useTheme();
 
   const dotClass = isRunning
@@ -73,6 +74,17 @@ export function Header({ isRunning, isError, sessionCount, onShowSessions }: Pro
           <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
         </svg>
         {sessionCount > 0 && <span>{sessionCount}</span>}
+      </button>
+
+      {/* API keys button */}
+      <button
+        onClick={onShowApiKeys}
+        className="w-6 h-6 shrink-0 flex items-center justify-center rounded-md text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors"
+        title="Manage API keys"
+      >
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="7.5" cy="15.5" r="5.5" /><path d="M21 2l-9.6 9.6M15.5 7.5l3 3" />
+        </svg>
       </button>
 
       {/* Status dot */}

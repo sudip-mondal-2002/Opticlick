@@ -1,10 +1,18 @@
+import { useState } from 'react';
+
 interface Props {
-  keyInput: string;
-  onKeyInputChange: (v: string) => void;
-  onSave: () => void;
+  onSave: (key: string) => void;
 }
 
-export function ApiKeySetup({ keyInput, onKeyInputChange, onSave }: Props) {
+export function ApiKeySetup({ onSave }: Props) {
+  const [input, setInput] = useState('');
+
+  const handleSave = () => {
+    const trimmed = input.trim();
+    if (!trimmed) return;
+    onSave(trimmed);
+  };
+
   return (
     <div className="flex flex-col items-center px-6 pt-8 pb-6 bg-white dark:bg-slate-950 min-h-[300px]">
 
@@ -37,16 +45,16 @@ export function ApiKeySetup({ keyInput, onKeyInputChange, onSave }: Props) {
         className="w-full px-3 py-2.5 mb-3 border border-slate-200 dark:border-slate-700 rounded-lg text-[12.5px] font-mono bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-600 outline-none transition-[border-color,box-shadow] focus:border-sky-600 focus:ring-2 focus:ring-sky-600/20"
         type="password"
         placeholder="AIza…"
-        value={keyInput}
-        onChange={(e) => onKeyInputChange(e.target.value)}
-        onKeyDown={(e) => e.key === 'Enter' && onSave()}
+        value={input}
+        onChange={(e) => setInput(e.target.value)}
+        onKeyDown={(e) => e.key === 'Enter' && handleSave()}
         autoFocus
       />
 
       <button
         className="w-full py-2.5 bg-gradient-to-r from-sky-700 to-sky-500 text-white text-[13px] font-semibold rounded-lg shadow-[0_2px_14px_rgba(14,165,233,0.4)] transition-all hover:brightness-110 active:scale-[0.97] disabled:opacity-40 disabled:cursor-not-allowed"
-        disabled={!keyInput.trim()}
-        onClick={onSave}
+        disabled={!input.trim()}
+        onClick={handleSave}
       >
         Save &amp; Continue
       </button>
