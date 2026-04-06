@@ -18,9 +18,6 @@ import { SYSTEM_INSTRUCTIONS } from './system-prompt';
 import { buildHistory, buildUserMessage } from './prompt';
 import { streamWithRetry } from './llm-stream';
 
-// Re-export for backward compatibility with tests that import from this module
-export { thinkingFlushPoint, thinkingDeltaOf } from './llm-stream';
-
 const THINKING_LEVEL = 'HIGH';
 
 export interface InlineImage {
