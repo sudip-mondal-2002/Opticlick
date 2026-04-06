@@ -15,6 +15,7 @@
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { ChatOllama } from '@langchain/ollama';
 import { HumanMessage, SystemMessage, AIMessage, ToolMessage, type BaseMessage, type AIMessageChunk } from '@langchain/core/messages';
+import type { RunnableConfig } from '@langchain/core/runnables';
 import { AGENT_TOOLS, parseToolCall } from './tools';
 import type { AgentAction, AgentResult, RawToolCall, TodoItem, CoordinateEntry } from './types';
 import type { VFSFile, MemoryEntry, ConversationTurn } from './db';
@@ -322,14 +323,18 @@ async function streamWithRetry(
   modelWithTools: BoundModel,
   messages: BaseMessage[],
   logFn: LogFn,
+  config?: RunnableConfig,
 ): Promise<{ reasoning: string; actions: AgentAction[]; rawToolCalls: RawToolCall[] }> {
   let lastError: Error | undefined;
 
   for (let attempt = 1; attempt <= MAX_API_RETRIES; attempt++) {
     try {
+      // Prefer the caller-supplied config (contains LangGraph's trace callbacks so
+      // this LLM call is nested under the graph node span). Fall back to the global
+      // LangSmith tracer for standalone / test usage where no config is provided.
       const tracer = getLangSmithTracer();
-      const streamOptions = tracer ? { callbacks: [tracer] } : {};
-      const stream = await modelWithTools.stream(messages, streamOptions);
+      const streamConfig: RunnableConfig = config ?? (tracer ? { callbacks: [tracer] } : {});
+      const stream = await modelWithTools.stream(messages, streamConfig);
       const chunks: AIMessageChunk[] = [];
       let thinkingBuf = '';
       let streamedThinkingChars = 0;
@@ -475,6 +480,7 @@ export async function callModel(
   memoryEntries: MemoryEntry[] = [],
   scratchpadEntries: ScratchpadEntry[] = [],
   coordinateMap: CoordinateEntry[] = [],
+  config?: RunnableConfig,
 ): Promise<AgentResult> {
   const ollamaFormat = model instanceof ChatOllama;
   const messages: BaseMessage[] = [
@@ -484,6 +490,6 @@ export async function callModel(
   ];
 
   const modelWithTools = model.bindTools([...AGENT_TOOLS]);
-  const { reasoning, actions, rawToolCalls } = await streamWithRetry(modelWithTools, messages, logFn);
+  const { reasoning, actions, rawToolCalls } = await streamWithRetry(modelWithTools, messages, logFn, config);
   return { reasoning, actions, done: actions.some((a: AgentAction) => a.type === 'finish'), rawToolCalls };
 }

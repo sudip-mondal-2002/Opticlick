@@ -12,17 +12,8 @@ import { log } from '@/utils/agent-log';
 import { getAgentState, setAgentState } from '@/utils/agent-state';
 import { tempDownloadIds } from '@/utils/cdp';
 import { writeVFSFile } from '@/utils/db';
+import { arrayBufferToBase64 } from '@/utils/base64';
 import { runAgentLoop } from './background/loop';
-
-function arrayBufferToBase64(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer);
-  let binary = '';
-  const chunk = 8192;
-  for (let i = 0; i < bytes.length; i += chunk) {
-    binary += String.fromCharCode(...(bytes.subarray(i, i + chunk) as unknown as number[]));
-  }
-  return btoa(binary);
-}
 
 function filenameFromUrl(url: string): string {
   try {

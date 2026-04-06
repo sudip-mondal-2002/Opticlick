@@ -1,19 +1,27 @@
 /**
- * Main agent loop — Think → Annotate → Capture → Reason → Act.
+ * Agent loop entry point — delegates execution to the LangGraph state machine.
+ *
+ * This module handles setup and teardown:
+ *   1. Create / resume session, seed VFS with attachments.
+ *   2. Load persisted state (todo, memory, scratchpad).
+ *   3. Create the LLM model instance.
+ *   4. Navigate to the task URL if the current tab is a restricted page.
+ *   5. Inject the content script and block user input.
+ *   6. Attach the Chrome Debugger and install the file-chooser guard.
+ *   7. Stream the LangGraph agent to completion.
+ *   8. Clean up in the finally block (unblock input, detach debugger, etc.).
  */
 
-import { appendConversationTurn, createSession, getConversationHistory, touchSession, saveVFSFile, writeVFSFile, listVFSFiles, clearVFSFiles, getVFSFile, deleteVFSFile, getAllMemories, upsertMemory, deleteMemory } from '@/utils/db';
-import type { MemoryEntry } from '@/utils/db';
-import { callModel, createAnyModel } from '@/utils/llm';
-import type { InlineImage } from '@/utils/llm';
-import { loadTodoFromVFS, saveTodoToVFS, applyTodoUpdates, TODO_VFS_FILENAME } from '@/utils/todo';
-import { loadScratchpadFromVFS, saveScratchpadToVFS, upsertScratchpadEntry, deleteScratchpadEntry } from '@/utils/scratchpad';
-import type { ScratchpadEntry } from '@/utils/scratchpad';
-import type { AgentAction, RawToolCall, TodoItem } from '@/utils/types';
-import { attachDebugger, detachDebugger, dispatchHardwareClick, dispatchScrollWheel, typeTextCDP, CDP_MODIFIER, getKeyCode, writeTempFile, cleanupTempFile } from '@/utils/cdp';
-import { shouldPivot, scrollDeltaIsSignificant, computeScrollDelta, MAX_PIVOT_RETRIES } from '@/utils/navigation-guard';
+import {
+  createSession,
+  saveVFSFile,
+  clearVFSFiles,
+  getAllMemories,
+} from '@/utils/db';
+import { createAnyModel } from '@/utils/llm';
+import { loadTodoFromVFS, TODO_VFS_FILENAME } from '@/utils/todo';
+import { loadScratchpadFromVFS } from '@/utils/scratchpad';
 import { isOllamaModel, DEFAULT_MODEL } from '@/utils/models';
-import type { ActionRecord } from '@/utils/navigation-guard';
 import { log } from '@/utils/agent-log';
 import { getAgentState, setAgentState } from '@/utils/agent-state';
 import {
@@ -23,332 +31,11 @@ import {
   waitForTabLoad,
   retryTabUpdate,
 } from '@/utils/tab-helpers';
-import { captureScreenshot } from '@/utils/screenshot';
-import { waitForDOMIdle } from '@/utils/dom-idle';
-import { sleep } from '@/utils/sleep';
-import type { CoordinateEntry, DrawMarksResult, AttachedFile } from '@/utils/types';
-
-function arrayBufferToBase64(buffer: ArrayBuffer): string {
-  const bytes = new Uint8Array(buffer);
-  let binary = '';
-  const chunk = 8192;
-  for (let i = 0; i < bytes.length; i += chunk) {
-    binary += String.fromCharCode(...(bytes.subarray(i, i + chunk) as unknown as number[]));
-  }
-  return btoa(binary);
-}
-
-function filenameFromResponse(response: Response, url: string, override?: string): string {
-  if (override?.trim()) return override.trim();
-  const cd = response.headers.get('Content-Disposition');
-  if (cd) {
-    const m = cd.match(/filename\*?=(?:UTF-8''|"?)([^";\r\n]+)/i);
-    if (m) return decodeURIComponent(m[1].trim().replace(/^"|"$/g, ''));
-  }
-  try {
-    const path = new URL(url).pathname;
-    const last = path.split('/').filter(Boolean).pop();
-    if (last) return decodeURIComponent(last);
-  } catch { /* ignore */ }
-  return 'download';
-}
-
-const MAX_STEPS = 500;
-const STEP_DELAY_MS = 800;
-const RATE_LIMIT_DELAY_MS = 10_000;
-const MAX_EMPTY_RETRIES = 3;
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Action executors — each handles one AgentAction type
-// ─────────────────────────────────────────────────────────────────────────────
-
-/** Log the finish action's summary (the agent's final answer to the user). */
-async function logFinishSummary(actions: AgentAction[]): Promise<void> {
-  const finish = actions.find((a): a is Extract<AgentAction, { type: 'finish' }> => a.type === 'finish');
-  if (finish?.summary) await log(finish.summary, 'ok');
-}
-
-/**
- * Execute all non-UI actions (VFS mutations, todo, DOM) and store a tool-result turn per action.
- * rawToolCalls[i] must be parallel to actions[i] so each result is linked to its tool_call_id.
- */
-async function executeSideEffects(
-  actions: AgentAction[],
-  rawToolCalls: RawToolCall[],
-  sessionId: number,
-  tabId: number,
-  base64Image: string,
-  step: number,
-  coordinateMap: CoordinateEntry[],
-  currentTodo: TodoItem[],
-  userPrompt: string,
-  memoryEntries: MemoryEntry[],
-  scratchpadEntries: ScratchpadEntry[],
-): Promise<{ updatedTodo: TodoItem[]; mutations: string[]; updatedMemory: MemoryEntry[]; updatedScratchpad: ScratchpadEntry[] }> {
-  let updatedTodo = currentTodo;
-  let updatedMemory = memoryEntries;
-  let updatedScratchpad = scratchpadEntries;
-  const mutations: string[] = [];
-
-  for (let i = 0; i < actions.length; i++) {
-    const action = actions[i];
-    const toolCallId = rawToolCalls[i]?.id ?? '';
-    const toolName = rawToolCalls[i]?.name ?? action.type;
-
-    switch (action.type) {
-      // ── VFS ──────────────────────────────────────────────────────────────
-
-      case 'vfs_save_screenshot': {
-        const fname = action.name.trim() || `step_${step}.png`;
-        const saved = await writeVFSFile(sessionId, fname, base64Image, 'image/png');
-        const result = `Saved screenshot as "${saved.name}" (id: ${saved.id})`;
-        mutations.push(result);
-        await log(`VFS: saved screenshot → "${saved.name}"`, 'info');
-        await appendConversationTurn(sessionId, 'tool', result, { toolCallId, toolName });
-        break;
-      }
-
-      case 'vfs_write': {
-        const { name, content, mimeType = 'text/plain' } = action;
-        const base64Content = btoa(
-          Array.from(new TextEncoder().encode(content), (b) => String.fromCharCode(b)).join(''),
-        );
-        const saved = await writeVFSFile(sessionId, name, base64Content, mimeType);
-        const result = `Wrote "${saved.name}" (${saved.size} B, id: ${saved.id})`;
-        mutations.push(result);
-        await log(`VFS: wrote "${saved.name}" (${saved.size} B)`, 'info');
-        await appendConversationTurn(sessionId, 'tool', result, { toolCallId, toolName });
-        break;
-      }
-
-      case 'vfs_delete': {
-        await deleteVFSFile(action.fileId);
-        const result = `Deleted VFS file ${action.fileId}`;
-        mutations.push(result);
-        await log(`VFS: deleted file ${action.fileId}`, 'info');
-        await appendConversationTurn(sessionId, 'tool', result, { toolCallId, toolName });
-        break;
-      }
-
-      case 'vfs_download': {
-        const { url, name: nameHint } = action;
-        await log(`VFS: downloading ${url}`, 'info');
-        let result: string;
-        try {
-          const resp = await fetch(url);
-          if (!resp.ok) throw new Error(`HTTP ${resp.status} for ${url}`);
-          const mimeType =
-            resp.headers.get('Content-Type')?.split(';')[0].trim() ?? 'application/octet-stream';
-          const filename = filenameFromResponse(resp.clone(), url, nameHint);
-          const base64 = arrayBufferToBase64(await resp.arrayBuffer());
-          const saved = await writeVFSFile(sessionId, filename, base64, mimeType);
-          result = `Downloaded "${saved.name}" (${saved.size} B, id: ${saved.id})`;
-          await log(`VFS: downloaded → "${saved.name}" (${saved.size} B)`, 'info');
-        } catch (dlErr) {
-          const msg = (dlErr as Error).message;
-          result = `Download failed: ${msg}`;
-          await log(`VFS: download failed — ${msg}`, 'warn');
-        }
-        mutations.push(result);
-        await appendConversationTurn(sessionId, 'tool', result, { toolCallId, toolName });
-        break;
-      }
-
-      // ── Todo ─────────────────────────────────────────────────────────────
-
-      case 'todo_create': {
-        updatedTodo = action.items as TodoItem[];
-        await saveTodoToVFS(sessionId, updatedTodo);
-        const result = `Created todo plan with ${updatedTodo.length} item(s)`;
-        await log(`Todo: created plan with ${updatedTodo.length} item(s)`, 'info');
-        await appendConversationTurn(sessionId, 'tool', result, { toolCallId, toolName });
-        break;
-      }
-
-      case 'todo_update': {
-        updatedTodo = applyTodoUpdates(updatedTodo, action.updates);
-        await saveTodoToVFS(sessionId, updatedTodo);
-        const summary = action.updates
-          .map((u) => `${u.id}→${u.status ?? 'note'}`)
-          .join(', ');
-        const result = `Todo updated: ${summary}`;
-        await log(`Todo updated: ${summary}`, 'info');
-        await appendConversationTurn(sessionId, 'tool', result, { toolCallId, toolName });
-        break;
-      }
-
-      case 'todo_add': {
-        const existingIds = new Set(updatedTodo.map((item) => item.id));
-        const newItems = (action.items as TodoItem[]).filter((item) => !existingIds.has(item.id));
-        let result: string;
-        if (newItems.length > 0) {
-          updatedTodo = [...updatedTodo, ...newItems];
-          await saveTodoToVFS(sessionId, updatedTodo);
-          result = `Todo: added ${newItems.length} new item(s): ${newItems.map((item) => item.id).join(', ')}`;
-          await log(result, 'info');
-        } else {
-          result = 'Todo: no new items added (all IDs already exist)';
-        }
-        await appendConversationTurn(sessionId, 'tool', result, { toolCallId, toolName });
-        break;
-      }
-
-      // ── DOM inspection ────────────────────────────────────────────────────
-
-      case 'fetch_dom': {
-        const domTarget = coordinateMap.find((c) => c.id === action.targetId);
-        if (!domTarget) {
-          await log(`fetch_dom — element #${action.targetId} not in coordinate map`, 'warn');
-          await appendConversationTurn(
-            sessionId,
-            'tool',
-            `fetch_dom failed: element #${action.targetId} not found in coordinate map`,
-            { toolCallId, toolName },
-          );
-          break;
-        }
-        await log(`Fetching DOM of element #${domTarget.id}…`, 'observe');
-        try {
-          const domResult = await sendToTab<{
-            success: boolean;
-            outerHTML?: string;
-            tag?: string;
-            truncated?: boolean;
-            error?: string;
-          }>(tabId, { type: 'GET_ELEMENT_DOM', x: domTarget.rect.x, y: domTarget.rect.y });
-
-          if (domResult?.success && domResult.outerHTML) {
-            const truncNote = domResult.truncated ? ' [truncated at 40 KB]' : '';
-            await log(`DOM of #${domTarget.id} <${domResult.tag}> ready${truncNote}`, 'observe');
-            await appendConversationTurn(
-              sessionId,
-              'tool',
-              `[Step ${step}] DOM of element #${domTarget.id} <${domResult.tag}>${truncNote}:\n${domResult.outerHTML}\n\nTask: ${userPrompt}`,
-              { toolCallId, toolName },
-            );
-          } else {
-            await appendConversationTurn(
-              sessionId,
-              'tool',
-              `fetch_dom failed: ${domResult?.error ?? 'unknown error'}`,
-              { toolCallId, toolName },
-            );
-            await log(`DOM fetch failed — ${domResult?.error ?? 'unknown'}`, 'warn');
-          }
-        } catch (domErr) {
-          await log(`DOM fetch error — ${(domErr as Error).message}`, 'warn');
-          await appendConversationTurn(
-            sessionId,
-            'tool',
-            `fetch_dom error: ${(domErr as Error).message}`,
-            { toolCallId, toolName },
-          );
-        }
-        break;
-      }
-
-      // ── Wait ─────────────────────────────────────────────────────────────
-
-      case 'wait': {
-        await log(`Waiting ${action.ms} ms…`, 'act');
-        await sleep(action.ms);
-        const result = `Waited ${action.ms} ms`;
-        mutations.push(result);
-        await appendConversationTurn(sessionId, 'tool', result, { toolCallId, toolName });
-        break;
-      }
-
-      // ── Memory ────────────────────────────────────────────────────────────
-
-      case 'memory_upsert': {
-        const entry = await upsertMemory(action.key, action.values, action.category, action.sourceUrl);
-        const idx = updatedMemory.findIndex((m) => m.key === entry.key);
-        if (idx >= 0) updatedMemory = [...updatedMemory.slice(0, idx), entry, ...updatedMemory.slice(idx + 1)];
-        else updatedMemory = [...updatedMemory, entry];
-        const result = `Memory: saved "${entry.key}" = [${entry.values.join(', ')}]`;
-        mutations.push(result);
-        await log(`Memory: saved "${entry.key}" → [${entry.values.join(', ')}]`, 'info');
-        await appendConversationTurn(sessionId, 'tool', result, { toolCallId, toolName });
-        break;
-      }
-
-      case 'memory_delete': {
-        await deleteMemory(action.key);
-        updatedMemory = updatedMemory.filter((m) => m.key !== action.key);
-        const result = `Memory: deleted "${action.key}"`;
-        mutations.push(result);
-        await log(`Memory: deleted "${action.key}"`, 'info');
-        await appendConversationTurn(sessionId, 'tool', result, { toolCallId, toolName });
-        break;
-      }
-
-      // ── Scratchpad ────────────────────────────────────────────────────────
-
-      case 'note_write': {
-        updatedScratchpad = upsertScratchpadEntry(updatedScratchpad, action.key, action.value);
-        await saveScratchpadToVFS(sessionId, updatedScratchpad);
-        const result = `Scratchpad: saved note "${action.key}"`;
-        mutations.push(result);
-        await log(`Scratchpad: saved note "${action.key}"`, 'info');
-        await appendConversationTurn(sessionId, 'tool', result, { toolCallId, toolName });
-        break;
-      }
-
-      case 'note_delete': {
-        updatedScratchpad = deleteScratchpadEntry(updatedScratchpad, action.key);
-        await saveScratchpadToVFS(sessionId, updatedScratchpad);
-        const result = `Scratchpad: deleted note "${action.key}"`;
-        mutations.push(result);
-        await log(`Scratchpad: deleted note "${action.key}"`, 'info');
-        await appendConversationTurn(sessionId, 'tool', result, { toolCallId, toolName });
-        break;
-      }
-
-      // ── Finish ────────────────────────────────────────────────────────────
-
-      case 'finish': {
-        await appendConversationTurn(
-          sessionId, 'tool', `Task complete: ${action.summary}`, { toolCallId, toolName },
-        );
-        break;
-      }
-
-      // UI actions are handled by the caller
-      default:
-        break;
-    }
-  }
-
-  return { updatedTodo, mutations, updatedMemory, updatedScratchpad };
-}
-
-/** Press a key via CDP (rawKeyDown + keyUp). */
-async function pressKeyCDP(
-  tabId: number,
-  key: string,
-  waitForNav: boolean,
-): Promise<void> {
-  await attachDebugger(tabId);
-  await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
-    type: 'rawKeyDown',
-    key,
-    windowsVirtualKeyCode: getKeyCode(key),
-  });
-  await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
-    type: 'keyUp',
-    key,
-    windowsVirtualKeyCode: getKeyCode(key),
-  });
-  if (waitForNav) {
-    await sleep(600);
-    await waitForTabLoad(tabId, 10_000, false);
-    await ensureContentScript(tabId);
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Main loop
-// ─────────────────────────────────────────────────────────────────────────────
+import { attachDebugger, detachDebugger } from '@/utils/cdp';
+import { getLangSmithTracer } from '@/utils/langsmith-config';
+import type { AttachedFile } from '@/utils/types';
+import { buildAgentGraph } from './agent-graph';
+import type { AgentState } from './agent-graph';
 
 export async function runAgentLoop(
   tabId: number,
@@ -360,6 +47,7 @@ export async function runAgentLoop(
   const sessionId = existingSessionId ?? (await createSession(userPrompt));
   await setAgentState({ status: 'running', tabId, step: 0, prompt: userPrompt, sessionId });
 
+  // Seed VFS with any user-attached files
   if (attachments?.length) {
     for (const file of attachments) {
       await saveVFSFile(sessionId, file.name, file.data, file.mimeType);
@@ -367,48 +55,32 @@ export async function runAgentLoop(
     await log(`Loaded ${attachments.length} attached file(s) into VFS`, 'observe');
   }
 
-  let currentTodo: TodoItem[] = (await loadTodoFromVFS(sessionId)) ?? [];
+  // Load persisted state
+  const currentTodo = (await loadTodoFromVFS(sessionId)) ?? [];
   if (currentTodo.length > 0) {
     await log(`Resumed todo list: ${currentTodo.length} item(s) loaded from VFS`, 'observe');
   }
 
-  let memoryEntries: MemoryEntry[] = await getAllMemories();
+  const memoryEntries = await getAllMemories();
   if (memoryEntries.length > 0) {
     await log(`Long-term memory: ${memoryEntries.length} entries loaded`, 'observe');
   }
 
-  let currentScratchpad: ScratchpadEntry[] = await loadScratchpadFromVFS(sessionId);
+  const currentScratchpad = await loadScratchpadFromVFS(sessionId);
   if (currentScratchpad.length > 0) {
     await log(`Resumed scratchpad: ${currentScratchpad.length} note(s) loaded from VFS`, 'observe');
   }
 
-  // Capture the starting URL so the LLM can use it as an orientation anchor.
+  // Capture the starting URL for context anchoring
   let startingUrl = '';
   try {
     const tab = await chrome.tabs.get(tabId);
     startingUrl = tab.url ?? '';
-  } catch { /* tab may not be accessible yet; will stay empty */ }
+  } catch { /* tab may not be accessible yet */ }
 
-  // Augment every LLM call with the starting URL so the model can detect drift.
   const anchoredPrompt = startingUrl
     ? `${userPrompt}\n\n[CONTEXT: The task started on ${startingUrl}. If you are on an unrelated page, navigate back.]`
     : userPrompt;
-
-  await log(`Agent started`, 'observe');
-
-  // ── File chooser guard ────────────────────────────────────────────────────
-  const fileChooserGuard = (
-    source: chrome.debugger.Debuggee,
-    method: string,
-    params?: object,
-  ) => {
-    if (source.tabId !== tabId || method !== 'Page.fileChooserOpened') return;
-    const backendNodeId = (params as Record<string, unknown>)?.backendNodeId as number | undefined;
-    if (!backendNodeId) return;
-    chrome.debugger
-      .sendCommand({ tabId }, 'DOM.setFileInputFiles', { backendNodeId, files: [] })
-      .catch(() => {});
-  };
 
   try {
     const { geminiApiKey } = await chrome.storage.local.get('geminiApiKey');
@@ -420,6 +92,7 @@ export async function runAgentLoop(
     }
     const model = createAnyModel((geminiApiKey as string) || null, modelId ?? DEFAULT_MODEL);
 
+    // Navigate if the current tab cannot accept a content script
     if (!(await isTabInjectable(tabId))) {
       const urlMatch = userPrompt.match(/https?:\/\/[^\s"'<>]+/i);
       if (urlMatch) {
@@ -439,783 +112,113 @@ export async function runAgentLoop(
       'Page.setInterceptFileChooserDialog',
       { enabled: true },
     );
+
+    // File chooser guard — uses a mutable ref so it tracks tabId changes
+    // (a click action may switch the agent to a new tab mid-session).
+    const tabIdRef = { current: tabId };
+
+    const fileChooserGuard = (
+      source: { tabId?: number },
+      method: string,
+      params?: object,
+    ) => {
+      if (source.tabId !== tabIdRef.current || method !== 'Page.fileChooserOpened') return;
+      const backendNodeId = (params as Record<string, unknown>)?.backendNodeId as number | undefined;
+      if (!backendNodeId) return;
+      chrome.debugger
+        .sendCommand({ tabId: tabIdRef.current }, 'DOM.setFileInputFiles', {
+          backendNodeId,
+          files: [],
+        })
+        .catch(() => {});
+    };
+
     chrome.debugger.onEvent.addListener(fileChooserGuard);
 
-    let emptyRetries = 0;
-    const actionHistory: ActionRecord[] = [];
-    for (let step = 1; step <= MAX_STEPS; step++) {
-      const state = await getAgentState();
-      if (!state || state.status !== 'running') {
-        await log('Agent stopped by user.', 'warn');
-        break;
+    await log('Agent started', 'observe');
+
+    // Build the LangGraph state machine with a reference to the mutable tabId
+    const agentGraph = buildAgentGraph(tabIdRef);
+
+    const initialState: Partial<AgentState> = {
+      tabId,
+      sessionId,
+      userPrompt,
+      anchoredPrompt,
+      model,
+      attachments: attachments ?? [],
+      step: 0,
+      emptyRetries: 0,
+      actionHistory: [],
+      retryStep: false,
+      coordinateMap: [],
+      base64Image: '',
+      inlineImages: [],
+      currentTodo,
+      memoryEntries,
+      scratchpadEntries: currentScratchpad,
+      actions: [],
+      rawToolCalls: [],
+      reasoning: '',
+      done: false,
+      stopped: false,
+      askUserQuestion: undefined,
+      llmFailed: false,
+    };
+
+    const tracer = getLangSmithTracer();
+    const runConfig = {
+      // LangGraph counts each node execution toward the recursion limit.
+      // MAX_STEPS=500 steps × ~8 nodes per step = 4000 minimum.
+      recursionLimit: 5000,
+      ...(tracer ? { callbacks: [tracer] } : {}),
+    };
+
+    try {
+      for await (const _chunk of await agentGraph.stream(initialState, runConfig)) {
+        // Nodes log and persist side effects directly.
+        // Sync tabIdRef from agent state in case uiActionNode updated it.
+        const currentState = await getAgentState();
+        if (currentState?.tabId && currentState.tabId !== tabIdRef.current) {
+          tabIdRef.current = currentState.tabId;
+        }
       }
+    } catch (err) {
+      await log(`Unhandled agent error: ${(err as Error).message}`, 'error');
+      await setAgentState({ status: 'error' });
+    } finally {
+      const finalTabId = tabIdRef.current;
 
-      await setAgentState({ step });
-      chrome.runtime.sendMessage({ type: 'AGENT_STATE_CHANGE' }).catch(() => {});
-
+      // Restore page to normal state
+      try { await sendToTab(finalTabId, { type: 'UNBLOCK_INPUT' }); } catch { /* */ }
       try {
-        await attachDebugger(tabId);
-        await chrome.debugger.sendCommand(
-          { tabId },
-          'Page.setInterceptFileChooserDialog',
-          { enabled: true },
-        );
-      } catch { /* will be re-attached when needed */ }
-
-      // Re-install JS-level file dialog block after navigation.
-      try {
-        await chrome.debugger.sendCommand({ tabId }, 'Runtime.evaluate', {
+        await chrome.debugger.sendCommand({ tabId: finalTabId }, 'Runtime.evaluate', {
           expression: `(() => {
-            if (window.__opticlick_fileBlock) return;
-            window.__opticlick_origClick = HTMLInputElement.prototype.click;
-            HTMLInputElement.prototype.click = function() {
-              if (this.type === 'file') { window.__opticlick_fileInput = this; return; }
-              return window.__opticlick_origClick.call(this);
-            };
-            if (window.showOpenFilePicker) {
-              window.__opticlick_origPicker = window.showOpenFilePicker;
-              window.showOpenFilePicker = () => Promise.reject(new DOMException('Aborted', 'AbortError'));
-            }
-            window.__opticlick_clickGuard = (e) => {
-              const el = e.target;
-              if (el.tagName === 'INPUT' && el.type === 'file') { e.preventDefault(); window.__opticlick_fileInput = el; return; }
-              const label = el.closest ? el.closest('label') : null;
-              if (label) {
-                const forId = label.getAttribute('for');
-                let inp = forId ? document.getElementById(forId) : null;
-                if (!inp) inp = label.querySelector('input[type="file"]');
-                if (inp && inp.tagName === 'INPUT' && inp.type === 'file') { e.preventDefault(); window.__opticlick_fileInput = inp; return; }
-              }
-            };
-            document.addEventListener('click', window.__opticlick_clickGuard, { capture: true });
-            window.__opticlick_fileBlock = true;
+            if (window.__opticlick_origClick) HTMLInputElement.prototype.click = window.__opticlick_origClick;
+            if (window.__opticlick_origPicker) window.showOpenFilePicker = window.__opticlick_origPicker;
+            if (window.__opticlick_clickGuard) document.removeEventListener('click', window.__opticlick_clickGuard, { capture: true });
+            delete window.__opticlick_origClick;
+            delete window.__opticlick_origPicker;
+            delete window.__opticlick_clickGuard;
+            delete window.__opticlick_fileInput;
+            delete window.__opticlick_fileBlock;
           })()`,
         });
       } catch { /* */ }
-
-      // 1. Wait for DOM to settle
-      await waitForDOMIdle(tabId);
-
-      // 2. Draw Set-of-Mark annotations
-      let drawResult: DrawMarksResult | undefined;
+      chrome.debugger.onEvent.removeListener(fileChooserGuard);
       try {
-        drawResult = await sendToTab<DrawMarksResult>(tabId, { type: 'DRAW_MARKS' });
-      } catch {
-        await log('Re-injecting content script after navigation…', 'act');
-        await ensureContentScript(tabId);
-        drawResult = await sendToTab<DrawMarksResult>(tabId, { type: 'DRAW_MARKS' });
-      }
-
-      if (!drawResult) {
-        await log('Content script not responding. Cannot annotate page.', 'error');
-        break;
-      }
-
-      const { coordinateMap } = drawResult;
-
-      if (!coordinateMap || coordinateMap.length === 0) {
-        if (emptyRetries < MAX_EMPTY_RETRIES) {
-          emptyRetries++;
-          const waitMs = emptyRetries * 1500;
-          await log(
-            `No interactable elements found. Retrying in ${waitMs / 1000}s (${emptyRetries}/${MAX_EMPTY_RETRIES})…`,
-            'warn',
-          );
-          await sleep(waitMs);
-          step--;
-          continue;
-        }
-
-        // No interactable elements after retries — send plain screenshot.
-        await log('No interactable elements found after retries. Sending screenshot to LLM for guidance…', 'warn');
-        let plainScreenshot: string;
-        try {
-          plainScreenshot = await captureScreenshot(tabId);
-        } catch (snapErr) {
-          await log(`Screenshot failed: ${(snapErr as Error).message}. Retrying step…`, 'warn');
-          await appendConversationTurn(sessionId, 'user', `[Step ${step}] Screenshot capture failed: "${(snapErr as Error).message}". The page may still be loading. Task: ${userPrompt}`);
-          await sleep(1000);
-          step--;
-          continue;
-        }
-        await chrome.storage.session.set({ lastScreenshot: plainScreenshot, lastScreenshotStep: step });
-        await log('Screenshot captured — tap to preview', 'screenshot');
-
-        const historyForEmpty = await getConversationHistory(sessionId);
-        const vfsFilesForEmpty = await listVFSFiles(sessionId);
-        await log('Sending to LLM…', 'observe');
-
-        let emptyResult;
-        try {
-          emptyResult = await callModel(
-            model,
-            plainScreenshot,
-            `${anchoredPrompt}\n\n[SYSTEM NOTE: No interactable elements detected. Decide whether to navigate, scroll, press a key, or call finish if the goal is already achieved. Do NOT call click — there are no annotated elements.]`,
-            historyForEmpty,
-            log,
-            vfsFilesForEmpty,
-            [],
-            currentTodo,
-            memoryEntries,
-            currentScratchpad,
-          );
-        } catch (err) {
-          await log(`LLM call failed: ${(err as Error).message}. Giving up.`, 'error');
-          break;
-        }
-
-        if (emptyResult.reasoning) await log(emptyResult.reasoning, 'think');
-        await appendConversationTurn(sessionId, 'user', `[Step ${step}] Task: ${userPrompt} [No interactable elements]`);
-        await appendConversationTurn(
-          sessionId, 'model', emptyResult.reasoning || '',
-          { toolCalls: emptyResult.rawToolCalls },
+        await chrome.debugger.sendCommand(
+          { tabId: finalTabId },
+          'Page.setInterceptFileChooserDialog',
+          { enabled: false },
         );
-        await touchSession(sessionId);
-        emptyRetries = 0;
-
-        // Process side-effects (todo, VFS, DOM) — coordinateMap is empty here.
-        const { updatedTodo: newTodo, updatedMemory: newMem, updatedScratchpad: newScratchpad } = await executeSideEffects(
-          emptyResult.actions,
-          emptyResult.rawToolCalls,
-          sessionId,
-          tabId,
-          plainScreenshot,
-          step,
-          [],
-          currentTodo,
-          userPrompt,
-          memoryEntries,
-          currentScratchpad,
-        );
-        currentTodo = newTodo;
-        memoryEntries = newMem;
-        currentScratchpad = newScratchpad;
-
-        if (emptyResult.done) {
-          await logFinishSummary(emptyResult.actions);
-          await log('Task complete!', 'ok');
-          await setAgentState({ status: 'done' });
-          break;
-        }
-
-        // Execute the single UI action (navigate / scroll / press_key).
-        const emptyUiIdx = emptyResult.actions.findIndex((a) =>
-          a.type === 'navigate' || a.type === 'scroll' || a.type === 'press_key',
-        );
-        const uiAction = emptyUiIdx >= 0 ? emptyResult.actions[emptyUiIdx] as Extract<AgentAction, { type: 'navigate' | 'scroll' | 'press_key' }> : undefined;
-        const emptyUiCallId = emptyResult.rawToolCalls[emptyUiIdx]?.id ?? '';
-        const emptyUiCallName = emptyResult.rawToolCalls[emptyUiIdx]?.name ?? uiAction?.type ?? '';
-
-        if (!uiAction) {
-          await log('LLM could not determine a next action. Giving up.', 'error');
-          break;
-        }
-
-        if (uiAction.type === 'navigate') {
-          await log(`Navigating to: ${uiAction.url}`, 'act');
-          try {
-            try { await sendToTab(tabId, { type: 'UNBLOCK_INPUT' }); } catch { /* */ }
-            await detachDebugger(tabId);
-            await retryTabUpdate(tabId, { url: uiAction.url });
-            await waitForTabLoad(tabId, 15_000, true);
-            await ensureContentScript(tabId);
-            await sendToTab(tabId, { type: 'BLOCK_INPUT' });
-            await appendConversationTurn(sessionId, 'tool', `[Step ${step}] Navigated to ${uiAction.url}. Task: ${userPrompt}`, { toolCallId: emptyUiCallId, toolName: emptyUiCallName });
-          } catch (navErr) {
-            await log(`Navigation failed: ${(navErr as Error).message}`, 'warn');
-            await appendConversationTurn(sessionId, 'tool', `[ACTION FAILED - Step ${step}] Navigation to "${uiAction.url}" failed: "${(navErr as Error).message}". Task: ${userPrompt}`, { toolCallId: emptyUiCallId, toolName: emptyUiCallName });
-            try { await ensureContentScript(tabId); } catch { /* */ }
-            try { await sendToTab(tabId, { type: 'BLOCK_INPUT' }); } catch { /* */ }
-          }
-        } else if (uiAction.type === 'scroll') {
-          const scrollTargetId = uiAction.scrollTargetId;
-          if (shouldPivot(actionHistory, 'scroll', scrollTargetId)) {
-            await log(`Scroll pivot: same scroll repeated ${MAX_PIVOT_RETRIES} times with no progress.`, 'warn');
-            await appendConversationTurn(
-              sessionId, 'tool',
-              `[PIVOT REQUIRED - Step ${step}] This scroll has been attempted ${MAX_PIVOT_RETRIES} times with no progress. Try a different approach (navigate directly, interact with a different element, or call finish). Task: ${userPrompt}`,
-              { toolCallId: emptyUiCallId, toolName: emptyUiCallName },
-            );
-          } else {
-            const { deltaX, deltaY } = computeScrollDelta(uiAction.direction);
-            const label = `Scrolling page ${uiAction.direction}`;
-            await log(label, 'act');
-            try {
-              try { await sendToTab(tabId, { type: 'UNBLOCK_INPUT' }); } catch { /* */ }
-              await attachDebugger(tabId);
-              let beforeY = 0;
-              try {
-                const r = await chrome.debugger.sendCommand({ tabId }, 'Runtime.evaluate', {
-                  expression: 'window.scrollY', returnByValue: true,
-                }) as { result: { value: number } };
-                beforeY = r?.result?.value ?? 0;
-              } catch { /* measurement failure is non-fatal */ }
-              await dispatchScrollWheel(tabId, 600, 400, deltaX, deltaY);
-              await sleep(300);
-              let afterY = 0;
-              try {
-                const r = await chrome.debugger.sendCommand({ tabId }, 'Runtime.evaluate', {
-                  expression: 'window.scrollY', returnByValue: true,
-                }) as { result: { value: number } };
-                afterY = r?.result?.value ?? 0;
-              } catch { /* measurement failure is non-fatal */ }
-              const moved = scrollDeltaIsSignificant(beforeY, afterY);
-              const feedback = moved
-                ? label
-                : `${label} — page did not move (already at limit or content not scrollable)`;
-              try { await sendToTab(tabId, { type: 'BLOCK_INPUT' }); } catch { /* */ }
-              await appendConversationTurn(sessionId, 'tool', `[Step ${step}] ${feedback}. Task: ${userPrompt}`, { toolCallId: emptyUiCallId, toolName: emptyUiCallName });
-            } catch (scrollErr) {
-              await log(`Scroll failed: ${(scrollErr as Error).message}`, 'warn');
-            }
-            actionHistory.push({ type: 'scroll', targetId: scrollTargetId });
-          }
-        } else if (uiAction.type === 'press_key') {
-          await log(`Pressing key: ${uiAction.key}`, 'act');
-          try {
-            try { await sendToTab(tabId, { type: 'UNBLOCK_INPUT' }); } catch { /* */ }
-            await pressKeyCDP(tabId, uiAction.key, uiAction.key === 'Enter' || uiAction.key === 'Return');
-            try { await sendToTab(tabId, { type: 'BLOCK_INPUT' }); } catch { /* */ }
-            await appendConversationTurn(sessionId, 'tool', `[Step ${step}] Pressed key "${uiAction.key}". Task: ${userPrompt}`, { toolCallId: emptyUiCallId, toolName: emptyUiCallName });
-          } catch (keyErr) {
-            await log(`Key press failed: ${(keyErr as Error).message}`, 'warn');
-          }
-        }
-
-        await sleep(STEP_DELAY_MS);
-        continue;
-      }
-      emptyRetries = 0;
-
-      await chrome.storage.session.set({ coordinateMap });
-
-      // 3. Capture annotated screenshot
-      let base64Image: string;
-      try {
-        base64Image = await captureScreenshot(tabId);
-      } catch (snapErr) {
-        await log(`Screenshot failed: ${(snapErr as Error).message}. Retrying step…`, 'warn');
-        try { await sendToTab(tabId, { type: 'DESTROY_MARKS' }); } catch { /* */ }
-        await appendConversationTurn(sessionId, 'user', `[Step ${step}] Screenshot capture failed: "${(snapErr as Error).message}". The page may still be loading or navigating. Task: ${userPrompt}`);
-        await sleep(1000);
-        step--;
-        continue;
-      }
-      await chrome.storage.session.set({ lastScreenshot: base64Image, lastScreenshotStep: step });
-      await log('Screenshot captured — tap to preview', 'screenshot');
-      await saveVFSFile(sessionId, `step_${step}.png`, base64Image, 'image/png');
-
-      // 4. Destroy overlay
-      await sendToTab(tabId, { type: 'DESTROY_MARKS' });
-
-      // 5. Fetch conversation history and VFS listing
-      const history = await getConversationHistory(sessionId);
-      const vfsFiles = await listVFSFiles(sessionId);
-      await log('Sending to LLM…', 'observe');
-
-      const inlineImages: InlineImage[] =
-        step === 1 && attachments?.length
-          ? attachments
-              .filter((a) => a.mimeType.startsWith('image/'))
-              .map(({ name, mimeType, data }) => ({ name, mimeType, data }))
-          : [];
-
-      // 6. Call LLM → AgentResult
-      let result;
-      try {
-        result = await callModel(model, base64Image, anchoredPrompt, history, log, vfsFiles, inlineImages, currentTodo, memoryEntries, currentScratchpad, coordinateMap);
-      } catch (err) {
-        await log(`LLM call failed: ${(err as Error).message}. Will retry step.`, 'error');
-        await sleep(RATE_LIMIT_DELAY_MS);
-        continue;
-      }
-
-      const { reasoning, actions, done, rawToolCalls } = result;
-      if (reasoning) await log(reasoning, 'think');
-      // Gemini requires a user turn immediately before a function-call turn.
-      // We store a lightweight record of this step's context so history is valid.
-      await appendConversationTurn(sessionId, 'user', `[Step ${step}] Task: ${userPrompt}`);
-      await appendConversationTurn(
-        sessionId,
-        'model',
-        reasoning || '',
-        { toolCalls: rawToolCalls },
-      );
-      await touchSession(sessionId);
-
-      // 7. Execute side-effects (VFS, todo, fetch_dom) — stores a tool turn per action
-      const { updatedTodo, mutations, updatedMemory, updatedScratchpad } = await executeSideEffects(
-        actions,
-        rawToolCalls,
-        sessionId,
-        tabId,
-        base64Image,
-        step,
-        coordinateMap,
-        currentTodo,
-        userPrompt,
-        memoryEntries,
-        currentScratchpad,
-      );
-      currentTodo = updatedTodo;
-      memoryEntries = updatedMemory;
-      currentScratchpad = updatedScratchpad;
-
-      // Determine what kind of action(s) were requested
-      const uiAction = actions.find((a) =>
-        a.type === 'click' ||
-        a.type === 'type' ||
-        a.type === 'navigate' ||
-        a.type === 'scroll' ||
-        a.type === 'press_key',
-      );
-      const hasSideEffects = mutations.length > 0 || actions.some((a) => a.type === 'fetch_dom');
-
-      // Resolve the tool call ID for the UI action (used to store tool result turns)
-      const uiActionIdx = actions.findIndex((a) =>
-        a.type === 'click' || a.type === 'type' || a.type === 'navigate' ||
-        a.type === 'scroll' || a.type === 'press_key',
-      );
-      const uiToolCallId = rawToolCalls[uiActionIdx]?.id ?? '';
-      const uiToolName = rawToolCalls[uiActionIdx]?.name ?? uiAction?.type ?? '';
-
-      // 8. Check for ask_user action — pause and wait for reply
-      const askActionIdx = actions.findIndex((a) => a.type === 'ask_user');
-      const askAction = askActionIdx >= 0
-        ? (actions[askActionIdx] as Extract<AgentAction, { type: 'ask_user' }>)
-        : undefined;
-      if (askAction) {
-        await log(`Question: ${askAction.question}`, 'observe');
-        chrome.runtime.sendMessage({ type: 'ASK_USER', question: askAction.question }).catch(() => {});
-        chrome.runtime.sendMessage({ type: 'PLAY_SOUND', sound: 'ask' }).catch(() => {});
-        // Wait for user reply (poll chrome.storage.session)
-        const sessionStorage = chrome.storage.session;
-        await sessionStorage.remove('userReply');
-        const reply = await new Promise<string>((resolve) => {
-          const interval = setInterval(() => {
-            void (async () => {
-              const state = await getAgentState();
-              if (!state || state.status !== 'running') {
-                clearInterval(interval);
-                resolve('');
-                return;
-              }
-              const data = await sessionStorage.get('userReply') as { userReply?: string };
-              if (data.userReply !== undefined) {
-                clearInterval(interval);
-                await sessionStorage.remove('userReply');
-                resolve(data.userReply);
-              }
-            })();
-          }, 500);
-        });
-        if (!reply) {
-          await log('Agent stopped while waiting for user reply.', 'warn');
-          break;
-        }
-        await log(`User replied: ${reply}`, 'observe');
-        await appendConversationTurn(
-          sessionId,
-          'tool',
-          `User answered: ${reply}`,
-          { toolCallId: rawToolCalls[askActionIdx]?.id ?? '', toolName: rawToolCalls[askActionIdx]?.name ?? 'ask_user' },
-        );
-        await sleep(STEP_DELAY_MS);
-        continue;
-      }
-
-      // 8b. If done with no UI action, finish
-      if (done && !uiAction) {
-        await logFinishSummary(actions);
-        await log('Task complete!', 'ok');
-        chrome.runtime.sendMessage({ type: 'PLAY_SOUND', sound: 'finish' }).catch(() => {});
-        await setAgentState({ status: 'done' });
-        break;
-      }
-
-      // Side-effects only this turn — tool result turns already stored by executeSideEffects
-      if (!uiAction && hasSideEffects) {
-        if (done) {
-          await logFinishSummary(actions);
-          await log('Task complete!', 'ok');
-          await setAgentState({ status: 'done' });
-          break;
-        }
-        await sleep(STEP_DELAY_MS);
-        continue;
-      }
-
-      if (!uiAction) {
-        await log('No actionable response from LLM. Retrying step…', 'warn');
-        continue;
-      }
-
-      // 8a. Navigate
-      if (uiAction.type === 'navigate') {
-        await log(`Navigating to: ${uiAction.url}`, 'act');
-        try {
-          try { await sendToTab(tabId, { type: 'UNBLOCK_INPUT' }); } catch { /* */ }
-          await detachDebugger(tabId);
-          await retryTabUpdate(tabId, { url: uiAction.url });
-          await waitForTabLoad(tabId, 15_000, true);
-          await ensureContentScript(tabId);
-          await sendToTab(tabId, { type: 'BLOCK_INPUT' });
-          await appendConversationTurn(
-            sessionId, 'tool',
-            `[Step ${step}] Navigated to ${uiAction.url}. Task: ${userPrompt}`,
-            { toolCallId: uiToolCallId, toolName: uiToolName },
-          );
-        } catch (actErr) {
-          const errMsg = (actErr as Error).message;
-          await log(`Navigation to ${uiAction.url} failed: ${errMsg}`, 'warn');
-          await appendConversationTurn(
-            sessionId, 'tool',
-            `[ACTION FAILED - Step ${step}] Navigation to "${uiAction.url}" failed: "${errMsg}". Task: ${userPrompt}`,
-            { toolCallId: uiToolCallId, toolName: uiToolName },
-          );
-          try { await ensureContentScript(tabId); } catch { /* */ }
-          try { await sendToTab(tabId, { type: 'BLOCK_INPUT' }); } catch { /* */ }
-        }
-        await sleep(STEP_DELAY_MS);
-        continue;
-      }
-
-      // 8b. Scroll
-      if (uiAction.type === 'scroll') {
-        const scrollTargetId = uiAction.scrollTargetId;
-
-        // Anti-loop pivot check: bail out before dispatching if same scroll repeated too many times.
-        if (shouldPivot(actionHistory, 'scroll', scrollTargetId)) {
-          await log(`Scroll pivot: same scroll repeated ${MAX_PIVOT_RETRIES} times with no progress.`, 'warn');
-          await appendConversationTurn(
-            sessionId, 'tool',
-            `[PIVOT REQUIRED - Step ${step}] This scroll has been attempted ${MAX_PIVOT_RETRIES} times with no progress. Try a different approach (navigate directly, interact with a different element, or call finish). Task: ${userPrompt}`,
-            { toolCallId: uiToolCallId, toolName: uiToolName },
-          );
-          await sleep(STEP_DELAY_MS);
-          continue;
-        }
-
-        const { deltaX, deltaY } = computeScrollDelta(uiAction.direction);
-
-        let scrollX = 600;
-        let scrollY = 400;
-        if (scrollTargetId != null) {
-          const scrollTarget = coordinateMap.find((c) => c.id === scrollTargetId);
-          if (scrollTarget) { scrollX = scrollTarget.rect.x; scrollY = scrollTarget.rect.y; }
-        }
-
-        const label = scrollTargetId
-          ? `Scrolling ${uiAction.direction} inside element #${scrollTargetId}`
-          : `Scrolling page ${uiAction.direction}`;
-        await log(label, 'act');
-
-        try {
-          try { await sendToTab(tabId, { type: 'UNBLOCK_INPUT' }); } catch { /* */ }
-          await attachDebugger(tabId);
-
-          // Measure scroll Y before dispatch to detect no-op scrolls.
-          let beforeY = 0;
-          try {
-            const r = await chrome.debugger.sendCommand({ tabId }, 'Runtime.evaluate', {
-              expression: 'window.scrollY', returnByValue: true,
-            }) as { result: { value: number } };
-            beforeY = r?.result?.value ?? 0;
-          } catch { /* measurement failure is non-fatal */ }
-
-          await dispatchScrollWheel(tabId, scrollX, scrollY, deltaX, deltaY);
-          await sleep(300);
-
-          let afterY = 0;
-          try {
-            const r = await chrome.debugger.sendCommand({ tabId }, 'Runtime.evaluate', {
-              expression: 'window.scrollY', returnByValue: true,
-            }) as { result: { value: number } };
-            afterY = r?.result?.value ?? 0;
-          } catch { /* measurement failure is non-fatal */ }
-
-          const moved = scrollDeltaIsSignificant(beforeY, afterY);
-          const feedback = moved
-            ? label
-            : `${label} — page did not move (already at limit or content not scrollable)`;
-
-          try { await sendToTab(tabId, { type: 'BLOCK_INPUT' }); } catch { /* */ }
-          await appendConversationTurn(
-            sessionId, 'tool',
-            `[Step ${step}] ${feedback}. Task: ${userPrompt}`,
-            { toolCallId: uiToolCallId, toolName: uiToolName },
-          );
-        } catch (actErr) {
-          const errMsg = (actErr as Error).message;
-          await log(`Scroll failed: ${errMsg}`, 'warn');
-          await appendConversationTurn(
-            sessionId, 'tool',
-            `[ACTION FAILED - Step ${step}] ${label} failed: "${errMsg}". Task: ${userPrompt}`,
-            { toolCallId: uiToolCallId, toolName: uiToolName },
-          );
-          try { await ensureContentScript(tabId); } catch { /* */ }
-          try { await sendToTab(tabId, { type: 'BLOCK_INPUT' }); } catch { /* */ }
-        }
-
-        // Record for anti-loop tracking regardless of success/failure.
-        actionHistory.push({ type: 'scroll', targetId: scrollTargetId });
-
-        await sleep(STEP_DELAY_MS);
-        continue;
-      }
-
-      // 8c. Type text into focused element
-      if (uiAction.type === 'type') {
-        await log(`Typing: "${uiAction.text}"`, 'act');
-        try {
-          try { await sendToTab(tabId, { type: 'UNBLOCK_INPUT' }); } catch { /* */ }
-          await typeTextCDP(tabId, uiAction.text, uiAction.clearField ?? false);
-
-          try { await sendToTab(tabId, { type: 'BLOCK_INPUT' }); } catch { /* */ }
-          await appendConversationTurn(
-            sessionId, 'tool',
-            `[Step ${step}] Typed: "${uiAction.text}". Task: ${userPrompt}`,
-            { toolCallId: uiToolCallId, toolName: uiToolName },
-          );
-        } catch (actErr) {
-          const errMsg = (actErr as Error).message;
-          await log(`Typing failed: ${errMsg}`, 'warn');
-          await appendConversationTurn(
-            sessionId, 'tool',
-            `[ACTION FAILED - Step ${step}] Typing "${uiAction.text}" failed: "${errMsg}". Task: ${userPrompt}`,
-            { toolCallId: uiToolCallId, toolName: uiToolName },
-          );
-          try { await ensureContentScript(tabId); } catch { /* */ }
-          try { await sendToTab(tabId, { type: 'BLOCK_INPUT' }); } catch { /* */ }
-        }
-        await sleep(STEP_DELAY_MS);
-        continue;
-      }
-
-      // 8d. Standalone key press (no click target)
-      if (uiAction.type === 'press_key') {
-        await log(`Pressing key: ${uiAction.key}`, 'act');
-        try {
-          try { await sendToTab(tabId, { type: 'UNBLOCK_INPUT' }); } catch { /* */ }
-          await pressKeyCDP(
-            tabId,
-            uiAction.key,
-            uiAction.key === 'Enter' || uiAction.key === 'Return',
-          );
-          try { await sendToTab(tabId, { type: 'BLOCK_INPUT' }); } catch { /* */ }
-          await appendConversationTurn(
-            sessionId, 'tool',
-            `[Step ${step}] Pressed key "${uiAction.key}". Task: ${userPrompt}`,
-            { toolCallId: uiToolCallId, toolName: uiToolName },
-          );
-        } catch (actErr) {
-          const errMsg = (actErr as Error).message;
-          await log(`Key press "${uiAction.key}" failed: ${errMsg}`, 'warn');
-          await appendConversationTurn(
-            sessionId, 'tool',
-            `[ACTION FAILED - Step ${step}] Pressing key "${uiAction.key}" failed: "${errMsg}". Task: ${userPrompt}`,
-            { toolCallId: uiToolCallId, toolName: uiToolName },
-          );
-          await waitForTabLoad(tabId, 10_000, false);
-          try { await ensureContentScript(tabId); } catch { /* */ }
-          try { await sendToTab(tabId, { type: 'BLOCK_INPUT' }); } catch { /* */ }
-        }
-        await sleep(STEP_DELAY_MS);
-        continue;
-      }
-
-      // 8d. Click (with optional type + key)
-      if (uiAction.type === 'click') {
-        const target = coordinateMap.find((c) => c.id === uiAction.targetId);
-        if (!target) {
-          const errMsg = `Target ID ${uiAction.targetId} not found in coordinate map — element may have disappeared.`;
-          await log(errMsg, 'warn');
-          await appendConversationTurn(
-            sessionId, 'tool',
-            `[ACTION FAILED - Step ${step}] ${errMsg} Choose a valid element ID. Task: ${userPrompt}`,
-            { toolCallId: uiToolCallId, toolName: uiToolName },
-          );
-          await sleep(STEP_DELAY_MS);
-          continue;
-        }
-
-        await log(
-          `Clicking element #${target.id} "${target.text}" at (${target.rect.x}, ${target.rect.y})`,
-          'act',
-        );
-
-        let newTabId: number | null = null;
-        const newTabListener = (tab: chrome.tabs.Tab) => {
-          if (tab.openerTabId === tabId) newTabId = tab.id ?? null;
-        };
-        chrome.tabs.onCreated.addListener(newTabListener);
-
-        let actError: string | null = null;
-        try {
-          if (uiAction.uploadFileId) {
-            let vfsFile = await getVFSFile(uiAction.uploadFileId);
-            if (!vfsFile) {
-              const allFiles = await listVFSFiles(sessionId);
-              vfsFile = allFiles.find((f) => f.name === uiAction.uploadFileId);
-            }
-            if (!vfsFile) throw new Error(`VFS file "${uiAction.uploadFileId}" not found.`);
-            await log(`Uploading "${vfsFile.name}" → element #${target.id}`, 'act');
-
-            const x = target.rect.x;
-            const y = target.rect.y;
-
-            // ── Phase 1: HTML5 drag-drop (primary) ────────────────────────────
-            // Dispatch dragenter/dragover/drop carrying an in-memory File object.
-            // No click, no temp file, no OS file picker possible.
-            // Works for explicit drop zones (reads e.dataTransfer.files) AND for
-            // <input type="file"> elements via Chrome's native drop handler.
-            // We target both the visible element at the clicked coordinates AND
-            // the first reachable file input, so all upload patterns are covered.
-            await chrome.debugger.sendCommand({ tabId }, 'Runtime.evaluate', {
-              expression: `window.__oc_dd={b:${JSON.stringify(vfsFile.data)},n:${JSON.stringify(vfsFile.name)},t:${JSON.stringify(vfsFile.mimeType)}}`,
-            });
-            await chrome.debugger.sendCommand({ tabId }, 'Runtime.evaluate', {
-              expression: `(function(){
-                var d=window.__oc_dd; delete window.__oc_dd; if(!d) return;
-                try {
-                  var bytes=Uint8Array.from(atob(d.b),function(c){return c.charCodeAt(0);});
-                  var file=new File([bytes],d.n,{type:d.t});
-                  var dt=new DataTransfer(); dt.items.add(file);
-                  function drag(el){
-                    ['dragenter','dragover','drop'].forEach(function(ev){
-                      el.dispatchEvent(new DragEvent(ev,{dataTransfer:dt,bubbles:true,cancelable:true}));
-                    });
-                  }
-                  var tgt=document.elementFromPoint(${x},${y});
-                  if(tgt) drag(tgt);
-                  var inp=window.__opticlick_fileInput||document.querySelector('input[type="file"]');
-                  if(inp&&inp!==tgt) drag(inp);
-                } catch(e){}
-              })()`,
-            });
-            await sleep(300);
-
-            // ── Phase 2: CDP fallback ──────────────────────────────────────────
-            // For <input type="file"> elements that did not receive files from the
-            // synthetic drop (Chrome may require a trusted event in some cases),
-            // fall back to DOM.setFileInputFiles which bypasses all restrictions.
-            const tempDl = await writeTempFile(vfsFile.data, vfsFile.name, vfsFile.mimeType);
-            try {
-              const inputEval = (await chrome.debugger.sendCommand({ tabId }, 'Runtime.evaluate', {
-                expression: `(function(){
-                  var inp=window.__opticlick_fileInput||document.querySelector('input[type="file"]');
-                  return (inp&&inp.files&&inp.files.length===0)?inp:null;
-                })()`,
-              })) as { result: { objectId?: string; subtype?: string } };
-              const objectId = inputEval?.result?.objectId;
-              if (objectId && inputEval.result.subtype !== 'null') {
-                await chrome.debugger.sendCommand({ tabId }, 'DOM.setFileInputFiles', {
-                  objectId,
-                  files: [tempDl.filePath],
-                });
-                await log('Uploaded via drag-drop + CDP fallback', 'act');
-              } else {
-                await log('Uploaded via drag-drop', 'act');
-              }
-            } finally {
-              await cleanupTempFile(tempDl.downloadId);
-            }
-          } else {
-            try { await sendToTab(tabId, { type: 'UNBLOCK_INPUT' }); } catch { /* */ }
-            const modBitmask = uiAction.modifier ? (CDP_MODIFIER[uiAction.modifier] ?? 0) : 0;
-            // Disable every file input before the hardware click.
-            // Disabled inputs cannot be activated through ANY path — labels, buttons,
-            // or direct clicks — so the OS file picker can never open.
-            // We restore them immediately after; CDP setFileInputFiles bypasses disabled.
-            try {
-              await chrome.debugger.sendCommand({ tabId }, 'Runtime.evaluate', {
-                expression: `document.querySelectorAll('input[type="file"]').forEach(function(i){i.dataset.ocfd=i.disabled?'1':'0';i.disabled=true;})`,
-              });
-            } catch { /* page may be navigating */ }
-            await dispatchHardwareClick(tabId, target.rect.x, target.rect.y, modBitmask);
-            try {
-              await chrome.debugger.sendCommand({ tabId }, 'Runtime.evaluate', {
-                expression: `document.querySelectorAll('[data-ocfd]').forEach(function(i){i.disabled=i.dataset.ocfd==='1';delete i.dataset.ocfd;})`,
-              });
-            } catch { /* page may have navigated */ }
-          }
-
-        } catch (actErr_) {
-          actError = (actErr_ as Error).message;
-          await log(`Action on #${target.id} failed: ${actError}`, 'warn');
-          await waitForTabLoad(tabId, 10_000, false);
-          try { await ensureContentScript(tabId); } catch { /* */ }
-        }
-
-        await sleep(500);
-        chrome.tabs.onCreated.removeListener(newTabListener);
-
-        if (newTabId) {
-          await log(`Click opened new tab. Following it.`, 'observe');
-          try { await sendToTab(tabId, { type: 'UNBLOCK_INPUT' }); } catch { /* */ }
-          await detachDebugger(tabId);
-          tabId = newTabId;
-          await setAgentState({ tabId });
-          await retryTabUpdate(tabId, { active: true });
-          await waitForTabLoad(tabId);
-          await ensureContentScript(tabId);
-          await sendToTab(tabId, { type: 'BLOCK_INPUT' });
-          await appendConversationTurn(
-            sessionId, 'tool',
-            `[Step ${step}] Clicked #${uiAction.targetId} ("${target.text}") → opened new tab. Task: ${userPrompt}`,
-            { toolCallId: uiToolCallId, toolName: uiToolName },
-          );
-        } else if (actError) {
-          try { await sendToTab(tabId, { type: 'BLOCK_INPUT' }); } catch { /* */ }
-          await appendConversationTurn(
-            sessionId, 'tool',
-            `[ACTION FAILED - Step ${step}] Clicking element #${uiAction.targetId} ("${target.text}") failed: "${actError}". Task: ${userPrompt}`,
-            { toolCallId: uiToolCallId, toolName: uiToolName },
-          );
-        } else {
-          try { await sendToTab(tabId, { type: 'BLOCK_INPUT' }); } catch { /* */ }
-          await appendConversationTurn(
-            sessionId, 'tool',
-            `[Step ${step}] Clicked element #${uiAction.targetId} ("${target.text}"). Task: ${userPrompt}`,
-            { toolCallId: uiToolCallId, toolName: uiToolName },
-          );
-        }
-
-        await sleep(STEP_DELAY_MS);
-
-        if (done) {
-          await logFinishSummary(actions);
-          await log('Task complete!', 'ok');
-          await setAgentState({ status: 'done' });
-          break;
-        }
-      }
+      } catch { /* */ }
+      await detachDebugger(finalTabId);
+      try { await clearVFSFiles(sessionId, [TODO_VFS_FILENAME]); } catch { /* */ }
+      chrome.runtime.sendMessage({ type: 'AGENT_STATE_CHANGE' }).catch(() => {});
     }
   } catch (err) {
-    await log(`Unhandled agent error: ${(err as Error).message}`, 'error');
+    await log(`Fatal: ${(err as Error).message}`, 'error');
     await setAgentState({ status: 'error' });
-  } finally {
-    try { await sendToTab(tabId, { type: 'UNBLOCK_INPUT' }); } catch { /* */ }
-    try {
-      await chrome.debugger.sendCommand({ tabId }, 'Runtime.evaluate', {
-        expression: `(() => {
-          if (window.__opticlick_origClick) HTMLInputElement.prototype.click = window.__opticlick_origClick;
-          if (window.__opticlick_origPicker) window.showOpenFilePicker = window.__opticlick_origPicker;
-          if (window.__opticlick_clickGuard) document.removeEventListener('click', window.__opticlick_clickGuard, { capture: true });
-          delete window.__opticlick_origClick;
-          delete window.__opticlick_origPicker;
-          delete window.__opticlick_clickGuard;
-          delete window.__opticlick_fileInput;
-          delete window.__opticlick_fileBlock;
-        })()`,
-      });
-    } catch { /* */ }
-    chrome.debugger.onEvent.removeListener(fileChooserGuard);
-    try {
-      await chrome.debugger.sendCommand({ tabId }, 'Page.setInterceptFileChooserDialog', { enabled: false });
-    } catch { /* */ }
-    await detachDebugger(tabId);
-    try { await clearVFSFiles(sessionId, [TODO_VFS_FILENAME]); } catch { /* */ }
-    chrome.runtime.sendMessage({ type: 'AGENT_STATE_CHANGE' }).catch(() => {});
   }
 }
