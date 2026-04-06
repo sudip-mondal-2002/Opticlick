@@ -59,6 +59,7 @@ export const AgentStateAnnotation = Annotation.Root({
   actions: Annotation<AgentAction[]>({ reducer: (_, b) => b }),
   rawToolCalls: Annotation<RawToolCall[]>({ reducer: (_, b) => b }),
   reasoning: Annotation<string>({ reducer: (_, b) => b }),
+  thinking: Annotation<string>({ reducer: (_, b) => b }),
   done: Annotation<boolean>({ reducer: (_, b) => b }),
 
   // Control flow

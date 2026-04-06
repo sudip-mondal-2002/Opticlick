@@ -105,5 +105,5 @@ export async function reasonNode(state: AgentState, config: RunnableConfig): Pro
   await appendConversationTurn(state.sessionId, 'model', reasoning || '', { toolCalls: rawToolCalls });
   await touchSession(state.sessionId);
 
-  return { actions, rawToolCalls, reasoning: reasoning || '', done, llmFailed: false };
+  return { actions, rawToolCalls, reasoning: reasoning || '', thinking: thinking || '', done, llmFailed: false };
 }

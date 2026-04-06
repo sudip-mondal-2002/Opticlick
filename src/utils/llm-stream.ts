@@ -84,13 +84,16 @@ function parseResponse(response: AIMessageChunk): { reasoning: string; actions: 
  * Thinking tokens are progressively flushed to the sidebar via
  * `onThinkingDelta` (sentence-boundary batching via `thinkingFlushPoint`),
  * giving the user a live streaming experience. The complete thinking text
- * is also returned so the caller can persist it to LangSmith as a single
- * unified attribute.
+ * is also returned so the caller can persist it in the graph state.
  *
  * Rate-limit (429) errors use a longer base delay than general errors.
  *
- * When `config` is provided (LangGraph node context), its callbacks are used
- * so the LLM call is nested under the current graph node span in LangSmith.
+ * LangSmith tracing: When `config` is provided from a LangGraph node, we
+ * strip its callbacks before passing to `.stream()`. This prevents the
+ * LangSmith tracer from recording each thinking delta as a separate
+ * "Reasoning" fragment. The consolidated thinking is returned in the
+ * graph state and appears in the node-level trace instead.
+ * For standalone calls (no config), the tracer is used directly.
  */
 export async function streamWithRetry(
   modelWithTools: BoundModel,
@@ -104,7 +107,17 @@ export async function streamWithRetry(
   for (let attempt = 1; attempt <= MAX_API_RETRIES; attempt++) {
     try {
       const tracer = getLangSmithTracer();
-      const streamConfig: RunnableConfig = config ?? (tracer ? { callbacks: [tracer] } : {});
+      // When config comes from a LangGraph node, strip its callbacks to prevent
+      // fragmented thinking traces in LangSmith. The node itself is still traced
+      // at the graph level with the consolidated thinking in its output.
+      // For standalone calls (no config), use the tracer directly.
+      let streamConfig: RunnableConfig;
+      if (config) {
+        const { callbacks: _stripped, ...rest } = config;
+        streamConfig = rest;
+      } else {
+        streamConfig = tracer ? { callbacks: [tracer] } : {};
+      }
       const stream = await modelWithTools.stream(messages, streamConfig);
       const chunks: AIMessageChunk[] = [];
       let collectedThinking = '';
