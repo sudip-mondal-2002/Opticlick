@@ -11,11 +11,21 @@ const SESSIONS_STORE = 'sessions';
 const VFS_STORE = 'vfs_files';
 const MEMORY_STORE = 'memory';
 
-interface ConversationTurn {
+export interface ConversationTurn {
   id?: number;
   sessionId: number;
+  /** "user" | "model" | "tool" */
   role: string;
   content: string;
+  /**
+   * For model turns: the raw tool calls the model produced.
+   * Parallel to the parsed AgentAction array — rawToolCalls[i] is the source of actions[i].
+   */
+  toolCalls?: Array<{ id: string; name: string; args: Record<string, unknown> }>;
+  /** For tool result turns: the tool_call_id this result belongs to. */
+  toolCallId?: string;
+  /** For tool result turns: the tool name (mirrors the model's function call name). */
+  toolName?: string;
   ts: number;
 }
 
@@ -88,12 +98,26 @@ export async function appendConversationTurn(
   sessionId: number,
   role: string,
   content: string,
+  extra?: {
+    toolCalls?: ConversationTurn['toolCalls'];
+    toolCallId?: string;
+    toolName?: string;
+  },
 ): Promise<void> {
   const db = await openDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE_NAME, 'readwrite');
     const store = tx.objectStore(STORE_NAME);
-    store.add({ sessionId, role, content, ts: Date.now() } satisfies ConversationTurn);
+    const turn: Omit<ConversationTurn, 'id'> = {
+      sessionId,
+      role,
+      content,
+      ts: Date.now(),
+      ...(extra?.toolCalls != null && { toolCalls: extra.toolCalls }),
+      ...(extra?.toolCallId != null && { toolCallId: extra.toolCallId }),
+      ...(extra?.toolName != null && { toolName: extra.toolName }),
+    };
+    store.add(turn);
     tx.oncomplete = () => resolve();
     tx.onerror = (e) => reject((e.target as IDBTransaction).error);
   });

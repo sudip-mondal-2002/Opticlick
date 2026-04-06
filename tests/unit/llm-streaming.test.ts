@@ -224,6 +224,28 @@ describe('callModel — streaming integration', () => {
     expect(result.actions[0].type).toBe('finish');
   });
 
+  it('returns rawToolCalls parallel to actions', async () => {
+    const { model } = makeModel([
+      toolChunk('todo_update', { updates: [{ id: 'step-1', status: 'done' }] }),
+      toolChunk('click', { targetId: 3 }),
+    ]);
+
+    const result = await callModel(
+      model as ReturnType<typeof createModel>,
+      'base64img',
+      'Click something',
+    );
+
+    expect(result.rawToolCalls).toHaveLength(2);
+    expect(result.rawToolCalls[0].name).toBe('todo_update');
+    expect(result.rawToolCalls[0].id).toBe('call_todo_update');
+    expect(result.rawToolCalls[1].name).toBe('click');
+    expect(result.rawToolCalls[1].id).toBe('call_click');
+    // rawToolCalls[i] is the source of actions[i]
+    expect(result.actions[0].type).toBe('todo_update');
+    expect(result.actions[1].type).toBe('click');
+  });
+
   it('retries on error and succeeds on the second attempt', async () => {
     let calls = 0;
     const boundModel = {

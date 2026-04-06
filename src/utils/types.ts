@@ -22,15 +22,6 @@ export interface DrawMarksResult {
   dpr: number;
 }
 
-/** A single entry in the agent's in-session scratchpad. */
-export interface ScratchpadEntry {
-  /** Short descriptive key, e.g. "issues_found", "search_results". */
-  key: string;
-  /** The accumulated or updated value for this note. */
-  value: string;
-  updatedAt: number;
-}
-
 /** A single item in the agent's task todo list. */
 export interface TodoItem {
   /** Short kebab-case identifier, e.g. "navigate-to-login". */
@@ -118,6 +109,16 @@ export type AgentAction =
       question: string;
     };
 
+/** A single raw tool call as returned by the LLM (before parsing into AgentAction). */
+export interface RawToolCall {
+  /** Tool call ID assigned by the model (used to link function_response in history). */
+  id: string;
+  /** Tool name as declared in the schema (e.g. "click", "todo_update"). */
+  name: string;
+  /** Raw arguments object from the model. */
+  args: Record<string, unknown>;
+}
+
 /** Structured result returned by callModel. */
 export interface AgentResult {
   /** Model's step-by-step reasoning (from text content or thinking tokens). */
@@ -126,6 +127,12 @@ export interface AgentResult {
   actions: AgentAction[];
   /** True when a `finish` action is present. */
   done: boolean;
+  /**
+   * Raw tool calls in the same order as `actions`.
+   * rawToolCalls[i] is the untyped source of actions[i].
+   * Used to persist proper function_call / function_response history.
+   */
+  rawToolCalls: RawToolCall[];
 }
 
 /** Persisted agent state in chrome.storage.session. */

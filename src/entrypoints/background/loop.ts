@@ -9,7 +9,7 @@ import type { InlineImage } from '@/utils/llm';
 import { loadTodoFromVFS, saveTodoToVFS, applyTodoUpdates, TODO_VFS_FILENAME } from '@/utils/todo';
 import { loadScratchpadFromVFS, saveScratchpadToVFS, upsertScratchpadEntry, deleteScratchpadEntry } from '@/utils/scratchpad';
 import type { ScratchpadEntry } from '@/utils/scratchpad';
-import type { AgentAction, TodoItem } from '@/utils/types';
+import type { AgentAction, RawToolCall, TodoItem } from '@/utils/types';
 import { attachDebugger, detachDebugger, dispatchHardwareClick, dispatchScrollWheel, typeTextCDP, CDP_MODIFIER, getKeyCode, writeTempFile, cleanupTempFile } from '@/utils/cdp';
 import { shouldPivot, scrollDeltaIsSignificant, computeScrollDelta, MAX_PIVOT_RETRIES } from '@/utils/navigation-guard';
 import { isOllamaModel, DEFAULT_MODEL } from '@/utils/models';
@@ -68,9 +68,13 @@ async function logFinishSummary(actions: AgentAction[]): Promise<void> {
   if (finish?.summary) await log(finish.summary, 'ok');
 }
 
-/** Execute all non-UI actions (VFS mutations, todo, DOM) and return a summary. */
+/**
+ * Execute all non-UI actions (VFS mutations, todo, DOM) and store a tool-result turn per action.
+ * rawToolCalls[i] must be parallel to actions[i] so each result is linked to its tool_call_id.
+ */
 async function executeSideEffects(
   actions: AgentAction[],
+  rawToolCalls: RawToolCall[],
   sessionId: number,
   tabId: number,
   base64Image: string,
@@ -86,15 +90,21 @@ async function executeSideEffects(
   let updatedScratchpad = scratchpadEntries;
   const mutations: string[] = [];
 
-  for (const action of actions) {
+  for (let i = 0; i < actions.length; i++) {
+    const action = actions[i];
+    const toolCallId = rawToolCalls[i]?.id ?? '';
+    const toolName = rawToolCalls[i]?.name ?? action.type;
+
     switch (action.type) {
       // ── VFS ──────────────────────────────────────────────────────────────
 
       case 'vfs_save_screenshot': {
         const fname = action.name.trim() || `step_${step}.png`;
         const saved = await writeVFSFile(sessionId, fname, base64Image, 'image/png');
-        mutations.push(`Saved screenshot as "${saved.name}" (id: ${saved.id})`);
+        const result = `Saved screenshot as "${saved.name}" (id: ${saved.id})`;
+        mutations.push(result);
         await log(`VFS: saved screenshot → "${saved.name}"`, 'info');
+        await appendConversationTurn(sessionId, 'tool', result, { toolCallId, toolName });
         break;
       }
 
@@ -104,21 +114,26 @@ async function executeSideEffects(
           Array.from(new TextEncoder().encode(content), (b) => String.fromCharCode(b)).join(''),
         );
         const saved = await writeVFSFile(sessionId, name, base64Content, mimeType);
-        mutations.push(`Wrote "${saved.name}" (${saved.size} B, id: ${saved.id})`);
+        const result = `Wrote "${saved.name}" (${saved.size} B, id: ${saved.id})`;
+        mutations.push(result);
         await log(`VFS: wrote "${saved.name}" (${saved.size} B)`, 'info');
+        await appendConversationTurn(sessionId, 'tool', result, { toolCallId, toolName });
         break;
       }
 
       case 'vfs_delete': {
         await deleteVFSFile(action.fileId);
-        mutations.push(`Deleted VFS file ${action.fileId}`);
+        const result = `Deleted VFS file ${action.fileId}`;
+        mutations.push(result);
         await log(`VFS: deleted file ${action.fileId}`, 'info');
+        await appendConversationTurn(sessionId, 'tool', result, { toolCallId, toolName });
         break;
       }
 
       case 'vfs_download': {
         const { url, name: nameHint } = action;
         await log(`VFS: downloading ${url}`, 'info');
+        let result: string;
         try {
           const resp = await fetch(url);
           if (!resp.ok) throw new Error(`HTTP ${resp.status} for ${url}`);
@@ -127,13 +142,15 @@ async function executeSideEffects(
           const filename = filenameFromResponse(resp.clone(), url, nameHint);
           const base64 = arrayBufferToBase64(await resp.arrayBuffer());
           const saved = await writeVFSFile(sessionId, filename, base64, mimeType);
-          mutations.push(`Downloaded "${saved.name}" (${saved.size} B, id: ${saved.id})`);
+          result = `Downloaded "${saved.name}" (${saved.size} B, id: ${saved.id})`;
           await log(`VFS: downloaded → "${saved.name}" (${saved.size} B)`, 'info');
         } catch (dlErr) {
           const msg = (dlErr as Error).message;
-          mutations.push(`Download failed: ${msg}`);
+          result = `Download failed: ${msg}`;
           await log(`VFS: download failed — ${msg}`, 'warn');
         }
+        mutations.push(result);
+        await appendConversationTurn(sessionId, 'tool', result, { toolCallId, toolName });
         break;
       }
 
@@ -142,7 +159,9 @@ async function executeSideEffects(
       case 'todo_create': {
         updatedTodo = action.items as TodoItem[];
         await saveTodoToVFS(sessionId, updatedTodo);
+        const result = `Created todo plan with ${updatedTodo.length} item(s)`;
         await log(`Todo: created plan with ${updatedTodo.length} item(s)`, 'info');
+        await appendConversationTurn(sessionId, 'tool', result, { toolCallId, toolName });
         break;
       }
 
@@ -152,18 +171,25 @@ async function executeSideEffects(
         const summary = action.updates
           .map((u) => `${u.id}→${u.status ?? 'note'}`)
           .join(', ');
+        const result = `Todo updated: ${summary}`;
         await log(`Todo updated: ${summary}`, 'info');
+        await appendConversationTurn(sessionId, 'tool', result, { toolCallId, toolName });
         break;
       }
 
       case 'todo_add': {
-        const existingIds = new Set(updatedTodo.map((i) => i.id));
-        const newItems = (action.items as TodoItem[]).filter((i) => !existingIds.has(i.id));
+        const existingIds = new Set(updatedTodo.map((item) => item.id));
+        const newItems = (action.items as TodoItem[]).filter((item) => !existingIds.has(item.id));
+        let result: string;
         if (newItems.length > 0) {
           updatedTodo = [...updatedTodo, ...newItems];
           await saveTodoToVFS(sessionId, updatedTodo);
-          await log(`Todo: added ${newItems.length} new item(s): ${newItems.map((i) => i.id).join(', ')}`, 'info');
+          result = `Todo: added ${newItems.length} new item(s): ${newItems.map((item) => item.id).join(', ')}`;
+          await log(result, 'info');
+        } else {
+          result = 'Todo: no new items added (all IDs already exist)';
         }
+        await appendConversationTurn(sessionId, 'tool', result, { toolCallId, toolName });
         break;
       }
 
@@ -173,6 +199,12 @@ async function executeSideEffects(
         const domTarget = coordinateMap.find((c) => c.id === action.targetId);
         if (!domTarget) {
           await log(`fetch_dom — element #${action.targetId} not in coordinate map`, 'warn');
+          await appendConversationTurn(
+            sessionId,
+            'tool',
+            `fetch_dom failed: element #${action.targetId} not found in coordinate map`,
+            { toolCallId, toolName },
+          );
           break;
         }
         await log(`Fetching DOM of element #${domTarget.id}…`, 'observe');
@@ -190,14 +222,27 @@ async function executeSideEffects(
             await log(`DOM of #${domTarget.id} <${domResult.tag}> ready${truncNote}`, 'observe');
             await appendConversationTurn(
               sessionId,
-              'user',
+              'tool',
               `[Step ${step}] DOM of element #${domTarget.id} <${domResult.tag}>${truncNote}:\n${domResult.outerHTML}\n\nTask: ${userPrompt}`,
+              { toolCallId, toolName },
             );
           } else {
+            await appendConversationTurn(
+              sessionId,
+              'tool',
+              `fetch_dom failed: ${domResult?.error ?? 'unknown error'}`,
+              { toolCallId, toolName },
+            );
             await log(`DOM fetch failed — ${domResult?.error ?? 'unknown'}`, 'warn');
           }
         } catch (domErr) {
           await log(`DOM fetch error — ${(domErr as Error).message}`, 'warn');
+          await appendConversationTurn(
+            sessionId,
+            'tool',
+            `fetch_dom error: ${(domErr as Error).message}`,
+            { toolCallId, toolName },
+          );
         }
         break;
       }
@@ -207,7 +252,9 @@ async function executeSideEffects(
       case 'wait': {
         await log(`Waiting ${action.ms} ms…`, 'act');
         await sleep(action.ms);
-        mutations.push(`Waited ${action.ms} ms`);
+        const result = `Waited ${action.ms} ms`;
+        mutations.push(result);
+        await appendConversationTurn(sessionId, 'tool', result, { toolCallId, toolName });
         break;
       }
 
@@ -215,20 +262,23 @@ async function executeSideEffects(
 
       case 'memory_upsert': {
         const entry = await upsertMemory(action.key, action.values, action.category, action.sourceUrl);
-        // Update local copy so subsequent turns in this loop see the new memory
         const idx = updatedMemory.findIndex((m) => m.key === entry.key);
         if (idx >= 0) updatedMemory = [...updatedMemory.slice(0, idx), entry, ...updatedMemory.slice(idx + 1)];
         else updatedMemory = [...updatedMemory, entry];
-        mutations.push(`Memory: saved "${entry.key}" = [${entry.values.join(', ')}]`);
+        const result = `Memory: saved "${entry.key}" = [${entry.values.join(', ')}]`;
+        mutations.push(result);
         await log(`Memory: saved "${entry.key}" → [${entry.values.join(', ')}]`, 'info');
+        await appendConversationTurn(sessionId, 'tool', result, { toolCallId, toolName });
         break;
       }
 
       case 'memory_delete': {
         await deleteMemory(action.key);
         updatedMemory = updatedMemory.filter((m) => m.key !== action.key);
-        mutations.push(`Memory: deleted "${action.key}"`);
+        const result = `Memory: deleted "${action.key}"`;
+        mutations.push(result);
         await log(`Memory: deleted "${action.key}"`, 'info');
+        await appendConversationTurn(sessionId, 'tool', result, { toolCallId, toolName });
         break;
       }
 
@@ -237,20 +287,33 @@ async function executeSideEffects(
       case 'note_write': {
         updatedScratchpad = upsertScratchpadEntry(updatedScratchpad, action.key, action.value);
         await saveScratchpadToVFS(sessionId, updatedScratchpad);
-        mutations.push(`Scratchpad: saved note "${action.key}"`);
+        const result = `Scratchpad: saved note "${action.key}"`;
+        mutations.push(result);
         await log(`Scratchpad: saved note "${action.key}"`, 'info');
+        await appendConversationTurn(sessionId, 'tool', result, { toolCallId, toolName });
         break;
       }
 
       case 'note_delete': {
         updatedScratchpad = deleteScratchpadEntry(updatedScratchpad, action.key);
         await saveScratchpadToVFS(sessionId, updatedScratchpad);
-        mutations.push(`Scratchpad: deleted note "${action.key}"`);
+        const result = `Scratchpad: deleted note "${action.key}"`;
+        mutations.push(result);
         await log(`Scratchpad: deleted note "${action.key}"`, 'info');
+        await appendConversationTurn(sessionId, 'tool', result, { toolCallId, toolName });
         break;
       }
 
-      // UI actions and finish are handled by the caller
+      // ── Finish ────────────────────────────────────────────────────────────
+
+      case 'finish': {
+        await appendConversationTurn(
+          sessionId, 'tool', `Task complete: ${action.summary}`, { toolCallId, toolName },
+        );
+        break;
+      }
+
+      // UI actions are handled by the caller
       default:
         break;
     }
@@ -502,13 +565,18 @@ export async function runAgentLoop(
         }
 
         if (emptyResult.reasoning) await log(emptyResult.reasoning, 'think');
-        await appendConversationTurn(sessionId, 'model', emptyResult.reasoning || JSON.stringify(emptyResult.actions.map((a) => a.type)));
+        await appendConversationTurn(sessionId, 'user', `[Step ${step}] Task: ${userPrompt} [No interactable elements]`);
+        await appendConversationTurn(
+          sessionId, 'model', emptyResult.reasoning || '',
+          { toolCalls: emptyResult.rawToolCalls },
+        );
         await touchSession(sessionId);
         emptyRetries = 0;
 
         // Process side-effects (todo, VFS, DOM) — coordinateMap is empty here.
         const { updatedTodo: newTodo, updatedMemory: newMem, updatedScratchpad: newScratchpad } = await executeSideEffects(
           emptyResult.actions,
+          emptyResult.rawToolCalls,
           sessionId,
           tabId,
           plainScreenshot,
@@ -531,9 +599,12 @@ export async function runAgentLoop(
         }
 
         // Execute the single UI action (navigate / scroll / press_key).
-        const uiAction = emptyResult.actions.find((a) =>
+        const emptyUiIdx = emptyResult.actions.findIndex((a) =>
           a.type === 'navigate' || a.type === 'scroll' || a.type === 'press_key',
         );
+        const uiAction = emptyUiIdx >= 0 ? emptyResult.actions[emptyUiIdx] as Extract<AgentAction, { type: 'navigate' | 'scroll' | 'press_key' }> : undefined;
+        const emptyUiCallId = emptyResult.rawToolCalls[emptyUiIdx]?.id ?? '';
+        const emptyUiCallName = emptyResult.rawToolCalls[emptyUiIdx]?.name ?? uiAction?.type ?? '';
 
         if (!uiAction) {
           await log('LLM could not determine a next action. Giving up.', 'error');
@@ -549,10 +620,10 @@ export async function runAgentLoop(
             await waitForTabLoad(tabId, 15_000, true);
             await ensureContentScript(tabId);
             await sendToTab(tabId, { type: 'BLOCK_INPUT' });
-            await appendConversationTurn(sessionId, 'user', `[Step ${step}] Navigated to ${uiAction.url}. Task: ${userPrompt}`);
+            await appendConversationTurn(sessionId, 'tool', `[Step ${step}] Navigated to ${uiAction.url}. Task: ${userPrompt}`, { toolCallId: emptyUiCallId, toolName: emptyUiCallName });
           } catch (navErr) {
             await log(`Navigation failed: ${(navErr as Error).message}`, 'warn');
-            await appendConversationTurn(sessionId, 'user', `[ACTION FAILED - Step ${step}] Navigation to "${uiAction.url}" failed: "${(navErr as Error).message}". Task: ${userPrompt}`);
+            await appendConversationTurn(sessionId, 'tool', `[ACTION FAILED - Step ${step}] Navigation to "${uiAction.url}" failed: "${(navErr as Error).message}". Task: ${userPrompt}`, { toolCallId: emptyUiCallId, toolName: emptyUiCallName });
             try { await ensureContentScript(tabId); } catch { /* */ }
             try { await sendToTab(tabId, { type: 'BLOCK_INPUT' }); } catch { /* */ }
           }
@@ -561,9 +632,9 @@ export async function runAgentLoop(
           if (shouldPivot(actionHistory, 'scroll', scrollTargetId)) {
             await log(`Scroll pivot: same scroll repeated ${MAX_PIVOT_RETRIES} times with no progress.`, 'warn');
             await appendConversationTurn(
-              sessionId,
-              'user',
+              sessionId, 'tool',
               `[PIVOT REQUIRED - Step ${step}] This scroll has been attempted ${MAX_PIVOT_RETRIES} times with no progress. Try a different approach (navigate directly, interact with a different element, or call finish). Task: ${userPrompt}`,
+              { toolCallId: emptyUiCallId, toolName: emptyUiCallName },
             );
           } else {
             const { deltaX, deltaY } = computeScrollDelta(uiAction.direction);
@@ -593,7 +664,7 @@ export async function runAgentLoop(
                 ? label
                 : `${label} — page did not move (already at limit or content not scrollable)`;
               try { await sendToTab(tabId, { type: 'BLOCK_INPUT' }); } catch { /* */ }
-              await appendConversationTurn(sessionId, 'user', `[Step ${step}] ${feedback}. Task: ${userPrompt}`);
+              await appendConversationTurn(sessionId, 'tool', `[Step ${step}] ${feedback}. Task: ${userPrompt}`, { toolCallId: emptyUiCallId, toolName: emptyUiCallName });
             } catch (scrollErr) {
               await log(`Scroll failed: ${(scrollErr as Error).message}`, 'warn');
             }
@@ -605,7 +676,7 @@ export async function runAgentLoop(
             try { await sendToTab(tabId, { type: 'UNBLOCK_INPUT' }); } catch { /* */ }
             await pressKeyCDP(tabId, uiAction.key, uiAction.key === 'Enter' || uiAction.key === 'Return');
             try { await sendToTab(tabId, { type: 'BLOCK_INPUT' }); } catch { /* */ }
-            await appendConversationTurn(sessionId, 'user', `[Step ${step}] Pressed key "${uiAction.key}". Task: ${userPrompt}`);
+            await appendConversationTurn(sessionId, 'tool', `[Step ${step}] Pressed key "${uiAction.key}". Task: ${userPrompt}`, { toolCallId: emptyUiCallId, toolName: emptyUiCallName });
           } catch (keyErr) {
             await log(`Key press failed: ${(keyErr as Error).message}`, 'warn');
           }
@@ -652,25 +723,30 @@ export async function runAgentLoop(
       // 6. Call LLM → AgentResult
       let result;
       try {
-        result = await callModel(model, base64Image, anchoredPrompt, history, log, vfsFiles, inlineImages, currentTodo, memoryEntries, currentScratchpad);
+        result = await callModel(model, base64Image, anchoredPrompt, history, log, vfsFiles, inlineImages, currentTodo, memoryEntries, currentScratchpad, coordinateMap);
       } catch (err) {
         await log(`LLM call failed: ${(err as Error).message}. Will retry step.`, 'error');
         await sleep(RATE_LIMIT_DELAY_MS);
         continue;
       }
 
-      const { reasoning, actions, done } = result;
+      const { reasoning, actions, done, rawToolCalls } = result;
       if (reasoning) await log(reasoning, 'think');
+      // Gemini requires a user turn immediately before a function-call turn.
+      // We store a lightweight record of this step's context so history is valid.
+      await appendConversationTurn(sessionId, 'user', `[Step ${step}] Task: ${userPrompt}`);
       await appendConversationTurn(
         sessionId,
         'model',
-        reasoning || actions.map((a) => a.type).join(', '),
+        reasoning || '',
+        { toolCalls: rawToolCalls },
       );
       await touchSession(sessionId);
 
-      // 7. Execute side-effects (VFS, todo, fetch_dom)
+      // 7. Execute side-effects (VFS, todo, fetch_dom) — stores a tool turn per action
       const { updatedTodo, mutations, updatedMemory, updatedScratchpad } = await executeSideEffects(
         actions,
+        rawToolCalls,
         sessionId,
         tabId,
         base64Image,
@@ -695,8 +771,19 @@ export async function runAgentLoop(
       );
       const hasSideEffects = mutations.length > 0 || actions.some((a) => a.type === 'fetch_dom');
 
+      // Resolve the tool call ID for the UI action (used to store tool result turns)
+      const uiActionIdx = actions.findIndex((a) =>
+        a.type === 'click' || a.type === 'type' || a.type === 'navigate' ||
+        a.type === 'scroll' || a.type === 'press_key',
+      );
+      const uiToolCallId = rawToolCalls[uiActionIdx]?.id ?? '';
+      const uiToolName = rawToolCalls[uiActionIdx]?.name ?? uiAction?.type ?? '';
+
       // 8. Check for ask_user action — pause and wait for reply
-      const askAction = actions.find((a): a is Extract<AgentAction, { type: 'ask_user' }> => a.type === 'ask_user');
+      const askActionIdx = actions.findIndex((a) => a.type === 'ask_user');
+      const askAction = askActionIdx >= 0
+        ? (actions[askActionIdx] as Extract<AgentAction, { type: 'ask_user' }>)
+        : undefined;
       if (askAction) {
         await log(`Question: ${askAction.question}`, 'observe');
         chrome.runtime.sendMessage({ type: 'ASK_USER', question: askAction.question }).catch(() => {});
@@ -729,8 +816,9 @@ export async function runAgentLoop(
         await log(`User replied: ${reply}`, 'observe');
         await appendConversationTurn(
           sessionId,
-          'user',
-          `[Step ${step}] User answered "${askAction.question}": ${reply}. Task: ${userPrompt}`,
+          'tool',
+          `User answered: ${reply}`,
+          { toolCallId: rawToolCalls[askActionIdx]?.id ?? '', toolName: rawToolCalls[askActionIdx]?.name ?? 'ask_user' },
         );
         await sleep(STEP_DELAY_MS);
         continue;
@@ -745,13 +833,8 @@ export async function runAgentLoop(
         break;
       }
 
-      // Side-effects only this turn — log and continue
+      // Side-effects only this turn — tool result turns already stored by executeSideEffects
       if (!uiAction && hasSideEffects) {
-        await appendConversationTurn(
-          sessionId,
-          'user',
-          `[Step ${step}] VFS/todo operations: ${mutations.join('; ')}. Task: ${userPrompt}`,
-        );
         if (done) {
           await logFinishSummary(actions);
           await log('Task complete!', 'ok');
@@ -778,17 +861,17 @@ export async function runAgentLoop(
           await ensureContentScript(tabId);
           await sendToTab(tabId, { type: 'BLOCK_INPUT' });
           await appendConversationTurn(
-            sessionId,
-            'user',
+            sessionId, 'tool',
             `[Step ${step}] Navigated to ${uiAction.url}. Task: ${userPrompt}`,
+            { toolCallId: uiToolCallId, toolName: uiToolName },
           );
         } catch (actErr) {
           const errMsg = (actErr as Error).message;
           await log(`Navigation to ${uiAction.url} failed: ${errMsg}`, 'warn');
           await appendConversationTurn(
-            sessionId,
-            'user',
+            sessionId, 'tool',
             `[ACTION FAILED - Step ${step}] Navigation to "${uiAction.url}" failed: "${errMsg}". Task: ${userPrompt}`,
+            { toolCallId: uiToolCallId, toolName: uiToolName },
           );
           try { await ensureContentScript(tabId); } catch { /* */ }
           try { await sendToTab(tabId, { type: 'BLOCK_INPUT' }); } catch { /* */ }
@@ -805,9 +888,9 @@ export async function runAgentLoop(
         if (shouldPivot(actionHistory, 'scroll', scrollTargetId)) {
           await log(`Scroll pivot: same scroll repeated ${MAX_PIVOT_RETRIES} times with no progress.`, 'warn');
           await appendConversationTurn(
-            sessionId,
-            'user',
+            sessionId, 'tool',
             `[PIVOT REQUIRED - Step ${step}] This scroll has been attempted ${MAX_PIVOT_RETRIES} times with no progress. Try a different approach (navigate directly, interact with a different element, or call finish). Task: ${userPrompt}`,
+            { toolCallId: uiToolCallId, toolName: uiToolName },
           );
           await sleep(STEP_DELAY_MS);
           continue;
@@ -858,17 +941,17 @@ export async function runAgentLoop(
 
           try { await sendToTab(tabId, { type: 'BLOCK_INPUT' }); } catch { /* */ }
           await appendConversationTurn(
-            sessionId,
-            'user',
+            sessionId, 'tool',
             `[Step ${step}] ${feedback}. Task: ${userPrompt}`,
+            { toolCallId: uiToolCallId, toolName: uiToolName },
           );
         } catch (actErr) {
           const errMsg = (actErr as Error).message;
           await log(`Scroll failed: ${errMsg}`, 'warn');
           await appendConversationTurn(
-            sessionId,
-            'user',
+            sessionId, 'tool',
             `[ACTION FAILED - Step ${step}] ${label} failed: "${errMsg}". Task: ${userPrompt}`,
+            { toolCallId: uiToolCallId, toolName: uiToolName },
           );
           try { await ensureContentScript(tabId); } catch { /* */ }
           try { await sendToTab(tabId, { type: 'BLOCK_INPUT' }); } catch { /* */ }
@@ -890,17 +973,17 @@ export async function runAgentLoop(
 
           try { await sendToTab(tabId, { type: 'BLOCK_INPUT' }); } catch { /* */ }
           await appendConversationTurn(
-            sessionId,
-            'user',
+            sessionId, 'tool',
             `[Step ${step}] Typed: "${uiAction.text}". Task: ${userPrompt}`,
+            { toolCallId: uiToolCallId, toolName: uiToolName },
           );
         } catch (actErr) {
           const errMsg = (actErr as Error).message;
           await log(`Typing failed: ${errMsg}`, 'warn');
           await appendConversationTurn(
-            sessionId,
-            'user',
+            sessionId, 'tool',
             `[ACTION FAILED - Step ${step}] Typing "${uiAction.text}" failed: "${errMsg}". Task: ${userPrompt}`,
+            { toolCallId: uiToolCallId, toolName: uiToolName },
           );
           try { await ensureContentScript(tabId); } catch { /* */ }
           try { await sendToTab(tabId, { type: 'BLOCK_INPUT' }); } catch { /* */ }
@@ -921,17 +1004,17 @@ export async function runAgentLoop(
           );
           try { await sendToTab(tabId, { type: 'BLOCK_INPUT' }); } catch { /* */ }
           await appendConversationTurn(
-            sessionId,
-            'user',
+            sessionId, 'tool',
             `[Step ${step}] Pressed key "${uiAction.key}". Task: ${userPrompt}`,
+            { toolCallId: uiToolCallId, toolName: uiToolName },
           );
         } catch (actErr) {
           const errMsg = (actErr as Error).message;
           await log(`Key press "${uiAction.key}" failed: ${errMsg}`, 'warn');
           await appendConversationTurn(
-            sessionId,
-            'user',
+            sessionId, 'tool',
             `[ACTION FAILED - Step ${step}] Pressing key "${uiAction.key}" failed: "${errMsg}". Task: ${userPrompt}`,
+            { toolCallId: uiToolCallId, toolName: uiToolName },
           );
           await waitForTabLoad(tabId, 10_000, false);
           try { await ensureContentScript(tabId); } catch { /* */ }
@@ -948,9 +1031,9 @@ export async function runAgentLoop(
           const errMsg = `Target ID ${uiAction.targetId} not found in coordinate map — element may have disappeared.`;
           await log(errMsg, 'warn');
           await appendConversationTurn(
-            sessionId,
-            'user',
+            sessionId, 'tool',
             `[ACTION FAILED - Step ${step}] ${errMsg} Choose a valid element ID. Task: ${userPrompt}`,
+            { toolCallId: uiToolCallId, toolName: uiToolName },
           );
           await sleep(STEP_DELAY_MS);
           continue;
@@ -1078,23 +1161,23 @@ export async function runAgentLoop(
           await ensureContentScript(tabId);
           await sendToTab(tabId, { type: 'BLOCK_INPUT' });
           await appendConversationTurn(
-            sessionId,
-            'user',
+            sessionId, 'tool',
             `[Step ${step}] Clicked #${uiAction.targetId} ("${target.text}") → opened new tab. Task: ${userPrompt}`,
+            { toolCallId: uiToolCallId, toolName: uiToolName },
           );
         } else if (actError) {
           try { await sendToTab(tabId, { type: 'BLOCK_INPUT' }); } catch { /* */ }
           await appendConversationTurn(
-            sessionId,
-            'user',
+            sessionId, 'tool',
             `[ACTION FAILED - Step ${step}] Clicking element #${uiAction.targetId} ("${target.text}") failed: "${actError}". Task: ${userPrompt}`,
+            { toolCallId: uiToolCallId, toolName: uiToolName },
           );
         } else {
           try { await sendToTab(tabId, { type: 'BLOCK_INPUT' }); } catch { /* */ }
           await appendConversationTurn(
-            sessionId,
-            'user',
+            sessionId, 'tool',
             `[Step ${step}] Clicked element #${uiAction.targetId} ("${target.text}"). Task: ${userPrompt}`,
+            { toolCallId: uiToolCallId, toolName: uiToolName },
           );
         }
 

@@ -14,10 +14,10 @@
 
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { ChatOllama } from '@langchain/ollama';
-import { HumanMessage, SystemMessage, AIMessage, type BaseMessage, type AIMessageChunk } from '@langchain/core/messages';
+import { HumanMessage, SystemMessage, AIMessage, ToolMessage, type BaseMessage, type AIMessageChunk } from '@langchain/core/messages';
 import { AGENT_TOOLS, parseToolCall } from './tools';
-import type { AgentAction, AgentResult, TodoItem } from './types';
-import type { VFSFile, MemoryEntry } from './db';
+import type { AgentAction, AgentResult, RawToolCall, TodoItem, CoordinateEntry } from './types';
+import type { VFSFile, MemoryEntry, ConversationTurn } from './db';
 import { formatTodoForPrompt } from './todo';
 import { formatMemoryForPrompt } from './memory';
 import { formatScratchpadForPrompt } from './scratchpad';
@@ -162,10 +162,31 @@ export function thinkingDeltaOf(chunk: AIMessageChunk): string {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** Convert stored conversation turns into LangChain BaseMessages. */
-function buildHistory(history: { role: string; content: string }[]): BaseMessage[] {
-  return history.map((turn) =>
-    turn.role === 'user' ? new HumanMessage(turn.content) : new AIMessage(turn.content),
-  );
+function buildHistory(history: ConversationTurn[]): BaseMessage[] {
+  return history.map((turn) => {
+    if (turn.role === 'tool') {
+      return new ToolMessage({
+        tool_call_id: turn.toolCallId ?? '',
+        content: turn.content,
+        name: turn.toolName,
+      });
+    }
+    if (turn.role === 'model' && turn.toolCalls?.length) {
+      return new AIMessage({
+        content: turn.content,
+        tool_calls: turn.toolCalls.map((tc) => ({
+          id: tc.id,
+          name: tc.name,
+          args: tc.args,
+          type: 'tool_call' as const,
+        })),
+      });
+    }
+    if (turn.role === 'model') {
+      return new AIMessage(turn.content);
+    }
+    return new HumanMessage(turn.content);
+  });
 }
 
 /** Render the VFS file listing as a context block. */
@@ -196,6 +217,18 @@ function scratchpadContextBlock(entries: ScratchpadEntry[]): string {
   return formatScratchpadForPrompt(entries);
 }
 
+/** Render annotated elements as a text index alongside the screenshot. */
+function annotatedElementsBlock(coordinateMap: CoordinateEntry[]): string {
+  if (coordinateMap.length === 0) return '';
+  const rows = coordinateMap
+    .map((e) => {
+      const type = e.inputType ? `${e.tag}(${e.inputType})` : e.tag;
+      return `[${e.id}] ${type} "${e.text}"`;
+    })
+    .join('\n');
+  return `\n\n── Annotated Elements ──\n${rows}`;
+}
+
 /**
  * Build the multipart human turn: task description, VFS listing, todo state,
  * optional reference images, and the annotated screenshot.
@@ -214,6 +247,7 @@ function buildUserMessage(
   memoryEntries: MemoryEntry[] = [],
   scratchpadEntries: ScratchpadEntry[] = [],
   ollamaFormat = false,
+  coordinateMap: CoordinateEntry[] = [],
 ): HumanMessage {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const content: Array<any> = [
@@ -241,7 +275,7 @@ function buildUserMessage(
 
   content.push({
     type: 'text',
-    text: '\n\nAnalyze the annotated screenshot and call the appropriate tools.',
+    text: `\n\nAnalyze the annotated screenshot and call the appropriate tools.${annotatedElementsBlock(coordinateMap)}`,
   });
   content.push(imageBlock(`data:image/png;base64,${base64Image}`));
 
@@ -254,10 +288,10 @@ function buildUserMessage(
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Extract reasoning text and typed AgentActions from the merged stream response.
+ * Extract reasoning text, typed AgentActions, and raw tool calls from the merged stream response.
  * Thinking tokens are NOT logged here — they are flushed live during streaming.
  */
-function parseResponse(response: AIMessageChunk): { reasoning: string; actions: AgentAction[] } {
+function parseResponse(response: AIMessageChunk): { reasoning: string; actions: AgentAction[]; rawToolCalls: RawToolCall[] } {
   const reasoning =
     typeof response.content === 'string'
       ? response.content
@@ -271,11 +305,17 @@ function parseResponse(response: AIMessageChunk): { reasoning: string; actions: 
     throw new Error('Model returned no tool calls — cannot determine action.');
   }
 
+  const rawToolCalls: RawToolCall[] = toolCalls.map((tc) => ({
+    id: tc.id ?? '',
+    name: tc.name,
+    args: tc.args as Record<string, unknown>,
+  }));
+
   const actions = toolCalls
     .map((tc) => parseToolCall(tc.name, tc.args as Record<string, unknown>))
     .filter((a): a is NonNullable<typeof a> => a !== null);
 
-  return { reasoning: reasoning.trim(), actions };
+  return { reasoning: reasoning.trim(), actions, rawToolCalls };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -292,7 +332,7 @@ async function streamWithRetry(
   modelWithTools: BoundModel,
   messages: BaseMessage[],
   logFn: LogFn,
-): Promise<{ reasoning: string; actions: AgentAction[] }> {
+): Promise<{ reasoning: string; actions: AgentAction[]; rawToolCalls: RawToolCall[] }> {
   let lastError: Error | undefined;
 
   for (let attempt = 1; attempt <= MAX_API_RETRIES; attempt++) {
@@ -435,22 +475,23 @@ export async function callModel(
   model: AnyModel,
   base64Image: string,
   userPrompt: string,
-  history: { role: string; content: string }[] = [],
+  history: ConversationTurn[] = [],
   logFn: LogFn = async () => {},
   vfsFiles: VFSFile[] = [],
   inlineImages: InlineImage[] = [],
   currentTodo: TodoItem[] = [],
   memoryEntries: MemoryEntry[] = [],
   scratchpadEntries: ScratchpadEntry[] = [],
+  coordinateMap: CoordinateEntry[] = [],
 ): Promise<AgentResult> {
   const ollamaFormat = model instanceof ChatOllama;
   const messages: BaseMessage[] = [
     new SystemMessage(SYSTEM_INSTRUCTIONS),
     ...buildHistory(history),
-    buildUserMessage(userPrompt, vfsFiles, currentTodo, inlineImages, base64Image, memoryEntries, scratchpadEntries, ollamaFormat),
+    buildUserMessage(userPrompt, vfsFiles, currentTodo, inlineImages, base64Image, memoryEntries, scratchpadEntries, ollamaFormat, coordinateMap),
   ];
 
   const modelWithTools = model.bindTools([...AGENT_TOOLS]);
-  const { reasoning, actions } = await streamWithRetry(modelWithTools, messages, logFn);
-  return { reasoning, actions, done: actions.some((a: AgentAction) => a.type === 'finish') };
+  const { reasoning, actions, rawToolCalls } = await streamWithRetry(modelWithTools, messages, logFn);
+  return { reasoning, actions, done: actions.some((a: AgentAction) => a.type === 'finish'), rawToolCalls };
 }
