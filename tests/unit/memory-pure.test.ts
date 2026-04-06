@@ -37,9 +37,9 @@ describe('formatMemoryForPrompt', () => {
     ];
     const result = formatMemoryForPrompt(entries);
     expect(result).toContain('Long-term Memory');
-    expect(result).toContain('[account]');
-    expect(result).toContain('github/username: sudip-mondal-2002');
-    expect(result).toContain('(from: https://github.com)');
+    expect(result).toContain('### account');
+    expect(result).toContain('`github/username`: sudip-mondal-2002');
+    expect(result).toContain('from: `https://github.com`');
   });
 
   it('renders multiple values comma-separated', () => {
@@ -64,8 +64,8 @@ describe('formatMemoryForPrompt', () => {
 
     // Check that account entries appear together
     const lines = result.split('\n');
-    const accountHeaderIdx = lines.findIndex((l) => l.includes('[account]'));
-    const prefHeaderIdx = lines.findIndex((l) => l.includes('[preference]'));
+    const accountHeaderIdx = lines.findIndex((l) => l.includes('### account'));
+    const prefHeaderIdx = lines.findIndex((l) => l.includes('### preference'));
     expect(accountHeaderIdx).toBeGreaterThanOrEqual(0);
     expect(prefHeaderIdx).toBeGreaterThanOrEqual(0);
     expect(accountHeaderIdx).not.toBe(prefHeaderIdx);
@@ -84,7 +84,7 @@ describe('formatMemoryForPrompt', () => {
       makeEntry({ key: 'misc/fact', values: ['some info'], category: 'other' }),
     ];
     const result = formatMemoryForPrompt(entries);
-    expect(result).toContain('[other]');
-    expect(result).toContain('misc/fact: some info');
+    expect(result).toContain('### other');
+    expect(result).toContain('`misc/fact`: some info');
   });
 });

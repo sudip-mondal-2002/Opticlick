@@ -43,16 +43,16 @@ export function buildHistory(history: ConversationTurn[]): BaseMessage[] {
 // ── Context blocks ────────────────────────────────────────────────────────────
 
 function vfsContextBlock(files: VFSFile[]): string {
-  if (files.length === 0) return '\n\n── Virtual Filesystem (VFS) — currently empty ──';
+  if (files.length === 0) return '\n\n**Virtual Filesystem (VFS)** — currently empty';
   const rows = files
-    .map((f) => `  id="${f.id}"  name="${f.name}"  type="${f.mimeType}"  size=${f.size}B  created=${new Date(f.createdAt).toISOString()}`)
+    .map((f) => `\`${f.id}\` | \`${f.name}\` | \`${f.mimeType}\` | ${f.size}B | ${new Date(f.createdAt).toISOString()}`)
     .join('\n');
-  return `\n\n── Virtual Filesystem (VFS) — current contents ──\n${rows}`;
+  return `\n\n**Virtual Filesystem (VFS)** — current contents:\n\n${rows}`;
 }
 
 function todoContextBlock(todo: TodoItem[]): string {
-  if (todo.length > 0) return `\n\n── Todo List ──\n${formatTodoForPrompt(todo)}`;
-  return '\n\n── Todo List — not created yet. Call todo_create this turn. ──';
+  if (todo.length > 0) return `\n\n**Todo List**\n\n${formatTodoForPrompt(todo)}`;
+  return '\n\n**Todo List** — not created yet. Call `todo_create` this turn.';
 }
 
 function annotatedElementsBlock(coordinateMap: CoordinateEntry[]): string {
@@ -60,10 +60,10 @@ function annotatedElementsBlock(coordinateMap: CoordinateEntry[]): string {
   const rows = coordinateMap
     .map((e) => {
       const type = e.inputType ? `${e.tag}(${e.inputType})` : e.tag;
-      return `[${e.id}] ${type} "${e.text}"`;
+      return `\`[${e.id}]\` \`${type}\` — "${e.text}"`;
     })
     .join('\n');
-  return `\n\n── Annotated Elements ──\n${rows}`;
+  return `\n\n**Annotated Elements**\n\n${rows}`;
 }
 
 // ── User message ──────────────────────────────────────────────────────────────

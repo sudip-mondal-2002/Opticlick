@@ -96,8 +96,8 @@ export function deleteScratchpadEntry(
  */
 export function formatScratchpadForPrompt(entries: ScratchpadEntry[]): string {
   if (entries.length === 0) {
-    return '\n\n── Scratchpad — empty (use note_write to save intermediate findings) ──';
+    return '\n\n**Scratchpad** — empty (use `note_write` to save intermediate findings)';
   }
-  const lines = entries.map((e) => `  [${e.key}]: ${e.value}`);
-  return `\n\n── Scratchpad ──\n${lines.join('\n')}`;
+  const lines = entries.map((e) => `- \`${e.key}\`: ${e.value}`);
+  return `\n\n**Scratchpad**\n\n${lines.join('\n')}`;
 }

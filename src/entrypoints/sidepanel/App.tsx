@@ -61,6 +61,7 @@ function AgentUI() {
   const [isError, setIsError] = useState(false);
   const [logs, setLogs] = useState<LogItem[]>([]);
   const [step, setStep] = useState(0);
+  const [streamingThinking, setStreamingThinking] = useState('');
 
   const [sessions, setSessions] = useState<Session[]>([]);
   const [currentSessionId, setCurrentSessionId] = useState<number | null>(null);
@@ -159,6 +160,13 @@ function AgentUI() {
   useEffect(() => {
     const handler = (msg: Record<string, unknown>) => {
       if (msg.type === 'AGENT_LOG') appendLog(msg.message as string, (msg.level as string) || 'info');
+      if (msg.type === 'AGENT_THINKING_DELTA') setStreamingThinking((prev) => prev + (msg.delta as string));
+      if (msg.type === 'AGENT_THINKING_DONE') {
+        setStreamingThinking((prev) => {
+          if (prev.trim()) appendLog(prev.trim(), 'think');
+          return '';
+        });
+      }
       if (msg.type === 'AGENT_STATE_CHANGE') syncState();
       if (msg.type === 'ASK_USER') setPendingQuestion(msg.question as string);
       if (msg.type === 'PLAY_SOUND') playSound(msg.sound as 'finish' | 'ask');
@@ -179,7 +187,7 @@ function AgentUI() {
   // Auto-scroll feed to bottom
   useEffect(() => {
     if (feedRef.current) feedRef.current.scrollTop = feedRef.current.scrollHeight;
-  }, [logs, historySteps, submittedPrompt]);
+  }, [logs, historySteps, submittedPrompt, streamingThinking]);
 
   // ── Actions ────────────────────────────────────────────────────────────────
 
@@ -223,6 +231,7 @@ function AgentUI() {
     setLogs([]);
     setStep(0);
     setSubmittedPrompt(null);
+    setStreamingThinking('');
     setChatInputKey((k) => k + 1);
     textareaRef.current?.focus();
   };
@@ -317,6 +326,7 @@ function AgentUI() {
         historySteps={historySteps}
         submittedPrompt={submittedPrompt}
         logs={logs}
+        streamingThinking={streamingThinking}
       />
 
       {isRunning && step > 0 && <StepFooter step={step} />}

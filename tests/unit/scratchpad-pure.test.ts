@@ -71,7 +71,8 @@ describe('scratchpad pure logic', () => {
   describe('formatScratchpadForPrompt', () => {
     it('returns an empty state message if no entries', () => {
       const result = formatScratchpadForPrompt([]);
-      expect(result).toContain('Scratchpad — empty');
+      expect(result).toContain('**Scratchpad**');
+      expect(result).toContain('empty');
       expect(result).toContain('note_write');
     });
 
@@ -81,9 +82,9 @@ describe('scratchpad pure logic', () => {
         { key: 'note', value: 'some free text', updatedAt: 0 },
       ];
       const result = formatScratchpadForPrompt(entries);
-      expect(result).toContain('── Scratchpad ──');
-      expect(result).toContain('  [issues_found]: #1, #2');
-      expect(result).toContain('  [note]: some free text');
+      expect(result).toContain('**Scratchpad**');
+      expect(result).toContain('- `issues_found`: #1, #2');
+      expect(result).toContain('- `note`: some free text');
     });
   });
 });

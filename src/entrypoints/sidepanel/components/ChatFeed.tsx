@@ -70,9 +70,11 @@ interface Props {
   historySteps: HistoryStep[];
   submittedPrompt: string | null;
   logs: LogItem[];
+  /** Thinking text being streamed from the LLM in real-time. */
+  streamingThinking?: string;
 }
 
-export function ChatFeed({ feedRef, historySteps, submittedPrompt, logs }: Props) {
+export function ChatFeed({ feedRef, historySteps, submittedPrompt, logs, streamingThinking }: Props) {
   const [previewSrc, setPreviewSrc] = useState<string | null>(null);
 
   const handleScreenshotClick = async () => {
@@ -158,6 +160,19 @@ export function ChatFeed({ feedRef, historySteps, submittedPrompt, logs }: Props
                 </div>
               );
             })}
+          </div>
+        )}
+
+        {/* Streaming thinking (live from LLM) */}
+        {streamingThinking && (
+          <div className="font-mono text-[11px] leading-[1.8]">
+            <div className="flex gap-2.5 items-start">
+              <span className="shrink-0 font-medium pt-0.5 text-sky-400">[THINK]</span>
+              <div className="log-md break-words min-w-0 text-slate-600 dark:text-slate-300">
+                <ReactMarkdown>{streamingThinking}</ReactMarkdown>
+                <span className="inline-block w-1.5 h-3.5 bg-sky-400 animate-pulse ml-0.5 align-middle" />
+              </div>
+            </div>
           </div>
         )}
 

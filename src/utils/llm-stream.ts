@@ -10,7 +10,7 @@
 import type { BaseMessage, AIMessageChunk } from '@langchain/core/messages';
 import type { RunnableConfig } from '@langchain/core/runnables';
 import { parseToolCall } from './tools';
-import type { AgentAction, AgentResult, RawToolCall } from './types';
+import type { AgentAction, RawToolCall } from './types';
 import { getLangSmithTracer } from './langsmith-config';
 import { sleep } from './sleep';
 
@@ -81,7 +81,12 @@ function parseResponse(response: AIMessageChunk): { reasoning: string; actions: 
 
 /**
  * Stream the model response with exponential back-off on failure.
- * Thinking tokens are flushed to logFn at sentence boundaries as they arrive.
+ * Thinking tokens are progressively flushed to the sidebar via
+ * `onThinkingDelta` (sentence-boundary batching via `thinkingFlushPoint`),
+ * giving the user a live streaming experience. The complete thinking text
+ * is also returned so the caller can persist it to LangSmith as a single
+ * unified attribute.
+ *
  * Rate-limit (429) errors use a longer base delay than general errors.
  *
  * When `config` is provided (LangGraph node context), its callbacks are used
@@ -92,7 +97,8 @@ export async function streamWithRetry(
   messages: BaseMessage[],
   logFn: LogFn,
   config?: RunnableConfig,
-): Promise<{ reasoning: string; actions: AgentAction[]; rawToolCalls: RawToolCall[] }> {
+  onThinkingDelta?: (delta: string) => void,
+): Promise<{ reasoning: string; thinking: string; actions: AgentAction[]; rawToolCalls: RawToolCall[] }> {
   let lastError: Error | undefined;
 
   for (let attempt = 1; attempt <= MAX_API_RETRIES; attempt++) {
@@ -101,43 +107,45 @@ export async function streamWithRetry(
       const streamConfig: RunnableConfig = config ?? (tracer ? { callbacks: [tracer] } : {});
       const stream = await modelWithTools.stream(messages, streamConfig);
       const chunks: AIMessageChunk[] = [];
-      let thinkingBuf = '';
-      let streamedThinkingChars = 0;
+      let collectedThinking = '';
+      let thinkingBuffer = '';
 
       for await (const rawChunk of stream) {
         const chunk = rawChunk as AIMessageChunk;
         const delta = thinkingDeltaOf(chunk);
         if (delta) {
-          thinkingBuf += delta;
-          streamedThinkingChars += delta.length;
-          const flushAt = thinkingFlushPoint(thinkingBuf);
-          if (flushAt > 0) {
-            await logFn(thinkingBuf.slice(0, flushAt).trim(), 'think');
-            thinkingBuf = thinkingBuf.slice(flushAt);
+          collectedThinking += delta;
+          thinkingBuffer += delta;
+
+          // Progressively flush thinking at sentence boundaries
+          if (onThinkingDelta) {
+            const flushAt = thinkingFlushPoint(thinkingBuffer);
+            if (flushAt > 0) {
+              onThinkingDelta(thinkingBuffer.slice(0, flushAt));
+              thinkingBuffer = thinkingBuffer.slice(flushAt);
+            }
           }
         }
         chunks.push(chunk);
       }
 
-      if (thinkingBuf.trim()) await logFn(thinkingBuf.trim(), 'think');
+      // Flush any remaining thinking text
+      if (onThinkingDelta && thinkingBuffer.trim()) {
+        onThinkingDelta(thinkingBuffer);
+      }
+
       if (chunks.length === 0) throw new Error('Empty stream response');
 
       const final = chunks.reduce((acc, c) => acc.concat(c));
 
-      if (streamedThinkingChars === 0) {
-        const mergedThinking = (final.additional_kwargs?.thinking as string | undefined) ?? '';
-        if (mergedThinking.trim()) {
-          const paragraphs = mergedThinking.split(/\n\n+/).filter((p) => p.trim());
-          if (paragraphs.length > 3) {
-            await logFn(paragraphs[0].trim(), 'think');
-            await logFn(`[${paragraphs.length - 1} more thinking steps…]`, 'think');
-          } else {
-            for (const para of paragraphs) await logFn(para.trim(), 'think');
-          }
-        }
+      // Preserve collected thinking in the final chunk's additional_kwargs
+      // so it stays unified as a single trace attribute in LangSmith
+      if (collectedThinking.trim()) {
+        final.additional_kwargs = { ...final.additional_kwargs, thinking: collectedThinking };
       }
 
-      return parseResponse(final);
+      const parsed = parseResponse(final);
+      return { ...parsed, thinking: collectedThinking.trim() };
     } catch (err) {
       lastError = err as Error;
       const isRateLimit = lastError.message.includes('429') || lastError.message.toLowerCase().includes('rate limit');
@@ -156,5 +164,3 @@ export async function streamWithRetry(
 
   throw lastError;
 }
-
-export type { AgentResult };

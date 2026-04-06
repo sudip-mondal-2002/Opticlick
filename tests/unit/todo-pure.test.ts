@@ -137,23 +137,23 @@ describe('formatTodoForPrompt', () => {
     expect(formatTodoForPrompt([])).toBe('(empty)');
   });
 
-  it('produces exact format: "  [icon] id: title" without notes', () => {
+  it('produces exact format: "emoji `id`: title" without notes', () => {
     const out = formatTodoForPrompt([{ id: 'go-login', title: 'Log in to site', status: 'pending' }]);
-    expect(out).toBe('  [ ] go-login: Log in to site');
+    expect(out).toBe('⭕ `go-login`: Log in to site');
   });
 
-  it('produces exact format: "  [icon] id: title  # notes" with notes', () => {
+  it('produces exact format: "emoji `id`: title — notes" with notes', () => {
     const out = formatTodoForPrompt([
       { id: 'go-login', title: 'Log in to site', status: 'done', notes: 'used gmail' },
     ]);
-    expect(out).toBe('  [✓] go-login: Log in to site  # used gmail');
+    expect(out).toBe('✅ `go-login`: Log in to site — used gmail');
   });
 
   it.each([
-    ['pending',     '[ ]'],
-    ['in_progress', '[→]'],
-    ['done',        '[✓]'],
-    ['skipped',     '[-]'],
+    ['pending',     '⭕'],
+    ['in_progress', '🔄'],
+    ['done',        '✅'],
+    ['skipped',     '⏭️'],
   ] as const)('uses correct icon for status "%s"', (status, icon) => {
     const out = formatTodoForPrompt([{ id: 't', title: 'T', status }]);
     expect(out.trimStart().startsWith(icon)).toBe(true);
@@ -162,8 +162,8 @@ describe('formatTodoForPrompt', () => {
   it('includes notes when present and omits them when absent', () => {
     const withNotes = formatTodoForPrompt([{ id: 't', title: 'T', status: 'done', notes: 'note' }]);
     const noNotes  = formatTodoForPrompt([{ id: 't', title: 'T', status: 'done' }]);
-    expect(withNotes).toContain('# note');
-    expect(noNotes).not.toContain('#');
+    expect(withNotes).toContain('— note');
+    expect(noNotes).not.toContain('—');
   });
 
   it('formats multiple items as newline-separated lines with correct content', () => {
@@ -173,7 +173,7 @@ describe('formatTodoForPrompt', () => {
     ];
     const lines = formatTodoForPrompt(items).split('\n');
     expect(lines).toHaveLength(2);
-    expect(lines[0]).toBe('  [✓] a: First');
-    expect(lines[1]).toBe('  [ ] b: Second');
+    expect(lines[0]).toBe('✅ `a`: First');
+    expect(lines[1]).toBe('⭕ `b`: Second');
   });
 });

@@ -200,6 +200,15 @@ export type Message =
       sound: 'finish' | 'ask';
     }
   | {
+      /** Incremental thinking text flushed during LLM streaming. */
+      type: 'AGENT_THINKING_DELTA';
+      delta: string;
+    }
+  | {
+      /** Signals that thinking streaming is complete. */
+      type: 'AGENT_THINKING_DONE';
+    }
+  | {
       type: 'UPLOAD_FILE';
       /** CSS-pixel center X of the target file input. */
       x: number;

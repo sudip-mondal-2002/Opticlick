@@ -52,16 +52,16 @@ export function applyTodoUpdates(current: TodoItem[], updates: TodoUpdate[]): To
 export function formatTodoForPrompt(items: TodoItem[]): string {
   if (!items.length) return '(empty)';
   const STATUS_ICON: Record<TodoItem['status'], string> = {
-    pending: '[ ]',
-    in_progress: '[→]',
-    done: '[✓]',
-    skipped: '[-]',
+    pending: '⭕',
+    in_progress: '🔄',
+    done: '✅',
+    skipped: '⏭️',
   };
   return items
     .map((i) => {
-      const icon = STATUS_ICON[i.status] ?? '[ ]';
-      const note = i.notes ? `  # ${i.notes}` : '';
-      return `  ${icon} ${i.id}: ${i.title}${note}`;
+      const icon = STATUS_ICON[i.status] ?? '⭕';
+      const note = i.notes ? ` — ${i.notes}` : '';
+      return `${icon} \`${i.id}\`: ${i.title}${note}`;
     })
     .join('\n');
 }

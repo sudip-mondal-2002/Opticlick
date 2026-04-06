@@ -14,7 +14,7 @@ import type { MemoryEntry } from './db';
  */
 export function formatMemoryForPrompt(entries: MemoryEntry[]): string {
   if (entries.length === 0) {
-    return '\n\n── Long-term Memory — empty (use memory_upsert to save useful facts) ──';
+    return '\n\n**Long-term Memory** — empty (use `memory_upsert` to save useful facts)';
   }
 
   // Group by category
@@ -29,15 +29,15 @@ export function formatMemoryForPrompt(entries: MemoryEntry[]): string {
     list.push(entry);
   }
 
-  const lines: string[] = [];
+  const lines: string[] = ['**Long-term Memory**\n'];
   for (const [category, items] of grouped) {
-    lines.push(`  [${category}]`);
+    lines.push(`### ${category}`);
     for (const item of items) {
       const vals = item.values.join(', ');
-      const src = item.sourceUrl ? `  (from: ${item.sourceUrl})` : '';
-      lines.push(`    ${item.key}: ${vals}${src}`);
+      const src = item.sourceUrl ? ` — from: \`${item.sourceUrl}\`` : '';
+      lines.push(`- \`${item.key}\`: ${vals}${src}`);
     }
   }
 
-  return `\n\n── Long-term Memory ──\n${lines.join('\n')}`;
+  return `\n\n${lines.join('\n')}`;
 }

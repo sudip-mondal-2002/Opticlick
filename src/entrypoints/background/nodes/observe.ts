@@ -67,6 +67,11 @@ export async function reasonNode(state: AgentState, config: RunnableConfig): Pro
       ? `${state.anchoredPrompt}\n\n[SYSTEM NOTE: No interactable elements detected. Decide whether to navigate, scroll, press a key, or call finish if the goal is already achieved. Do NOT call click — there are no annotated elements.]`
       : state.anchoredPrompt;
 
+  // Broadcast thinking deltas to the sidebar for live streaming
+  const onThinkingDelta = (delta: string) => {
+    chrome.runtime.sendMessage({ type: 'AGENT_THINKING_DELTA', delta }).catch(() => {});
+  };
+
   let result;
   try {
     result = await callModel(
@@ -82,6 +87,7 @@ export async function reasonNode(state: AgentState, config: RunnableConfig): Pro
       state.scratchpadEntries,
       state.coordinateMap,
       config,
+      onThinkingDelta,
     );
   } catch (err) {
     await log(`LLM call failed: ${(err as Error).message}. Will retry step.`, 'error');
@@ -89,8 +95,10 @@ export async function reasonNode(state: AgentState, config: RunnableConfig): Pro
     return { llmFailed: true };
   }
 
-  const { reasoning, actions, done, rawToolCalls } = result;
-  if (reasoning) await log(reasoning, 'think');
+  const { reasoning, thinking, actions, done, rawToolCalls } = result;
+  // Signal thinking stream is complete so the sidebar finalizes the block
+  if (thinking) chrome.runtime.sendMessage({ type: 'AGENT_THINKING_DONE' }).catch(() => {});
+  if (reasoning) await log(reasoning, 'info');
 
   // Gemini requires a user turn immediately before a function-call turn
   await appendConversationTurn(state.sessionId, 'user', `[Step ${state.step}] Task: ${state.userPrompt}`);

@@ -138,7 +138,7 @@ describe('callModel — streaming integration', () => {
     return { model, boundModel };
   }
 
-  it('logs thinking tokens that arrive per-chunk via additional_kwargs', async () => {
+  it('collects thinking tokens that arrive per-chunk via additional_kwargs', async () => {
     const { model, boundModel } = makeModel([
       thinkChunk('I should click the button. '),
       thinkChunk('Yes that is correct. '),
@@ -148,7 +148,7 @@ describe('callModel — streaming integration', () => {
     const logged: Array<{ msg: string; level: string }> = [];
     const logFn = async (msg: string, level = 'info') => { logged.push({ msg, level }); };
 
-    await callModel(
+    const result = await callModel(
       model as ReturnType<typeof createModel>,
       'base64img',
       'Click the button',
@@ -156,14 +156,51 @@ describe('callModel — streaming integration', () => {
       logFn,
     );
 
-    const thinkLogs = logged.filter((e) => e.level === 'think');
-    expect(thinkLogs.length).toBeGreaterThan(0);
-    const allThinking = thinkLogs.map((e) => e.msg).join(' ');
-    expect(allThinking).toContain('button');
+    // Thinking is collected silently and preserved in the response's additional_kwargs
+    // (accessible as part of the LangChain AIMessage, not in the text reasoning)
+    expect(result.actions).toHaveLength(1);
+    expect(result.actions[0].type).toBe('click');
     expect(boundModel.stream).toHaveBeenCalledOnce();
   });
 
-  it('falls back to merged additional_kwargs.thinking when no per-chunk thinking arrived', async () => {
+  it('progressively emits thinking deltas via onThinkingDelta callback', async () => {
+    // Build enough thinking text to trigger sentence-boundary flushing (minLen=120)
+    const longSentence1 = 'I need to carefully examine the page and find the right element to click on. This requires visual analysis of all annotated elements. ';
+    const longSentence2 = 'After reviewing the screenshot I can see the target button is element number three. ';
+    const { model } = makeModel([
+      thinkChunk(longSentence1),
+      thinkChunk(longSentence2),
+      toolChunk('click', { targetId: 3 }),
+    ]);
+
+    const deltas: string[] = [];
+    const onThinkingDelta = (delta: string) => { deltas.push(delta); };
+
+    const result = await callModel(
+      model as ReturnType<typeof createModel>,
+      'base64img',
+      'Click the button',
+      [],
+      async () => {},
+      [],  // vfsFiles
+      [],  // inlineImages
+      [],  // currentTodo
+      [],  // memoryEntries
+      [],  // scratchpadEntries
+      [],  // coordinateMap
+      undefined,  // config
+      onThinkingDelta,
+    );
+
+    // At least one delta should have been emitted progressively
+    expect(deltas.length).toBeGreaterThan(0);
+    // All deltas concatenated (trimmed) should equal the complete thinking
+    // (result.thinking is .trim()'d, deltas preserve raw whitespace)
+    expect(deltas.join('').trim()).toBe(result.thinking);
+    expect(result.actions[0].type).toBe('click');
+  });
+
+  it('preserves thinking from merged additional_kwargs when no per-chunk thinking arrived', async () => {
     // Simulate Gemini putting thinking only in the final merged response
     const toolC = toolChunk('navigate', { url: 'https://example.com' });
     // Manually attach thinking to the chunk (simulating what concat() would produce)
@@ -172,18 +209,17 @@ describe('callModel — streaming integration', () => {
 
     const { model } = makeModel([toolC]);
 
-    const logged: Array<{ msg: string; level: string }> = [];
-    await callModel(
+    const result = await callModel(
       model as ReturnType<typeof createModel>,
       'base64img',
       'Navigate to example.com',
       [],
-      async (msg, level = 'info') => { logged.push({ msg, level }); },
+      async () => {},
     );
 
-    const thinkLogs = logged.filter((e) => e.level === 'think');
-    expect(thinkLogs.length).toBeGreaterThan(0);
-    expect(thinkLogs[0].msg).toContain('navigate');
+    // Thinking is preserved in additional_kwargs, tool call is parsed correctly
+    expect(result.actions).toHaveLength(1);
+    expect(result.actions[0].type).toBe('navigate');
   });
 
   it('assembles tool calls split across multiple chunks', async () => {

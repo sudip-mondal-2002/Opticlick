@@ -10,7 +10,7 @@ import { ChatOllama } from '@langchain/ollama';
 import { SystemMessage, type BaseMessage } from '@langchain/core/messages';
 import type { RunnableConfig } from '@langchain/core/runnables';
 import { AGENT_TOOLS } from './tools';
-import type { AgentAction, AgentResult, TodoItem, CoordinateEntry } from './types';
+import type { AgentAction, TodoItem, CoordinateEntry, RawToolCall } from './types';
 import type { VFSFile, MemoryEntry, ConversationTurn } from './db';
 import type { ScratchpadEntry } from './scratchpad';
 import { DEFAULT_MODEL, OLLAMA_BASE_URL, isOllamaModel, ollamaModelName } from './models';
@@ -28,6 +28,14 @@ export interface InlineImage {
   mimeType: string;
   /** Base64-encoded data (no data-URL prefix). */
   data: string;
+}
+
+export interface LLMResult {
+  reasoning: string;
+  thinking: string;
+  actions: AgentAction[];
+  done: boolean;
+  rawToolCalls: RawToolCall[];
 }
 
 export type AnyModel = ChatGoogleGenerativeAI | ChatOllama;
@@ -73,7 +81,8 @@ export async function callModel(
   scratchpadEntries: ScratchpadEntry[] = [],
   coordinateMap: CoordinateEntry[] = [],
   config?: RunnableConfig,
-): Promise<AgentResult> {
+  onThinkingDelta?: (delta: string) => void,
+): Promise<LLMResult> {
   const ollamaFormat = model instanceof ChatOllama;
   const messages: BaseMessage[] = [
     new SystemMessage(SYSTEM_INSTRUCTIONS),
@@ -81,6 +90,6 @@ export async function callModel(
     buildUserMessage(userPrompt, vfsFiles, currentTodo, inlineImages, base64Image, memoryEntries, scratchpadEntries, ollamaFormat, coordinateMap),
   ];
   const modelWithTools = model.bindTools([...AGENT_TOOLS]);
-  const { reasoning, actions, rawToolCalls } = await streamWithRetry(modelWithTools, messages, logFn, config);
-  return { reasoning, actions, done: actions.some((a: AgentAction) => a.type === 'finish'), rawToolCalls };
+  const { reasoning, thinking, actions, rawToolCalls } = await streamWithRetry(modelWithTools, messages, logFn, config, onThinkingDelta);
+  return { reasoning, thinking, actions, done: actions.some((a: AgentAction) => a.type === 'finish'), rawToolCalls };
 }
