@@ -44,15 +44,17 @@ export function buildHistory(history: ConversationTurn[]): BaseMessage[] {
 
 function vfsContextBlock(files: VFSFile[]): string {
   if (files.length === 0) return '\n\n**Virtual Filesystem (VFS)** — currently empty';
+  const header = '| file_id | file_name | file_type | file_size | created_at |';
+  const separator = '| ---- | ---- | ---- | ---- | ---- |';
   const rows = files
-    .map((f) => `\`${f.id}\` | \`${f.name}\` | \`${f.mimeType}\` | ${f.size}B | ${new Date(f.createdAt).toISOString()}`)
+    .map((f) => `| \`${f.id}\` | \`${f.name}\` | \`${f.mimeType}\` | ${f.size}B | ${new Date(f.createdAt).toISOString()} |`)
     .join('\n');
-  return `\n\n**Virtual Filesystem (VFS)** — current contents:\n\n${rows}`;
+  return `\n\n**Virtual Filesystem (VFS)** — current contents:\n\n${header}\n${separator}\n${rows}`;
 }
 
 function todoContextBlock(todo: TodoItem[]): string {
-  if (todo.length > 0) return `\n\n**Todo List**\n\n${formatTodoForPrompt(todo)}`;
-  return '\n\n**Todo List** — not created yet. Call `todo_create` this turn.';
+  if (todo.length === 0) return '\n\n**Todo List** — not created yet. Call `todo_create` this turn.';
+  return `\n\n**Todo List**\n\n${formatTodoForPrompt(todo)}`;
 }
 
 function annotatedElementsBlock(coordinateMap: CoordinateEntry[]): string {
@@ -63,7 +65,17 @@ function annotatedElementsBlock(coordinateMap: CoordinateEntry[]): string {
       return `\`[${e.id}]\` \`${type}\` — "${e.text}"`;
     })
     .join('\n');
-  return `\n\n**Annotated Elements**\n\n${rows}`;
+  return `\n\n---\n\n**Annotated Elements**\n\n${rows}`;
+}
+
+function extractContextFromPrompt(prompt: string): { taskPrompt: string; contextUrl?: string } {
+  const contextMatch = prompt.match(/\[CONTEXT: The task started on (.+?)\. If you are on an unrelated page, navigate back\.\]/);
+  if (contextMatch) {
+    const contextUrl = contextMatch[1];
+    const taskPrompt = prompt.replace(/\s*\[CONTEXT: The task started on .+?. If you are on an unrelated page, navigate back\.\]/, '').trim();
+    return { taskPrompt, contextUrl };
+  }
+  return { taskPrompt: prompt };
 }
 
 // ── User message ──────────────────────────────────────────────────────────────
@@ -87,11 +99,39 @@ export function buildUserMessage(
   ollamaFormat = false,
   coordinateMap: CoordinateEntry[] = [],
 ): HumanMessage {
+  const { taskPrompt, contextUrl } = extractContextFromPrompt(userPrompt);
+
+  // Build markdown-like text content with proper sections and separators
+  let textContent = '';
+
+  // Context section
+  if (contextUrl) {
+    textContent += `### CONTEXT\nThe task started on ${contextUrl}. If you are on an unrelated page, navigate back.\n\n---`;
+  }
+
+  // VFS section
+  textContent += vfsContextBlock(vfsFiles);
+  textContent += '\n\n---';
+
+  // Todo section
+  textContent += todoContextBlock(currentTodo);
+  textContent += '\n\n---';
+
+  // Memory section
+  const memoryBlock = formatMemoryForPrompt(memoryEntries);
+  textContent += memoryBlock;
+  textContent += '\n\n---';
+
+  // Scratchpad section
+  const scratchpadBlock = formatScratchpadForPrompt(scratchpadEntries);
+  textContent += scratchpadBlock;
+  textContent += '\n\n---\n\n# User task\n' + taskPrompt;
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const content: Array<any> = [
     {
       type: 'text',
-      text: `User task: ${userPrompt}${vfsContextBlock(vfsFiles)}${todoContextBlock(currentTodo)}${formatMemoryForPrompt(memoryEntries)}${formatScratchpadForPrompt(scratchpadEntries)}`,
+      text: textContent,
     },
   ];
 
