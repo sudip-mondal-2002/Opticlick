@@ -89,7 +89,3 @@ export function getModelLabel(modelId: string, ollamaModels: ModelOption[] = [])
   return all.find((m) => m.id === modelId)?.label ?? modelId;
 }
 
-export function getModelDescription(modelId: string, ollamaModels: ModelOption[] = []): string {
-  const all = [...AVAILABLE_MODELS, ...ollamaModels];
-  return all.find((m) => m.id === modelId)?.description ?? '';
-}

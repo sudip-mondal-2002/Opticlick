@@ -3,7 +3,6 @@ import {
   AVAILABLE_MODELS,
   DEFAULT_MODEL,
   getModelLabel,
-  getModelDescription,
   isOllamaModel,
   ollamaModelId,
   ollamaModelName,
@@ -66,28 +65,6 @@ describe('models utilities', () => {
     it('should resolve Ollama model labels from the provided list', () => {
       const ollama = [{ id: 'ollama:llama3.2:3b', label: 'llama3.2:3b', description: 'Local · 3B', provider: 'ollama' as const }];
       expect(getModelLabel('ollama:llama3.2:3b', ollama)).toBe('llama3.2:3b');
-    });
-  });
-
-  describe('getModelDescription', () => {
-    it('should return the description for a valid model ID', () => {
-      const flashLiteDesc = getModelDescription('gemini-3.1-flash-lite-preview');
-      expect(flashLiteDesc).toContain('Fast');
-    });
-
-    it('should return empty string if model not found', () => {
-      expect(getModelDescription('unknown-model-id')).toBe('');
-    });
-
-    it('should handle all available models', () => {
-      for (const model of AVAILABLE_MODELS) {
-        expect(getModelDescription(model.id)).toBe(model.description);
-      }
-    });
-
-    it('should resolve Ollama model descriptions from the provided list', () => {
-      const ollama = [{ id: 'ollama:llama3.2:3b', label: 'llama3.2:3b', description: 'Local · 3B', provider: 'ollama' as const }];
-      expect(getModelDescription('ollama:llama3.2:3b', ollama)).toBe('Local · 3B');
     });
   });
 
