@@ -6,6 +6,13 @@ export default defineConfig({
   publicDir: 'public',
   vite: () => ({
     plugins: [react()],
+    // Ensure Vite inlines environment variables from .env
+    define: {
+      'import.meta.env.VITE_LANGSMITH_TRACING': JSON.stringify(process.env.VITE_LANGSMITH_TRACING || ''),
+      'import.meta.env.VITE_LANGSMITH_ENDPOINT': JSON.stringify(process.env.VITE_LANGSMITH_ENDPOINT || ''),
+      'import.meta.env.VITE_LANGSMITH_API_KEY': JSON.stringify(process.env.VITE_LANGSMITH_API_KEY || ''),
+      'import.meta.env.VITE_LANGSMITH_PROJECT': JSON.stringify(process.env.VITE_LANGSMITH_PROJECT || ''),
+    },
   }),
   manifest: {
     name: 'Opticlick Engine',

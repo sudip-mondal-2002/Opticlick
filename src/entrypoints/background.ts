@@ -4,6 +4,10 @@
  * Orchestrates the Think → Annotate → Capture → Reason → Act loop.
  */
 
+// Initialize LangSmith tracing first, before any other imports
+import { initializeLangSmith } from '@/utils/langsmith-config';
+initializeLangSmith();
+
 import { log } from '@/utils/agent-log';
 import { getAgentState, setAgentState } from '@/utils/agent-state';
 import { tempDownloadIds } from '@/utils/cdp';
