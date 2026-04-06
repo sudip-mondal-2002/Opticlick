@@ -19,10 +19,15 @@ import * as fs from 'fs';
 import { createModel, callModel } from '../../src/utils/llm';
 import type { AgentAction } from '../../src/utils/types';
 
-// ── Load API key from .env ────────────────────────────────────────────────────
+// ── Load API key from .env or .env.test ──────────────────────────────────────
 
+const envTestPath = path.resolve(__dirname, '../../.env.test');
 const envPath = path.resolve(__dirname, '../../.env');
-const envContent = fs.existsSync(envPath) ? fs.readFileSync(envPath, 'utf-8') : '';
+const envContent = fs.existsSync(envTestPath)
+  ? fs.readFileSync(envTestPath, 'utf-8')
+  : fs.existsSync(envPath)
+    ? fs.readFileSync(envPath, 'utf-8')
+    : '';
 const GEMINI_API_KEY = envContent.match(/GEMINI_API_KEY=([^\r\n]+)/)?.[1]?.trim() ?? process.env.GEMINI_API_KEY ?? '';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

@@ -186,45 +186,52 @@ describe('Case 2 — hidden input (display:none / off-screen)', () => {
 
 describe('Case 3 — dynamic input (created on button click)', () => {
   it('works when input is created by clicking the Browse button first', async () => {
-    const { page, cdp } = await openFixturePage();
+    const { page, cdp, dialogEvents } = await openFixturePage();
+    await installFileDialogBlock(page);
 
-    // Step 1: click Browse to create the input (dialog intercepted by CDP)
-    await page.click('#dynamic-btn');
+    // Step 1: JS click creates the input. Even untrusted clicks trigger the button's onclick handler,
+    // which calls input.click() — the monkey-patch prevents any file dialog from opening.
+    await page.evaluate(() => document.getElementById('dynamic-btn')!.click());
     await page.waitForSelector('#dynamic-input');
 
     // Step 2: CDP sets the file on the freshly created input
     const tmp = makeTempFile('dynamic-upload.csv');
     await cdpSetFiles(page, '#dynamic-input', [tmp]);
     expect(await getText(page, '#dynamic-status')).toBe('dynamic-upload.csv');
+    expect(dialogEvents).toHaveLength(0);
     fs.unlinkSync(tmp);
     await cdp.detach();
     await page.close();
   });
 
   it('creation counter increments each time Browse is clicked', async () => {
-    const { page, cdp } = await openFixturePage();
-    await page.click('#dynamic-btn');
+    const { page, cdp, dialogEvents } = await openFixturePage();
+    await installFileDialogBlock(page);
+    await page.evaluate(() => document.getElementById('dynamic-btn')!.click());
     await page.waitForSelector('#dynamic-input');
-    await page.click('#dynamic-btn'); // second click destroys and recreates
+    await page.evaluate(() => document.getElementById('dynamic-btn')!.click()); // second click destroys and recreates
     await page.waitForSelector('#dynamic-input');
     const count = await page.evaluate(() => window._dynamicUploadCount);
     expect(count).toBe(2);
+    expect(dialogEvents).toHaveLength(0);
     await cdp.detach();
     await page.close();
   });
 
   it('can upload to the recreated input after a second Browse click', async () => {
-    const { page, cdp } = await openFixturePage();
+    const { page, cdp, dialogEvents } = await openFixturePage();
+    await installFileDialogBlock(page);
     // First click creates input
-    await page.click('#dynamic-btn');
+    await page.evaluate(() => document.getElementById('dynamic-btn')!.click());
     await page.waitForSelector('#dynamic-input');
     // Second click destroys and recreates it
-    await page.click('#dynamic-btn');
+    await page.evaluate(() => document.getElementById('dynamic-btn')!.click());
     await page.waitForSelector('#dynamic-input');
 
     const tmp = makeTempFile('recreated.txt');
     await cdpSetFiles(page, '#dynamic-input', [tmp]);
     expect(await getText(page, '#dynamic-status')).toBe('recreated.txt');
+    expect(dialogEvents).toHaveLength(0);
     fs.unlinkSync(tmp);
     await cdp.detach();
     await page.close();
