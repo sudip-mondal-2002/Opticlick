@@ -1,4 +1,4 @@
-import { appendConversationTurn, getVFSFile, listVFSFiles } from '@/utils/db';
+import { getVFSFile, listVFSFiles } from '@/utils/db';
 import { writeTempFile, cleanupTempFile } from '@/utils/cdp';
 import { log } from '@/utils/agent-log';
 import { sleep } from '@/utils/sleep';
