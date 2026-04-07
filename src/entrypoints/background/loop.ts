@@ -21,7 +21,7 @@ import {
 import { createAnyModel } from '@/utils/llm';
 import { loadTodoFromVFS, TODO_VFS_FILENAME } from '@/utils/todo';
 import { loadScratchpadFromVFS } from '@/utils/scratchpad';
-import { isOllamaModel, DEFAULT_MODEL } from '@/utils/models';
+import { isOllamaModel, isOllamaAvailable, DEFAULT_MODEL } from '@/utils/models';
 import { log } from '@/utils/agent-log';
 import { getAgentState, setAgentState } from '@/utils/agent-state';
 import {
@@ -87,6 +87,11 @@ export async function runAgentLoop(
     const usingOllama = isOllamaModel(modelId ?? '');
     if (!geminiApiKey && !usingOllama) {
       await log('No Gemini API key set. Open the extension and add your key.', 'error');
+      await setAgentState({ status: 'error' });
+      return;
+    }
+    if (usingOllama && !(await isOllamaAvailable())) {
+      await log('Ollama is not running. Start Ollama on http://localhost:11434 and try again.', 'error');
       await setAgentState({ status: 'error' });
       return;
     }

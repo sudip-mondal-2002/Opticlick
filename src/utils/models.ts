@@ -47,6 +47,20 @@ export function ollamaModelName(modelId: string): string {
 }
 
 /**
+ * Checks if Ollama is running by attempting to connect to its health endpoint.
+ * Returns true if Ollama is reachable, false otherwise (and logs availability).
+ * This is useful for early validation before starting the agent.
+ */
+export async function isOllamaAvailable(): Promise<boolean> {
+  try {
+    const res = await fetch(`${OLLAMA_BASE_URL}`, { signal: AbortSignal.timeout(3000) });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Queries the local Ollama daemon for available models, annotating each with
  * whether it is currently loaded in memory (via /api/ps).
  * Returns an empty array (silently) if Ollama is not running or unreachable.

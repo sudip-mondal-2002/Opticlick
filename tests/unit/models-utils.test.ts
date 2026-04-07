@@ -7,6 +7,7 @@ import {
   ollamaModelId,
   ollamaModelName,
   fetchOllamaModels,
+  isOllamaAvailable,
 } from '@/utils/models';
 
 describe('models utilities', () => {
@@ -189,6 +190,51 @@ describe('models utilities', () => {
         .mockResolvedValueOnce({ ok: true, json: async () => ({}) } as Response);
       const result = await fetchOllamaModels();
       expect(result).toEqual([]);
+    });
+  });
+
+  describe('isOllamaAvailable', () => {
+    beforeEach(() => {
+      vi.stubGlobal('fetch', vi.fn());
+    });
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    it('should return true when Ollama responds with ok status', async () => {
+      vi.mocked(fetch).mockResolvedValueOnce({ ok: true } as Response);
+      const result = await isOllamaAvailable();
+      expect(result).toBe(true);
+    });
+
+    it('should return false when Ollama responds with non-ok status', async () => {
+      vi.mocked(fetch).mockResolvedValueOnce({ ok: false } as Response);
+      const result = await isOllamaAvailable();
+      expect(result).toBe(false);
+    });
+
+    it('should return false when fetch throws (connection refused)', async () => {
+      vi.mocked(fetch).mockRejectedValueOnce(new Error('Connection refused'));
+      const result = await isOllamaAvailable();
+      expect(result).toBe(false);
+    });
+
+    it('should return false when fetch times out', async () => {
+      vi.mocked(fetch).mockRejectedValueOnce(new DOMException('Signal aborted', 'AbortError'));
+      const result = await isOllamaAvailable();
+      expect(result).toBe(false);
+    });
+
+    it('should use 3 second timeout', async () => {
+      vi.mocked(fetch).mockResolvedValueOnce({ ok: true } as Response);
+      await isOllamaAvailable();
+      expect(vi.mocked(fetch)).toHaveBeenCalledWith(
+        'http://localhost:11434',
+        expect.objectContaining({
+          signal: expect.any(AbortSignal),
+        }),
+      );
     });
   });
 });
