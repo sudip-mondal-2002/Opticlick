@@ -1,7 +1,7 @@
 {
   "name": "opticlick-engine",
   "version": "1.0.0",
-  "description": "Autonomous web agent using Set-of-Mark visual prompting and Gemini 3.1 Pro.",
+  "description": "Autonomous MV3 Chrome Extension that uses Set-of-Mark visual prompting with Gemini and Ollama to navigate the web and execute hardware-level actions via Chrome DevTools Protocol.",
   "type": "module",
   "scripts": {
     "dev": "wxt",

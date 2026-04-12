@@ -1,5 +1,9 @@
 # Opticlick Engine
 
+[![Chrome Web Store](https://img.shields.io/chrome-web-store/v/plcgabnobclbdbiemnmkkjcgbfefepkc?label=Chrome%20Web%20Store)](https://chromewebstore.google.com/detail/opticlick-engine/plcgabnobclbdbiemnmkkjcgbfefepkc)
+
+**[Install from Chrome Web Store →](https://chromewebstore.google.com/detail/opticlick-engine/plcgabnobclbdbiemnmkkjcgbfefepkc)**
+
 An autonomous web agent Chrome extension that uses the **Set-of-Mark** visual prompting technique and multimodal LLMs to navigate the web, analyze pages via screenshots, and execute actions via hardware-level simulation through the Chrome DevTools Protocol.
 
 ---
