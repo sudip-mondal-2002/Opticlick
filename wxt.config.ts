@@ -1,5 +1,8 @@
 import { defineConfig } from 'wxt';
 import react from '@vitejs/plugin-react';
+import { readFileSync } from 'fs';
+
+const pkg = JSON.parse(readFileSync('./package.json', 'utf-8'));
 
 export default defineConfig({
   srcDir: 'src',
@@ -16,9 +19,8 @@ export default defineConfig({
   }),
   manifest: {
     name: 'Opticlick Engine',
-    version: '1.0.0',
-    description:
-      'Autonomous web agent using Set-of-Mark visual prompting and Gemini 3.1 Pro.',
+    version: pkg.version,
+    description: pkg.description,
     permissions: ['activeTab', 'scripting', 'debugger', 'storage', 'sidePanel', 'downloads'],
     host_permissions: ['<all_urls>'],
     icons: { 16: 'icon-16.png', 32: 'icon-32.png', 48: 'icon-48.png', 128: 'icon-128.png' },
