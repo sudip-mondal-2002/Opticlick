@@ -1,17 +1,34 @@
 # Project: Opticlick Engine
 
 ## Overview
-This project is a Manifest V3 (MV3) Chrome Extension that functions as an autonomous web agent. It uses the "Set-of-Mark" visual prompting technique and multimodal LLM models (Gemini 3.1 Flash Lite by default, or Ollama models) to navigate the web, analyze pages via screenshots, and execute actions by simulating hardware-level clicks via the Chrome DevTools Protocol.
+This project is a Manifest V3 (MV3) Chrome Extension that functions as an autonomous web agent. It uses the "Set-of-Mark" visual prompting technique and multimodal LLM models (Gemini, Claude, OpenAI, custom OpenAI-compatible endpoints, and Ollama) to navigate the web, analyze pages via screenshots, and execute actions by simulating hardware-level clicks via the Chrome DevTools Protocol.
 
 ## LLM & API Configuration
-- **Model Selection:** Users can choose from Gemini/Gemma cloud models or locally-running Ollama models via the side panel dropdown:
-  - Gemini 3.1 Flash Lite (default) — `gemini-3.1-flash-lite-preview`
-  - Gemma 4 31B — `gemma-4-31b-it`
-  - Any Ollama models detected at `http://localhost:11434` (shown under "Ollama (Local)" section; requires models that support tool calling)
+- **Model Selection:** Users can choose from five provider categories via the side panel dropdown:
+  - **Gemini** — Gemini 3.1 Flash Lite (default), Gemma 4 31B
+  - **Claude (Anthropic)** — Claude Sonnet 4, Claude Haiku 4
+  - **OpenAI** — GPT-4.1, GPT-4.1 Mini, o4-mini
+  - **Custom OpenAI-Compatible** — User-configured endpoints (e.g. Together AI, Groq, local vLLM)
+  - **Ollama (Local)** — Any models detected at `http://localhost:11434` (requires tool-calling support)
+- **Model ID Prefix Convention:** Model IDs use provider prefixes to enable dispatch: `anthropic:` (e.g. `anthropic:claude-sonnet-4-20250514`), `openai:` (e.g. `openai:gpt-4.1`), `custom-openai:` (e.g. `custom-openai:<uuid>`), `ollama:` (e.g. `ollama:llama3.2:3b`). Gemini models have no prefix for backward compatibility. Use `getProviderForModel(modelId)` in `src/utils/models.ts` as the canonical dispatch helper.
 - **Model Persistence:** Selected model is stored in `chrome.storage.local` and persists across sessions. Default is Gemini 3.1 Flash Lite.
-- **Ollama Detection:** On extension load, the side panel queries `http://localhost:11434/api/tags` (3 s timeout) to discover local models. If Ollama models are found and no Gemini key is stored, the first Ollama model is auto-selected. Internal Ollama model IDs use an `ollama:<name>` prefix (`isOllamaModel`, `ollamaModelId`, `ollamaModelName` helpers in `src/utils/models.ts`).
-- **Authentication:** A Gemini API key is required only when a Gemini model is selected. Ollama models run locally and require no API key. The background loop (`loop.ts`) and the side panel gate both check `isOllamaModel(modelId)` before enforcing the key requirement.
-- **Multimodal Payload:** The LMM takes the user's prompt alongside a base64-encoded screenshot and returns a target ID in structured JSON.
+- **Ollama Detection:** On extension load, the side panel queries `http://localhost:11434/api/tags` (3 s timeout) to discover local models. If no cloud API keys are stored, the first running Ollama model is auto-selected.
+- **Authentication & Storage:** Each provider's API key is stored separately in `chrome.storage.local`:
+  - `geminiApiKey` — required for Gemini models
+  - `anthropicApiKey` — required for Claude models
+  - `openaiApiKey` — required for OpenAI models
+  - `customOpenaiConfigs` — `CustomOpenAIConfig[]` array for custom endpoints (each has `id`, `name`, `baseUrl`, optional `apiKey`, `modelName`)
+  - Ollama models run locally and require no API key.
+  The background loop uses `getProviderForModel(modelId)` to determine which key is required.
+- **Model Factory:** `createAnyModel(keys: ApiKeys, modelId)` in `src/utils/llm.ts` dispatches to the correct LangChain class:
+  - Gemini → `ChatGoogleGenerativeAI` (with thinking tokens)
+  - Claude → `ChatAnthropic` (with extended thinking, `budget_tokens: 10000`)
+  - OpenAI → `ChatOpenAI` (o-series models use `reasoning_effort` instead of `temperature`)
+  - Custom → `ChatOpenAI` with `configuration.baseURL`
+  - Ollama → `ChatOllama`
+- **Image Format:** Gemini uses native `{ type: 'image', url }` format. All other providers use OpenAI-compatible `{ type: 'image_url', image_url: { url } }` — LangChain handles internal conversion. The `useImageUrlFormat` flag in `buildUserMessage()` controls this.
+- **Thinking Tokens:** Gemini surfaces thinking via `additional_kwargs.thinking`. Anthropic surfaces thinking as content blocks with `type: 'thinking'`. Both are extracted by `thinkingDeltaOf()` in `llm-stream.ts` and streamed to the sidebar. OpenAI models do not expose thinking tokens.
+- **Multimodal Payload:** The LLM takes the user's prompt alongside a base64-encoded screenshot and returns tool calls in structured JSON.
 
 ## Architecture Constraints & Rules
 

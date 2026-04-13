@@ -84,9 +84,10 @@ function extractContextFromPrompt(prompt: string): { taskPrompt: string; context
  * Assemble the multipart human turn: task text, VFS/todo/memory/scratchpad
  * context, optional reference images, and the annotated screenshot.
  *
- * @param ollamaFormat When true, images use the OpenAI-compatible
- *   `{ type: 'image_url', image_url: { url: '...' } }` format required by
- *   @langchain/ollama. When false (default), uses Gemini-native `{ type: 'image', url: '...' }`.
+ * @param useImageUrlFormat When true, images use the OpenAI-compatible
+ *   `{ type: 'image_url', image_url: { url: '...' } }` format used by
+ *   Anthropic, OpenAI, and Ollama via LangChain. When false (default),
+ *   uses Gemini-native `{ type: 'image', url: '...' }`.
  */
 export function buildUserMessage(
   userPrompt: string,
@@ -96,7 +97,7 @@ export function buildUserMessage(
   base64Image: string,
   memoryEntries: MemoryEntry[] = [],
   scratchpadEntries: ScratchpadEntry[] = [],
-  ollamaFormat = false,
+  useImageUrlFormat = false,
   coordinateMap: CoordinateEntry[] = [],
 ): HumanMessage {
   const { taskPrompt, contextUrl } = extractContextFromPrompt(userPrompt);
@@ -136,7 +137,7 @@ export function buildUserMessage(
   ];
 
   const imageBlock = (dataUrl: string) =>
-    ollamaFormat
+    useImageUrlFormat
       ? { type: 'image_url', image_url: { url: dataUrl } }
       : { type: 'image', url: dataUrl };
 
