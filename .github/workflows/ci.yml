@@ -58,14 +58,17 @@ jobs:
 
       - name: Package extension
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-        run: npm run zip
+        run: |
+          npm run zip
+          # Move the generated zip to a predictable location
+          mv .output/*.zip release.zip || true
 
       - name: Save release artifact
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         uses: actions/upload-artifact@v4
         with:
           name: release-zip
-          path: .output/*.zip
+          path: release.zip
           retention-days: 1
 
   release:
@@ -88,4 +91,4 @@ jobs:
           client_secret: ${{ secrets.CLIENT_SECRET }}
           refresh_token: ${{ secrets.REFRESH_TOKEN }}
           extension_id: plcgabnobclbdbiemnmkkjcgbfefepkc
-          zip_file: '*.zip'
+          zip_file: 'release.zip'
