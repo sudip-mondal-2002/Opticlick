@@ -45,8 +45,8 @@ export function thinkingDeltaOf(chunk: AIMessageChunk): string {
   const fromKwargs = (chunk.additional_kwargs?.thinking as string | undefined) ?? '';
   let fromContent = '';
   if (Array.isArray(chunk.content)) {
-    for (const part of chunk.content as Array<{ type: string; thinking?: string }>) {
-      if (part.type === 'thinking' && part.thinking) fromContent += part.thinking;
+    for (const part of chunk.content as Array<{ type: string; thinking?: string; text?: string }>) {
+      if (part.type === 'thinking') fromContent += part.thinking ?? part.text ?? '';
     }
   }
   return fromKwargs + fromContent;
