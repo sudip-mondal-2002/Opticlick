@@ -18,6 +18,7 @@ node_modules/
 .idea/
 *.suo
 *.user
+graphify-out/
 
 # Logs
 npm-debug.log*

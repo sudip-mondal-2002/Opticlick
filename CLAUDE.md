@@ -144,3 +144,12 @@ Tools are categorized into UI actions, DOM inspection, VFS mutations, memory, sc
 2. Be concise and prescriptive — write rules, not prose. Future agents must be able to follow them unambiguously.
 3. Remove outdated rules entirely rather than leaving stale guidance alongside new guidance.
 4. If a rule has important nuance or a known exception, capture it inline with a brief note (e.g., `**CRITICAL:**`, `**NOTE:**`).
+
+## graphify
+
+This project has a graphify knowledge graph at graphify-out/.
+
+Rules:
+- Before answering architecture or codebase questions, read graphify-out/GRAPH_REPORT.md for god nodes and community structure
+- If graphify-out/wiki/index.md exists, navigate it instead of reading raw files
+- After modifying code files in this session, run `python3 -c "from graphify.watch import _rebuild_code; from pathlib import Path; _rebuild_code(Path('.'))"` to keep the graph current
