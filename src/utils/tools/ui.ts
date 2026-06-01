@@ -7,103 +7,142 @@
  * press_key — dispatch a raw key event with no prior click
  */
 
-import { tool } from '@langchain/core/tools';
-import { z } from 'zod';
+import { tool } from "@langchain/core/tools";
+import { z } from "zod";
 
-export const clickTool = tool(
-  async () => 'ok',
-  {
-    name: 'click',
-    description:
-      'Click an annotated element by its numeric ID to focus it. ' +
-      'For file inputs, set uploadFileId to a VFS file ID or filename to inject the file ' +
-      'programmatically instead of opening an OS dialog. ' +
-      'After clicking, use the type tool to enter text, or press_key to send a keyboard event.',
-    schema: z.object({
-      targetId: z.number().int().min(1).describe('Numeric ID from the annotated screenshot'),
-      modifier: z
-        .enum(['ctrl', 'meta', 'shift', 'alt'])
-        .optional()
-        .describe(
-          'Modifier key held during the click. ' +
+export const clickTool = tool(async () => "ok", {
+  name: "click",
+  description:
+    "Click an annotated element by its numeric ID to focus it. " +
+    "For file inputs, set uploadFileId to a VFS file ID or filename to inject the file " +
+    "programmatically instead of opening an OS dialog. " +
+    "After clicking, use the type tool to enter text, or press_key to send a keyboard event.",
+  schema: z.object({
+    targetId: z
+      .number()
+      .int()
+      .min(1)
+      .describe("Numeric ID from the annotated screenshot"),
+    modifier: z
+      .enum(["ctrl", "meta", "shift", "alt"])
+      .optional()
+      .describe(
+        "Modifier key held during the click. " +
           'Use "ctrl" for Ctrl+Click (open link in new tab, multi-select) — works on all platforms. ' +
           'Use "meta" for Cmd+Click on macOS (same effect as ctrl on Mac) or Win+Click on Windows. ' +
           'Use "shift" to extend a selection. ' +
-          'Omit for a plain click.',
-        ),
-      uploadFileId: z
-        .string()
-        .optional()
-        .describe('VFS file ID or filename to inject into this file input (skips OS dialog)'),
-    }),
-  },
-);
+          "Omit for a plain click.",
+      ),
+    uploadFileId: z
+      .string()
+      .optional()
+      .describe(
+        "VFS file ID or filename to inject into this file input (skips OS dialog)",
+      ),
+  }),
+});
 
-export const typeTool = tool(
-  async () => 'ok',
-  {
-    name: 'type',
-    description:
-      'Type text into the currently focused element (after a click). ' +
-      'By default, text APPENDS to existing content. ' +
-      'Use clearField:true to select all and REPLACE the existing value.',
-    schema: z.object({
-      text: z.string().describe('Text to type into the focused element'),
-      clearField: z
-        .boolean()
-        .optional()
-        .describe(
-          'Set to true to select all existing text (Ctrl+A) before typing, ' +
-          'so the new text REPLACES the current value instead of appending. ' +
-          'Always use this when typing into a search box, input, or textarea that may already have content.',
-        ),
-    }),
-  },
-);
+// Added double , right-click , hover tool
 
-export const navigateTool = tool(
-  async () => 'ok',
-  {
-    name: 'navigate',
-    description:
-      'Navigate the browser to a full URL. ' +
-      'Prefer this over guessing form submissions when the target URL is known. ' +
-      'Also use this to recover when the current page is wrong.',
-    schema: z.object({
-      url: z.string().describe('Full HTTP/HTTPS URL to navigate to'),
-    }),
-  },
-);
+export const doubleClickTool = tool({
+  name: "double_click",
+  description:
+    "Double-click an annotated element. Use for activating inline edit modes, opening file manager items, or any interaction that requires a double-click.",
+  schema: z.object({
+    id: z.number().describe("Annotated element ID to double-click"),
+  }),
+});
 
-export const scrollTool = tool(
-  async () => 'ok',
-  {
-    name: 'scroll',
-    description:
-      'Scroll the page or a specific annotated element in a direction. ' +
-      'Use scrollTargetId when content overflows inside a container (e.g. a list or modal).',
-    schema: z.object({
-      direction: z.enum(['up', 'down', 'left', 'right']).describe('Direction to scroll'),
-      scrollTargetId: z
-        .number()
-        .int()
-        .optional()
-        .describe('If set, scroll inside this annotated element instead of the whole page'),
-    }),
-  },
-);
+export const rightClickTool = tool({
+  name: "right_click",
+  description: "Right-click an annotated element to open its context menu.",
+  schema: z.object({
+    id: z.number().describe("Annotated element ID to right-click"),
+  }),
+});
 
-export const pressKeyTool = tool(
-  async () => 'ok',
-  {
-    name: 'press_key',
-    description:
-      'Press a keyboard key without clicking an element first. ' +
-      'Examples: Escape to close a dialog, ArrowDown to move focus, Tab to advance fields.',
-    schema: z.object({
-      key: z.string().describe('Key name, e.g. "Enter", "Escape", "Tab", "ArrowDown"'),
-    }),
-  },
-);
+export const hoverTool = tool({
+  name: "hover",
+  description:
+    "Move the mouse cursor over an annotated element without clicking. Use to reveal tooltips, dropdown menus, hover cards, or hidden UI that appears on mouse-over.",
+  schema: z.object({
+    id: z.number().describe("Annotated element ID to hover over"),
+    durationMs: z
+      .number()
+      .min(100)
+      .max(3000)
+      .default(500)
+      .describe("How long to hold the hover in milliseconds"),
+  }),
+});
+export const typeTool = tool(async () => "ok", {
+  name: "type",
+  description:
+    "Type text into the currently focused element (after a click). " +
+    "By default, text APPENDS to existing content. " +
+    "Use clearField:true to select all and REPLACE the existing value.",
+  schema: z.object({
+    text: z.string().describe("Text to type into the focused element"),
+    clearField: z
+      .boolean()
+      .optional()
+      .describe(
+        "Set to true to select all existing text (Ctrl+A) before typing, " +
+          "so the new text REPLACES the current value instead of appending. " +
+          "Always use this when typing into a search box, input, or textarea that may already have content.",
+      ),
+  }),
+});
 
-export const UI_TOOLS = [clickTool, typeTool, navigateTool, scrollTool, pressKeyTool] as const;
+export const navigateTool = tool(async () => "ok", {
+  name: "navigate",
+  description:
+    "Navigate the browser to a full URL. " +
+    "Prefer this over guessing form submissions when the target URL is known. " +
+    "Also use this to recover when the current page is wrong.",
+  schema: z.object({
+    url: z.string().describe("Full HTTP/HTTPS URL to navigate to"),
+  }),
+});
+
+export const scrollTool = tool(async () => "ok", {
+  name: "scroll",
+  description:
+    "Scroll the page or a specific annotated element in a direction. " +
+    "Use scrollTargetId when content overflows inside a container (e.g. a list or modal).",
+  schema: z.object({
+    direction: z
+      .enum(["up", "down", "left", "right"])
+      .describe("Direction to scroll"),
+    scrollTargetId: z
+      .number()
+      .int()
+      .optional()
+      .describe(
+        "If set, scroll inside this annotated element instead of the whole page",
+      ),
+  }),
+});
+
+export const pressKeyTool = tool(async () => "ok", {
+  name: "press_key",
+  description:
+    "Press a keyboard key without clicking an element first. " +
+    "Examples: Escape to close a dialog, ArrowDown to move focus, Tab to advance fields.",
+  schema: z.object({
+    key: z
+      .string()
+      .describe('Key name, e.g. "Enter", "Escape", "Tab", "ArrowDown"'),
+  }),
+});
+
+export const UI_TOOLS = [
+  clickTool,
+  doubleClickTool,
+  rightClickTool,
+  hoverTool,
+  typeTool,
+  navigateTool,
+  scrollTool,
+  pressKeyTool,
+] as const;
