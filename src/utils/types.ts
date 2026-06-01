@@ -28,7 +28,7 @@ export interface TodoItem {
   id: string;
   /** Human-readable task title. */
   title: string;
-  status: 'pending' | 'in_progress' | 'done' | 'skipped';
+  status: "pending" | "in_progress" | "done" | "skipped";
   /** Optional observation or note the agent adds when working on this item. */
   notes?: string;
 }
@@ -36,7 +36,7 @@ export interface TodoItem {
 /** A partial update to apply to an existing TodoItem. */
 export interface TodoUpdate {
   id: string;
-  status?: TodoItem['status'];
+  status?: TodoItem["status"];
   notes?: string;
 }
 
@@ -49,7 +49,7 @@ export interface TodoUpdate {
 export type AgentAction =
   // ── UI actions ──────────────────────────────────────────────────────────
   | {
-      type: 'click';
+      type: "click";
       /** Numeric ID of the annotated element. */
       targetId: number;
       /**
@@ -57,12 +57,29 @@ export type AgentAction =
        * Use 'ctrl' for Ctrl+Click (open in new tab, multi-select) on all platforms.
        * Use 'meta' for Cmd+Click on macOS or Win+Click on Windows.
        */
-      modifier?: 'ctrl' | 'meta' | 'shift' | 'alt';
+      modifier?: "ctrl" | "meta" | "shift" | "alt";
       /** VFS file ID or filename to inject into a file input. */
       uploadFileId?: string;
     }
   | {
-      type: 'type';
+      type: "double_click";
+      /** Numeric ID of the annotated element to double-click. */
+      id: number;
+    }
+  | {
+      type: "right_click";
+      /** Numeric ID of the annotated element to right-click. */
+      id: number;
+    }
+  | {
+      type: "hover";
+      /** Numeric ID of the annotated element to hover over. */
+      id: number;
+      /** How long to hold the hover in milliseconds (100–3000). */
+      durationMs: number;
+    }
+  | {
+      type: "type";
       /** Text to type into the currently focused element (after a prior click). */
       text: string;
       /**
@@ -71,40 +88,46 @@ export type AgentAction =
        */
       clearField?: boolean;
     }
-  | { type: 'navigate'; url: string }
+  | { type: "navigate"; url: string }
   | {
-      type: 'scroll';
-      direction: 'up' | 'down' | 'left' | 'right';
+      type: "scroll";
+      direction: "up" | "down" | "left" | "right";
       /** If set, scroll inside this element instead of the page. */
       scrollTargetId?: number;
     }
-  | { type: 'press_key'; key: string }
+  | { type: "press_key"; key: string }
   // ── DOM inspection ───────────────────────────────────────────────────────
-  | { type: 'fetch_dom'; targetId: number }
+  | { type: "fetch_dom"; targetId: number }
   // ── VFS mutations ────────────────────────────────────────────────────────
-  | { type: 'vfs_save_screenshot'; name: string }
-  | { type: 'vfs_write'; name: string; content: string; mimeType?: string }
-  | { type: 'vfs_delete'; fileId: string }
-  | { type: 'vfs_download'; url: string; name?: string }
+  | { type: "vfs_save_screenshot"; name: string }
+  | { type: "vfs_write"; name: string; content: string; mimeType?: string }
+  | { type: "vfs_delete"; fileId: string }
+  | { type: "vfs_download"; url: string; name?: string }
   // ── Memory management ─────────────────────────────────────────────────────
-  | { type: 'memory_upsert'; key: string; values: string[]; category: string; sourceUrl?: string }
-  | { type: 'memory_delete'; key: string }
-  // ── Scratchpad ────────────────────────────────────────────────────────────
-  | { type: 'note_write'; key: string; value: string }
-  | { type: 'note_delete'; key: string }
-  // ── Todo management ──────────────────────────────────────────────────────
-  | { type: 'todo_create'; items: TodoItem[] }
-  | { type: 'todo_update'; updates: TodoUpdate[] }
-  | { type: 'todo_add'; items: TodoItem[] }
-  // ── Control ──────────────────────────────────────────────────────────────
-  | { type: 'finish'; summary: string }
   | {
-      type: 'wait';
+      type: "memory_upsert";
+      key: string;
+      values: string[];
+      category: string;
+      sourceUrl?: string;
+    }
+  | { type: "memory_delete"; key: string }
+  // ── Scratchpad ────────────────────────────────────────────────────────────
+  | { type: "note_write"; key: string; value: string }
+  | { type: "note_delete"; key: string }
+  // ── Todo management ──────────────────────────────────────────────────────
+  | { type: "todo_create"; items: TodoItem[] }
+  | { type: "todo_update"; updates: TodoUpdate[] }
+  | { type: "todo_add"; items: TodoItem[] }
+  // ── Control ──────────────────────────────────────────────────────────────
+  | { type: "finish"; summary: string }
+  | {
+      type: "wait";
       /** Milliseconds to pause before the next action (100–10 000). */
       ms: number;
     }
   | {
-      type: 'ask_user';
+      type: "ask_user";
       /** The clarification question to display to the user. */
       question: string;
     };
@@ -137,7 +160,7 @@ export interface AgentResult {
 
 /** Persisted agent state in chrome.storage.session. */
 export interface AgentState {
-  status: 'idle' | 'running' | 'done' | 'stopped' | 'error';
+  status: "idle" | "running" | "done" | "stopped" | "error";
   tabId?: number;
   step: number;
   prompt?: string;
@@ -155,7 +178,15 @@ export interface Session {
 /** Log entry stored in chrome.storage.session. */
 export interface LogEntry {
   message: string;
-  level: 'think' | 'act' | 'observe' | 'screenshot' | 'info' | 'ok' | 'warn' | 'error';
+  level:
+    | "think"
+    | "act"
+    | "observe"
+    | "screenshot"
+    | "info"
+    | "ok"
+    | "warn"
+    | "error";
   ts: number;
 }
 
@@ -169,47 +200,54 @@ export interface AttachedFile {
 
 /** Messages flowing between popup / background / content. */
 export type Message =
-  | { type: 'START_AGENT'; tabId: number; prompt: string; sessionId?: number; attachments?: AttachedFile[]; modelId?: string }
-  | { type: 'STOP_AGENT' }
-  | { type: 'AGENT_LOG'; message: string; level: string }
-  | { type: 'AGENT_STATE_CHANGE' }
-  | { type: 'DRAW_MARKS' }
-  | { type: 'DESTROY_MARKS' }
-  | { type: 'BLOCK_INPUT' }
-  | { type: 'UNBLOCK_INPUT' }
-  | { type: 'PING' }
   | {
-      type: 'GET_ELEMENT_DOM';
+      type: "START_AGENT";
+      tabId: number;
+      prompt: string;
+      sessionId?: number;
+      attachments?: AttachedFile[];
+      modelId?: string;
+    }
+  | { type: "STOP_AGENT" }
+  | { type: "AGENT_LOG"; message: string; level: string }
+  | { type: "AGENT_STATE_CHANGE" }
+  | { type: "DRAW_MARKS" }
+  | { type: "DESTROY_MARKS" }
+  | { type: "BLOCK_INPUT" }
+  | { type: "UNBLOCK_INPUT" }
+  | { type: "PING" }
+  | {
+      type: "GET_ELEMENT_DOM";
       /** CSS-pixel center X of the target element. */
       x: number;
       /** CSS-pixel center Y of the target element. */
       y: number;
     }
   | {
-      type: 'ASK_USER';
+      type: "ASK_USER";
       /** The question the agent wants to ask the user. */
       question: string;
     }
   | {
-      type: 'USER_REPLY';
+      type: "USER_REPLY";
       /** The user's answer to the agent's question. */
       reply: string;
     }
   | {
-      type: 'PLAY_SOUND';
-      sound: 'finish' | 'ask';
+      type: "PLAY_SOUND";
+      sound: "finish" | "ask";
     }
   | {
       /** Incremental thinking text flushed during LLM streaming. */
-      type: 'AGENT_THINKING_DELTA';
+      type: "AGENT_THINKING_DELTA";
       delta: string;
     }
   | {
       /** Signals that thinking streaming is complete. */
-      type: 'AGENT_THINKING_DONE';
+      type: "AGENT_THINKING_DONE";
     }
   | {
-      type: 'UPLOAD_FILE';
+      type: "UPLOAD_FILE";
       /** CSS-pixel center X of the target file input. */
       x: number;
       /** CSS-pixel center Y of the target file input. */

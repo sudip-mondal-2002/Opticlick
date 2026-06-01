@@ -16,10 +16,10 @@ export const SCROLL_STEP_PX = 500;
 
 /** Compute CDP mouse-wheel deltas for a given scroll direction. */
 export function computeScrollDelta(
-  direction: 'up' | 'down' | 'left' | 'right',
+  direction: "up" | "down" | "left" | "right",
 ): { deltaX: number; deltaY: number } {
-  const isVertical = direction === 'up' || direction === 'down';
-  const sign = direction === 'up' || direction === 'left' ? -1 : 1;
+  const isVertical = direction === "up" || direction === "down";
+  const sign = direction === "up" || direction === "left" ? -1 : 1;
   return {
     deltaX: isVertical ? 0 : sign * SCROLL_STEP_PX,
     deltaY: isVertical ? sign * SCROLL_STEP_PX : 0,
@@ -41,6 +41,7 @@ export function scrollDeltaIsSignificant(
 export interface ActionRecord {
   type: string;
   targetId?: number;
+  id?: number;
 }
 
 /**
@@ -51,7 +52,12 @@ export function shouldPivot(
   history: ActionRecord[],
   type: string,
   targetId: number | undefined,
+  id: number | undefined,
   maxRetries = MAX_PIVOT_RETRIES,
 ): boolean {
-  return history.filter((a) => a.type === type && a.targetId === targetId).length >= maxRetries;
+  return (
+    history.filter(
+      (a) => a.type === type && a.targetId === targetId && a.id === id,
+    ).length >= maxRetries
+  );
 }
