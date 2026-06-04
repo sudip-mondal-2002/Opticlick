@@ -50,14 +50,14 @@ jobs:
 
       - name: Find existing sandbox preview comment
         id: find-comment
-        uses: peter-evans/find-comment@3eae4d37986fb5a8592848f6a574febe99e0170f
+        uses: peter-evans/find-comment@v4
         with:
           issue-number: ${{ steps.meta.outputs.pr_number }}
           comment-author: 'github-actions[bot]'
           body-includes: 🧪 Sandbox Preview
 
       - name: Post preview URL comment
-        uses: peter-evans/create-or-update-comment@5005703541117ac4b73cf0094f9fd11d3f09a769
+        uses: peter-evans/create-or-update-comment@v5
         with:
           comment-id: ${{ steps.find-comment.outputs.comment-id }}
           issue-number: ${{ steps.meta.outputs.pr_number }}
@@ -133,7 +133,7 @@ jobs:
           fi
 
       - name: Find Sandbox Preview Comment
-        uses: peter-evans/find-comment@3eae4d37986fb5a8592848f6a574febe99e0170f
+        uses: peter-evans/find-comment@v4
         id: fc
         if: steps.download.outcome == 'success'
         with:
@@ -142,7 +142,7 @@ jobs:
           body-includes: 🧪 Sandbox Preview
 
       - name: Update PR comment on close
-        uses: peter-evans/create-or-update-comment@5005703541117ac4b73cf0094f9fd11d3f09a769
+        uses: peter-evans/create-or-update-comment@v5
         if: steps.download.outcome == 'success'
         with:
           comment-id: ${{ steps.fc.outputs.comment-id }}
