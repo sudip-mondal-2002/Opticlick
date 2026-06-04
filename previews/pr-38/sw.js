@@ -82,22 +82,49 @@ function saveCookiesFromHeaders(urlStr, headers) {
   } catch (e) {}
 }
 
+async function checkIfCustomProxyConfigured() {
+  try {
+    const cache = await caches.open('opticlick-proxy-config');
+    const customResp = await cache.match('/proxy-url');
+    if (customResp) {
+      const customUrl = (await customResp.text()).trim();
+      return !!customUrl;
+    }
+  } catch (e) {}
+  return false;
+}
+
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
-
-  // In local dev mode, let the Vite dev server handle proxy requests server-side (Node.js) to bypass browser CORS restrictions.
-  if (url.hostname === 'localhost' || url.hostname === '127.0.0.1') {
-    return;
-  }
 
   const scopePath = new URL(self.registration.scope).pathname;
   const normalizedScope = scopePath.endsWith('/') ? scopePath : scopePath + '/';
   const proxyPrefix = getProxyPrefix();
 
+  const isProxyRequest = url.pathname.startsWith(proxyPrefix) || url.pathname.includes('/__proxy__/');
+  const isLocal = url.hostname === 'localhost' || url.hostname === '127.0.0.1';
+
+  // In local dev mode, let the Vite dev server handle sandbox assets/default requests server-side.
+  if (isLocal && !isProxyRequest) {
+    return;
+  }
+
   // 1. If it's explicitly a proxy request
-  if (url.pathname.startsWith(proxyPrefix) || url.pathname.includes('/__proxy__/')) {
+  if (isProxyRequest) {
     const target = url.searchParams.get('url');
     if (target) {
+      if (isLocal) {
+        event.respondWith((async () => {
+          const hasCustomProxy = await checkIfCustomProxyConfigured();
+          if (hasCustomProxy) {
+            return handleProxy(target, event.request);
+          }
+          // Fall back to default local dev proxy (Vite dev server)
+          return fetch(event.request);
+        })());
+        return;
+      }
+
       event.respondWith(handleProxy(target, event.request));
       return;
     }
@@ -121,6 +148,18 @@ self.addEventListener('fetch', event => {
                                url.pathname.includes('/@vite/') ||
                                url.pathname.includes('/@fs/');
         if (!isSandboxAsset) {
+          if (isLocal) {
+            event.respondWith((async () => {
+              const hasCustomProxy = await checkIfCustomProxyConfigured();
+              if (hasCustomProxy) {
+                return handleProxy(resolvedTargetUrl, event.request);
+              }
+              // Let Vite dev server handle it
+              return fetch(event.request);
+            })());
+            return;
+          }
+
           event.respondWith(handleProxy(resolvedTargetUrl, event.request));
           return;
         }
@@ -156,35 +195,37 @@ async function handleProxy(targetUrl, originalRequest) {
     const isLocal = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
     let resp;
     let proxyUsed = 'none';
+    let useLocalDirect = isLocal;
 
-    if (isLocal) {
+    const proxies = [];
+
+    // Check for user-configured custom proxy URL in Cache Storage
+    try {
+      const cache = await caches.open('opticlick-proxy-config');
+      const customResp = await cache.match('/proxy-url');
+      if (customResp) {
+        const customUrl = (await customResp.text()).trim();
+        if (customUrl) {
+          proxies.push({
+            name: 'custom-proxy',
+            getUrl: url => {
+              const separator = customUrl.includes('?') ? '&' : '?';
+              if (!customUrl.includes('url=')) {
+                return `${customUrl}${separator}url=${encodeURIComponent(url)}`;
+              }
+              return customUrl.replace(/url=([^&]*)/, `url=${encodeURIComponent(url)}`);
+            }
+          });
+          useLocalDirect = false; // Disable direct fetch since we have a custom proxy configured
+        }
+      }
+    } catch (e) {
+      console.warn('[SW] Failed to load custom proxy URL:', e);
+    }
+
+    if (useLocalDirect) {
       resp = await fetch(resolvedUrl, fetchInit);
     } else {
-      const proxies = [];
-
-      // Check for user-configured custom proxy URL in Cache Storage
-      try {
-        const cache = await caches.open('opticlick-proxy-config');
-        const customResp = await cache.match('/proxy-url');
-        if (customResp) {
-          const customUrl = (await customResp.text()).trim();
-          if (customUrl) {
-            proxies.push({
-              name: 'custom-proxy',
-              getUrl: url => {
-                const separator = customUrl.includes('?') ? '&' : '?';
-                if (!customUrl.includes('url=')) {
-                  return `${customUrl}${separator}url=${encodeURIComponent(url)}`;
-                }
-                return customUrl.replace(/url=([^&]*)/, `url=${encodeURIComponent(url)}`);
-              }
-            });
-          }
-        }
-      } catch (e) {
-        console.warn('[SW] Failed to load custom proxy URL:', e);
-      }
-
       if (proxies.length === 0) {
         throw new Error('No custom Cloudflare Worker CORS proxy configured. Please enter your worker URL in the CORS Proxy Settings panel.');
       }
