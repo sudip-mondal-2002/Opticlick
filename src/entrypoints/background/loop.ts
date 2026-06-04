@@ -15,12 +15,11 @@
 import {
   createSession,
   saveVFSFile,
-  clearVFSFiles,
   getAllMemories,
 } from '@/utils/db';
 import { createAnyModel } from '@/utils/llm';
 import type { ApiKeys } from '@/utils/llm';
-import { loadTodoFromVFS, TODO_VFS_FILENAME } from '@/utils/todo';
+import { loadTodoFromVFS } from '@/utils/todo';
 import { loadScratchpadFromVFS } from '@/utils/scratchpad';
 import { getProviderForModel, isOllamaAvailable, DEFAULT_MODEL, customOpenAIConfigId } from '@/utils/models';
 import type { CustomOpenAIConfig } from '@/utils/models';
@@ -249,7 +248,6 @@ export async function runAgentLoop(
         );
       } catch { /* */ }
       await detachDebugger(finalTabId);
-      try { await clearVFSFiles(sessionId, [TODO_VFS_FILENAME]); } catch { /* */ }
       chrome.runtime.sendMessage({ type: 'AGENT_STATE_CHANGE' }).catch(() => {});
     }
   } catch (err) {
