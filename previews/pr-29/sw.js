@@ -12,6 +12,18 @@
 const CONTENT_SCRIPT_ID = '__opticlick_cs__';
 const cookieJar = new Map(); // domain -> Map(name -> value)
 
+function escapeHtml(str) {
+  if (typeof str !== 'string') {
+    str = String(str);
+  }
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', e => e.waitUntil(self.clients.claim()));
 
@@ -137,6 +149,11 @@ async function handleProxy(targetUrl, originalRequest) {
     }
 
     // Determine if we need to route through a CORS proxy (only in production / GitHub Pages)
+    // Production builds route through the third-party CORS proxy corsproxy.io because the sandbox running
+    // on GitHub Pages (or any external origin) cannot directly fetch arbitrary URLs due to browser CORS security rules.
+    // NOTE: This introduces a dependency on corsproxy.io. If this public service fails, resolving target URLs in production will fail.
+    // Fallback considerations: set up a self-hosted CORS proxy, support an optional custom proxy URL via settings,
+    // or handle the failure gracefully by displaying a troubleshooting guide to the user.
     const isLocal = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
     const fetchUrl = isLocal ? resolvedUrl : `https://corsproxy.io/?${encodeURIComponent(resolvedUrl)}`;
 
@@ -192,8 +209,8 @@ async function handleProxy(targetUrl, originalRequest) {
     return new Response(
       `<!DOCTYPE html><html><body style="font-family:sans-serif;padding:2rem;background:#1a1a2e;color:#e2e8f0;">
         <h2 style="color:#f87171">⚠️ Proxy Error</h2>
-        <p>URL: <code>${targetUrl}</code></p>
-        <p>Error: ${err.message}</p>
+        <p>URL: <code>${escapeHtml(targetUrl)}</code></p>
+        <p>Error: ${escapeHtml(err.message)}</p>
       </body></html>`,
       { status: 502, headers: { 'content-type': 'text/html; charset=utf-8', 'access-control-allow-origin': '*' } }
     );
