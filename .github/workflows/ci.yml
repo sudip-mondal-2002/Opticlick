@@ -11,12 +11,15 @@ jobs:
     name: Lint → Build → Test
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: read
+      # Required for davelosert/vitest-coverage-report-action to annotate
+      # changed files on non-fork PRs. On fork PRs this is still read-only
+      # (GitHub caps it) so the annotation step is a no-op — that's fine.
       pull-requests: write
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -53,78 +56,49 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: xvfb-run --auto-servernum -- npm run test:coverage
 
-      - name: Report coverage
+      # Post inline annotations on non-fork PRs (read-write token).
+      # Fork PRs: action gracefully skips the comment — coverage is still
+      # uploaded as an artifact and deployed by ci-report.yml.
+      - name: Report coverage (inline annotations)
         uses: davelosert/vitest-coverage-report-action@v2
         if: always()
         with:
           file-coverage-mode: changes
 
-      - name: Prepare coverage report preview folder
+      # ── Upload coverage + metadata so ci-report.yml can deploy them ──────────
+      - name: Prepare coverage artifact
         id: prep-coverage
         if: github.event_name == 'pull_request' && always()
         run: |
           if [ -d "coverage" ]; then
             mkdir -p deploy-coverage/previews/pr-${{ github.event.number }}/coverage-report
             cp -r coverage/. deploy-coverage/previews/pr-${{ github.event.number }}/coverage-report/
-            echo "coverage_exists=true" >> $GITHUB_OUTPUT
-            # Extract coverage percentage
             pct=$(node -e "try { console.log(require('./coverage/coverage-summary.json').total.lines.pct + '%'); } catch { console.log('N/A'); }")
             echo "coverage_pct=$pct" >> $GITHUB_OUTPUT
+            echo "coverage_exists=true" >> $GITHUB_OUTPUT
           else
             echo "coverage_exists=false" >> $GITHUB_OUTPUT
             echo "coverage_pct=N/A" >> $GITHUB_OUTPUT
           fi
+          # Save metadata for the deploy job
+          echo "${{ github.event.number }}" > deploy-coverage/PR_NUMBER
+          echo "${{ github.head_ref }}" > deploy-coverage/HEAD_REF
+          echo "${{ github.sha }}" > deploy-coverage/SHA
+          echo "${{ steps.prep-coverage.outputs.coverage_pct || 'N/A' }}" > deploy-coverage/COVERAGE_PCT
 
-      - name: Deploy coverage report to gh-pages
-        if: github.event_name == 'pull_request' && steps.prep-coverage.outputs.coverage_exists == 'true'
-        uses: peaceiris/actions-gh-pages@4f9cc6602d3f66b9c108549d475ec49e8ef4d45e
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./deploy-coverage
-          publish_branch: gh-pages
-          keep_files: true
-
-      - name: Find Sandbox Preview Comment
-        uses: peter-evans/find-comment@v3
-        id: fc
+      - name: Upload coverage artifact
         if: github.event_name == 'pull_request' && always()
+        uses: actions/upload-artifact@v4
         with:
-          issue-number: ${{ github.event.number }}
-          comment-author: 'github-actions[bot]'
-          body-includes: 🧪 Sandbox Preview
+          name: coverage-report-pr-${{ github.event.number }}
+          path: deploy-coverage/
+          retention-days: 1
 
-      - name: Post preview URL & coverage comment
-        uses: peter-evans/create-or-update-comment@5005703541117ac4b73cf0094f9fd11d3f09a769
-        if: github.event_name == 'pull_request' && always()
-        with:
-          comment-id: ${{ steps.fc.outputs.comment-id }}
-          issue-number: ${{ github.event.number }}
-          body: |
-            ## 🧪 Sandbox Preview & Coverage
-
-            | | |
-            |---|---|
-            | **Preview URL** | [opticlick.sudipmondal.co.in/previews/pr-${{ github.event.number }}/](https://opticlick.sudipmondal.co.in/previews/pr-${{ github.event.number }}/) |
-            | **Coverage Report** | [opticlick.sudipmondal.co.in/previews/pr-${{ github.event.number }}/coverage-report/](https://opticlick.sudipmondal.co.in/previews/pr-${{ github.event.number }}/coverage-report/) |
-            | **Coverage %** | `${{ steps.prep-coverage.outputs.coverage_pct || 'N/A' }}` |
-            | **Branch** | `${{ github.head_ref }}` |
-            | **Commit** | `${{ github.sha }}` |
-
-            ### What is this?
-            A live preview of the extension's sidepanel UI alongside a **real mock browser** — the agent can actually navigate, annotate, and interact with any website through the built-in proxy.
-
-            > **Note**: Enter your API key in the sidepanel's setup screen. The session is stateless (API keys are stored in browser localStorage, not saved to any server).
-
-            ---
-            *Updated automatically on each push. Deployed at `r${{ github.run_number }}`.*
-          comment-author: 'github-actions[bot]'
-          edit-mode: replace
-
+      # ── Main-branch only: package & save extension zip ────────────────────────
       - name: Package extension
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         run: |
           npm run zip
-          # Move the generated zip to a predictable location
           mv .output/*.zip release.zip || true
 
       - name: Save release artifact

@@ -1,0 +1,85 @@
+name: CI - Deploy Coverage Report
+
+on:
+  workflow_run:
+    workflows: ["CI - Lint, Build and Test"]
+    types: [completed]
+
+# Runs in the BASE repo context — has full write access even for fork PRs.
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  deploy-coverage:
+    name: Deploy coverage & post comment
+    runs-on: ubuntu-latest
+    # Only run for PR builds (push to main doesn't produce a coverage artifact)
+    if: github.event.workflow_run.event == 'pull_request'
+
+    steps:
+      - name: Download coverage artifact
+        id: download
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-report-pr-*
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ github.event.workflow_run.id }}
+          path: deploy-coverage/
+        continue-on-error: true
+
+      - name: Read PR metadata
+        id: meta
+        if: steps.download.outcome == 'success'
+        run: |
+          echo "pr_number=$(cat deploy-coverage/PR_NUMBER)" >> $GITHUB_OUTPUT
+          echo "head_ref=$(cat deploy-coverage/HEAD_REF)" >> $GITHUB_OUTPUT
+          echo "sha=$(cat deploy-coverage/SHA)" >> $GITHUB_OUTPUT
+          echo "coverage_pct=$(cat deploy-coverage/COVERAGE_PCT)" >> $GITHUB_OUTPUT
+          # Clean up metadata files before deploying
+          rm -f deploy-coverage/PR_NUMBER deploy-coverage/HEAD_REF deploy-coverage/SHA deploy-coverage/COVERAGE_PCT
+
+      - name: Deploy coverage report to gh-pages
+        if: steps.download.outcome == 'success'
+        uses: peaceiris/actions-gh-pages@4f9cc6602d3f66b9c108549d475ec49e8ef4d45e
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./deploy-coverage
+          publish_branch: gh-pages
+          keep_files: true
+
+      - name: Find existing PR comment
+        uses: peter-evans/find-comment@v3
+        id: fc
+        if: steps.download.outcome == 'success'
+        with:
+          issue-number: ${{ steps.meta.outputs.pr_number }}
+          comment-author: 'github-actions[bot]'
+          body-includes: 🧪 Sandbox Preview
+
+      - name: Post preview URL & coverage comment
+        uses: peter-evans/create-or-update-comment@5005703541117ac4b73cf0094f9fd11d3f09a769
+        if: steps.download.outcome == 'success'
+        with:
+          comment-id: ${{ steps.fc.outputs.comment-id }}
+          issue-number: ${{ steps.meta.outputs.pr_number }}
+          body: |
+            ## 🧪 Sandbox Preview & Coverage
+
+            | | |
+            |---|---|
+            | **Preview URL** | [opticlick.sudipmondal.co.in/previews/pr-${{ steps.meta.outputs.pr_number }}/](https://opticlick.sudipmondal.co.in/previews/pr-${{ steps.meta.outputs.pr_number }}/) |
+            | **Coverage Report** | [opticlick.sudipmondal.co.in/previews/pr-${{ steps.meta.outputs.pr_number }}/coverage-report/](https://opticlick.sudipmondal.co.in/previews/pr-${{ steps.meta.outputs.pr_number }}/coverage-report/) |
+            | **Coverage %** | `${{ steps.meta.outputs.coverage_pct }}` |
+            | **Branch** | `${{ steps.meta.outputs.head_ref }}` |
+            | **Commit** | `${{ steps.meta.outputs.sha }}` |
+
+            ### What is this?
+            A live preview of the extension's sidepanel UI alongside a **real mock browser** — the agent can actually navigate, annotate, and interact with any website through the built-in proxy.
+
+            > **Note**: Enter your API key in the sidepanel's setup screen. The session is stateless (API keys are stored in browser localStorage, not saved to any server).
+
+            ---
+            *Updated automatically on each push.*
+          comment-author: 'github-actions[bot]'
+          edit-mode: replace
