@@ -136,8 +136,17 @@ async function handleProxy(targetUrl, originalRequest) {
       fetchInit.body = await originalRequest.clone().arrayBuffer();
     }
 
-    const resp = await fetch(resolvedUrl, fetchInit);
-    resolvedUrl = resp.url || resolvedUrl;
+    // Determine if we need to route through a CORS proxy (only in production / GitHub Pages)
+    const isLocal = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+    const fetchUrl = isLocal ? resolvedUrl : `https://corsproxy.io/?${encodeURIComponent(resolvedUrl)}`;
+
+    const resp = await fetch(fetchUrl, fetchInit);
+    
+    let finalUrl = resp.url || resolvedUrl;
+    if (finalUrl.startsWith('https://corsproxy.io/?')) {
+      finalUrl = decodeURIComponent(finalUrl.slice('https://corsproxy.io/?'.length));
+    }
+    resolvedUrl = finalUrl;
 
     // Save outbound cookies
     saveCookiesFromHeaders(resolvedUrl, resp.headers);
