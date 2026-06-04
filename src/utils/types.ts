@@ -152,6 +152,15 @@ export interface Session {
   updatedAt: number;
 }
 
+/** A reusable prompt template. */
+export interface PromptTemplate {
+  id: string;
+  name: string;
+  prompt: string;
+  createdAt: number;
+  lastUsedAt?: number;
+}
+
 /** Log entry stored in chrome.storage.session. */
 export interface LogEntry {
   message: string;

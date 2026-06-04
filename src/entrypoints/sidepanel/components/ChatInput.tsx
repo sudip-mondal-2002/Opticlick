@@ -1,17 +1,29 @@
-import { useState, useRef, useCallback } from 'react';
-import type { AttachedFile } from '@/utils/types';
+import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
+import type { AttachedFile, PromptTemplate } from '@/utils/types';
 
 interface Props {
   isRunning: boolean;
   textareaRef: React.RefObject<HTMLTextAreaElement | null>;
   onRun: (prompt: string, attachments: AttachedFile[]) => void;
   onStop: () => void;
+  injectedPrompt?: string | null;
+  onClearInjectedPrompt?: () => void;
+  templates?: PromptTemplate[];
+  onSaveTemplate?: (name: string, prompt: string) => void;
 }
 
 function PaperclipIcon() {
   return (
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66L9.41 17.41a2 2 0 0 1-2.83-2.83l8.49-8.48" />
+    </svg>
+  );
+}
+
+function BookmarkIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
     </svg>
   );
 }
@@ -48,10 +60,33 @@ function readFileAsBase64(file: File): Promise<{ data: string; previewUrl?: stri
 
 type AttachmentItem = AttachedFile & { previewUrl?: string };
 
-export function ChatInput({ isRunning, textareaRef, onRun, onStop }: Props) {
+export function ChatInput({
+  isRunning,
+  textareaRef,
+  onRun,
+  onStop,
+  injectedPrompt,
+  onClearInjectedPrompt,
+  templates = [],
+  onSaveTemplate,
+}: Props) {
   const [prompt, setPrompt] = useState('');
   const [attachments, setAttachments] = useState<AttachmentItem[]>([]);
+  const [showSaveForm, setShowSaveForm] = useState(false);
+  const [saveName, setSaveName] = useState('');
+  const [showSlashMenu, setShowSlashMenu] = useState(false);
+  const [selectedIndex, setSelectedIndex] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Handle injected prompt from templates
+  useEffect(() => {
+    if (injectedPrompt) {
+      setPrompt(injectedPrompt);
+      textareaRef.current?.focus();
+      onClearInjectedPrompt?.();
+    }
+  }, [injectedPrompt, onClearInjectedPrompt, textareaRef]);
 
   const addFiles = useCallback(async (files: FileList | File[]) => {
     const results = await Promise.all(
@@ -69,15 +104,74 @@ export function ChatInput({ isRunning, textareaRef, onRun, onStop }: Props) {
     const pending = attachments.map(({ name, mimeType, data }) => ({ name, mimeType, data }));
     setPrompt('');
     setAttachments([]);
+    setShowSlashMenu(false);
     onRun(trimmed, pending);
   };
 
+  const handleSaveTemplate = () => {
+    const trimmedName = saveName.trim();
+    if (!trimmedName || !prompt.trim() || !onSaveTemplate) return;
+    onSaveTemplate(trimmedName, prompt);
+    setSaveName('');
+    setShowSaveForm(false);
+  };
+
+  // Handle slash menu filtering and selection
+  const slashQuery = prompt.slice(1).split(' ')[0].toLowerCase();
+  const slashMatches = useMemo(() => {
+    if (!showSlashMenu) return [];
+    return templates.filter((t) =>
+      t.name.toLowerCase().includes(slashQuery),
+    );
+  }, [showSlashMenu, slashQuery, templates]);
+
+  const handleSelectTemplate = (template: PromptTemplate) => {
+    setPrompt(template.prompt);
+    setShowSlashMenu(false);
+    textareaRef.current?.focus();
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    // Handle slash menu navigation
+    if (showSlashMenu && slashMatches.length > 0) {
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setSelectedIndex((i) => (i === 0 ? slashMatches.length - 1 : i - 1));
+        return;
+      }
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setSelectedIndex((i) => (i === slashMatches.length - 1 ? 0 : i + 1));
+        return;
+      }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        handleSelectTemplate(slashMatches[selectedIndex]);
+        return;
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setShowSlashMenu(false);
+        return;
+      }
+    }
+
+    // Handle normal enter to submit
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleRun();
     }
   };
+
+  useEffect(() => {
+    // Check for slash menu trigger
+    if (prompt === '/' || (prompt.startsWith('/ ') && prompt.length > 2)) {
+      setShowSlashMenu(true);
+      setSelectedIndex(0);
+    } else if (prompt.length <= 1 || !prompt.startsWith('/')) {
+      setShowSlashMenu(false);
+    }
+  }, [prompt]);
 
   const handlePaste = useCallback(async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
     const imageFiles = Array.from(e.clipboardData.items)
@@ -128,6 +222,41 @@ export function ChatInput({ isRunning, textareaRef, onRun, onStop }: Props) {
         </div>
       )}
 
+      {/* Save template form */}
+      {showSaveForm && (
+        <div className="mb-2 p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-[8px] space-y-2">
+          <input
+            autoFocus
+            type="text"
+            value={saveName}
+            onChange={(e) => setSaveName(e.target.value)}
+            placeholder="Template name…"
+            className="w-full px-2.5 py-1.5 text-[12px] border border-slate-200 dark:border-slate-700 rounded-[6px] bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 placeholder:text-slate-400 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                handleSaveTemplate();
+              }
+            }}
+          />
+          <div className="flex gap-2 justify-end">
+            <button
+              onClick={() => { setShowSaveForm(false); setSaveName(''); }}
+              className="px-2.5 py-1 text-[11px] font-medium rounded-[6px] border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSaveTemplate}
+              disabled={!saveName.trim()}
+              className="px-2.5 py-1 text-[11px] font-medium rounded-[6px] bg-sky-500 text-white hover:bg-sky-600 disabled:opacity-40 transition-colors"
+            >
+              Save
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Hidden file input */}
       <input
         ref={fileInputRef}
@@ -137,30 +266,65 @@ export function ChatInput({ isRunning, textareaRef, onRun, onStop }: Props) {
         onChange={handleFileInputChange}
       />
 
-      {/* Textarea */}
-      <textarea
-        ref={textareaRef}
-        rows={3}
-        className="w-full min-h-[64px] max-h-[140px] resize-none px-3 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-[10px] text-[12.5px] text-slate-800 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-600 leading-[1.5] outline-none font-sans transition-[border-color,box-shadow] focus:border-sky-600 focus:ring-2 focus:ring-sky-600/20 disabled:opacity-50 disabled:cursor-not-allowed"
-        value={prompt}
-        onChange={(e) => setPrompt(e.target.value)}
-        onKeyDown={handleKeyDown}
-        onPaste={handlePaste}
-        disabled={isRunning}
-        placeholder="Describe a task… (Enter to run, Shift+Enter for newline)"
-      />
+      {/* Textarea container with slash menu */}
+      <div ref={containerRef} className="relative">
+        <textarea
+          ref={textareaRef}
+          rows={3}
+          className="w-full min-h-[64px] max-h-[140px] resize-none px-3 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-[10px] text-[12.5px] text-slate-800 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-600 leading-[1.5] outline-none font-sans transition-[border-color,box-shadow] focus:border-sky-600 focus:ring-2 focus:ring-sky-600/20 disabled:opacity-50 disabled:cursor-not-allowed"
+          value={prompt}
+          onChange={(e) => setPrompt(e.target.value)}
+          onKeyDown={handleKeyDown}
+          onPaste={handlePaste}
+          disabled={isRunning}
+          placeholder="Describe a task… (Enter to run, Shift+Enter for newline, / for templates)"
+        />
+
+        {/* Slash menu dropdown */}
+        {showSlashMenu && slashMatches.length > 0 && (
+          <div className="absolute left-0 right-0 bottom-full mb-1 z-50 rounded-[6px] border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-[0_4px_12px_rgba(0,0,0,0.15)] dark:shadow-[0_4px_12px_rgba(0,0,0,0.4)] overflow-hidden max-h-[200px] overflow-y-auto">
+            {slashMatches.map((template, i) => (
+              <button
+                key={template.id}
+                onClick={() => handleSelectTemplate(template)}
+                className={`w-full text-left px-3 py-2 text-[12px] border-b border-slate-100 dark:border-slate-800 last:border-b-0 transition-colors ${
+                  i === selectedIndex
+                    ? 'bg-sky-100 dark:bg-sky-950/40 text-slate-800 dark:text-slate-100'
+                    : 'hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300'
+                }`}
+              >
+                <p className="font-medium leading-snug line-clamp-1">{template.name}</p>
+                <p className="text-[11px] text-slate-500 dark:text-slate-500 line-clamp-1 mt-0.5">
+                  {template.prompt}
+                </p>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
 
       {/* Toolbar row */}
-      <div className="flex items-center justify-between mt-2">
-        <button
-          className="flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-medium rounded-[7px] text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 transition-all hover:bg-slate-200 dark:hover:bg-slate-700 active:scale-[0.97] disabled:opacity-30 disabled:cursor-not-allowed"
-          disabled={isRunning}
-          onClick={() => fileInputRef.current?.click()}
-          title="Attach file"
-        >
-          <PaperclipIcon />
-          Attach
-        </button>
+      <div className="flex items-center justify-between mt-2 gap-1.5">
+        <div className="flex items-center gap-1.5">
+          <button
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-medium rounded-[7px] text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 transition-all hover:bg-slate-200 dark:hover:bg-slate-700 active:scale-[0.97] disabled:opacity-30 disabled:cursor-not-allowed"
+            disabled={isRunning}
+            onClick={() => fileInputRef.current?.click()}
+            title="Attach file"
+          >
+            <PaperclipIcon />
+            Attach
+          </button>
+          <button
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-medium rounded-[7px] text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 transition-all hover:bg-slate-200 dark:hover:bg-slate-700 active:scale-[0.97] disabled:opacity-30 disabled:cursor-not-allowed"
+            disabled={isRunning || !prompt.trim()}
+            onClick={() => setShowSaveForm(true)}
+            title="Save as template"
+          >
+            <BookmarkIcon />
+            Save
+          </button>
+        </div>
 
         <div className="flex items-center gap-1.5">
           <button

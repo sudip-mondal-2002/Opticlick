@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import type { AgentState, LogEntry, Session, AttachedFile } from '@/utils/types';
+import type { AgentState, LogEntry, Session, AttachedFile, PromptTemplate } from '@/utils/types';
 import { getSessions, getConversationHistory } from '@/utils/db';
 import {
   DEFAULT_MODEL,
@@ -20,6 +20,7 @@ import { ModelSelector } from './components/ModelSelector';
 import { ChatInput } from './components/ChatInput';
 import { ChatFeed } from './components/ChatFeed';
 import { SessionsOverlay } from './components/SessionsOverlay';
+import { TemplatesOverlay } from './components/TemplatesOverlay';
 import type { LogItem, HistoryStep } from './components/ChatFeed';
 
 // ── Parse model turn from IndexedDB ──────────────────────────────────────────
@@ -89,6 +90,10 @@ function AgentUI() {
   const [showSessions, setShowSessions] = useState(false);
   const [chatInputKey, setChatInputKey] = useState(0);
 
+  const [templates, setTemplates] = useState<PromptTemplate[]>([]);
+  const [showTemplates, setShowTemplates] = useState(false);
+  const [injectedPrompt, setInjectedPrompt] = useState<string | null>(null);
+
   const feedRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -97,18 +102,20 @@ function AgentUI() {
   useEffect(() => {
     (async () => {
       const [stored, ollama] = await Promise.all([
-        chrome.storage.local.get(['geminiApiKey', 'anthropicApiKey', 'openaiApiKey', 'customOpenaiConfigs', 'selectedModel']),
+        chrome.storage.local.get(['geminiApiKey', 'anthropicApiKey', 'openaiApiKey', 'customOpenaiConfigs', 'selectedModel', 'promptTemplates']),
         fetchOllamaModels(),
       ]);
       const gKey = (stored.geminiApiKey as string) || null;
       const aKey = (stored.anthropicApiKey as string) || null;
       const oKey = (stored.openaiApiKey as string) || null;
       const configs = (stored.customOpenaiConfigs as CustomOpenAIConfig[]) || [];
+      const tmpl = (stored.promptTemplates as PromptTemplate[]) || [];
 
       setGeminiApiKey(gKey);
       setAnthropicApiKey(aKey);
       setOpenaiApiKey(oKey);
       setCustomConfigs(configs);
+      setTemplates(tmpl);
       setOllamaModels(ollama);
 
       // Select a valid model — fall back if the current selection's provider has no key
@@ -166,6 +173,50 @@ function AgentUI() {
   const handleModelChange = (modelId: string) => {
     setSelectedModel(modelId);
     chrome.storage.local.set({ selectedModel: modelId });
+  };
+
+  const saveTemplate = (name: string, prompt: string) => {
+    const trimmedName = name.trim();
+    const trimmedPrompt = prompt.trim();
+    if (!trimmedName || !trimmedPrompt) return;
+
+    // Enforce 100-template cap
+    if (templates.length >= 100) {
+      appendLog('Maximum 100 templates reached.', 'warn');
+      return;
+    }
+
+    const newTemplate: PromptTemplate = {
+      id: crypto.randomUUID(),
+      name: trimmedName,
+      prompt: trimmedPrompt,
+      createdAt: Date.now(),
+    };
+
+    const updated = [...templates, newTemplate];
+    setTemplates(updated);
+    chrome.storage.local.set({ promptTemplates: updated });
+    appendLog(`Saved template: "${trimmedName}"`, 'ok');
+  };
+
+  const updateTemplate = (template: PromptTemplate) => {
+    const updated = templates.map((t) =>
+      t.id === template.id ? { ...template, lastUsedAt: Date.now() } : t,
+    );
+    setTemplates(updated);
+    chrome.storage.local.set({ promptTemplates: updated });
+  };
+
+  const deleteTemplate = (id: string) => {
+    const updated = templates.filter((t) => t.id !== id);
+    setTemplates(updated);
+    chrome.storage.local.set({ promptTemplates: updated });
+  };
+
+  const useTemplate = (template: PromptTemplate) => {
+    updateTemplate(template);
+    setInjectedPrompt(template.prompt);
+    setShowTemplates(false);
   };
 
   // ── Agent state / logs ─────────────────────────────────────────────────────
@@ -365,12 +416,23 @@ function AgentUI() {
         />
       )}
 
+      {showTemplates && (
+        <TemplatesOverlay
+          templates={templates}
+          onClose={() => setShowTemplates(false)}
+          onUse={useTemplate}
+          onSave={updateTemplate}
+          onDelete={deleteTemplate}
+        />
+      )}
+
       <Header
         isRunning={isRunning}
         isError={isError}
         sessionCount={sessions.length}
         onShowSessions={() => setShowSessions(true)}
         onShowApiKeys={() => setShowApiKeys(true)}
+        onShowTemplates={() => setShowTemplates(true)}
       />
 
       {/* Session continuation pill */}
@@ -433,6 +495,10 @@ function AgentUI() {
         textareaRef={textareaRef}
         onRun={handleRun}
         onStop={handleStop}
+        injectedPrompt={injectedPrompt}
+        onClearInjectedPrompt={() => setInjectedPrompt(null)}
+        templates={templates}
+        onSaveTemplate={saveTemplate}
       />
 
       <ModelSelector
