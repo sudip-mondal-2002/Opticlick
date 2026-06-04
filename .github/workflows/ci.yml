@@ -2,16 +2,16 @@ name: CI - Lint, Build and Test
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main]
   pull_request:
-    branches: [develop]
+    branches: [main]
 
 jobs:
   ci:
     name: Lint → Build → Test
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       pull-requests: write
 
     steps:
@@ -26,6 +26,9 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Copy icons
+        run: npm run copy-icons
 
       # ── Lint ─────────────────────────────────────────────────────────────────
       - name: Lint
@@ -55,6 +58,67 @@ jobs:
         if: always()
         with:
           file-coverage-mode: changes
+
+      - name: Prepare coverage report preview folder
+        id: prep-coverage
+        if: github.event_name == 'pull_request' && always()
+        run: |
+          if [ -d "coverage" ]; then
+            mkdir -p deploy-coverage/previews/pr-${{ github.event.number }}/coverage-report
+            cp -r coverage/. deploy-coverage/previews/pr-${{ github.event.number }}/coverage-report/
+            echo "coverage_exists=true" >> $GITHUB_OUTPUT
+            # Extract coverage percentage
+            pct=$(node -e "try { console.log(require('./coverage/coverage-summary.json').total.lines.pct + '%'); } catch { console.log('N/A'); }")
+            echo "coverage_pct=$pct" >> $GITHUB_OUTPUT
+          else
+            echo "coverage_exists=false" >> $GITHUB_OUTPUT
+            echo "coverage_pct=N/A" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Deploy coverage report to gh-pages
+        if: github.event_name == 'pull_request' && steps.prep-coverage.outputs.coverage_exists == 'true'
+        uses: peaceiris/actions-gh-pages@4f9cc6602d3f66b9c108549d475ec49e8ef4d45e
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./deploy-coverage
+          publish_branch: gh-pages
+          keep_files: true
+
+      - name: Find Sandbox Preview Comment
+        uses: peter-evans/find-comment@v3
+        id: fc
+        if: github.event_name == 'pull_request' && always()
+        with:
+          issue-number: ${{ github.event.number }}
+          comment-author: 'github-actions[bot]'
+          body-includes: 🧪 Sandbox Preview
+
+      - name: Post preview URL & coverage comment
+        uses: peter-evans/create-or-update-comment@5005703541117ac4b73cf0094f9fd11d3f09a769
+        if: github.event_name == 'pull_request' && always()
+        with:
+          comment-id: ${{ steps.fc.outputs.comment-id }}
+          issue-number: ${{ github.event.number }}
+          body: |
+            ## 🧪 Sandbox Preview & Coverage
+
+            | | |
+            |---|---|
+            | **Preview URL** | [opticlick.sudipmondal.co.in/previews/pr-${{ github.event.number }}/](https://opticlick.sudipmondal.co.in/previews/pr-${{ github.event.number }}/) |
+            | **Coverage Report** | [opticlick.sudipmondal.co.in/previews/pr-${{ github.event.number }}/coverage-report/](https://opticlick.sudipmondal.co.in/previews/pr-${{ github.event.number }}/coverage-report/) |
+            | **Coverage %** | `${{ steps.prep-coverage.outputs.coverage_pct || 'N/A' }}` |
+            | **Branch** | `${{ github.head_ref }}` |
+            | **Commit** | `${{ github.sha }}` |
+
+            ### What is this?
+            A live preview of the extension's sidepanel UI alongside a **real mock browser** — the agent can actually navigate, annotate, and interact with any website through the built-in proxy.
+
+            > **Note**: Enter your API key in the sidepanel's setup screen. The session is stateless (API keys are stored in browser localStorage, not saved to any server).
+
+            ---
+            *Updated automatically on each push. Deployed at `r${{ github.run_number }}`.*
+          comment-author: 'github-actions[bot]'
+          edit-mode: replace
 
       - name: Package extension
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'

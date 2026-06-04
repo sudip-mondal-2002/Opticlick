@@ -6,6 +6,7 @@ interface Props {
   sessionCount: number;
   onShowSessions: () => void;
   onShowApiKeys: () => void;
+  onShowTemplates: () => void;
 }
 
 function SunIcon() {
@@ -32,7 +33,15 @@ function MoonIcon() {
   );
 }
 
-export function Header({ isRunning, isError, sessionCount, onShowSessions, onShowApiKeys }: Props) {
+function BookmarkIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+    </svg>
+  );
+}
+
+export function Header({ isRunning, isError, sessionCount, onShowSessions, onShowApiKeys, onShowTemplates }: Props) {
   const { theme, toggleTheme } = useTheme();
 
   const dotClass = isRunning
@@ -74,6 +83,15 @@ export function Header({ isRunning, isError, sessionCount, onShowSessions, onSho
           <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
         </svg>
         {sessionCount > 0 && <span>{sessionCount}</span>}
+      </button>
+
+      {/* Templates button */}
+      <button
+        onClick={onShowTemplates}
+        className="w-6 h-6 shrink-0 flex items-center justify-center rounded-md text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors"
+        title="Prompt templates"
+      >
+        <BookmarkIcon />
       </button>
 
       {/* API keys button */}
