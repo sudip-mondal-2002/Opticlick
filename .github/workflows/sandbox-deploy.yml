@@ -1,0 +1,160 @@
+name: PR Sandbox — Deploy
+
+on:
+  workflow_run:
+    workflows: ["PR Sandbox — Build"]
+    types: [completed]
+
+# This workflow runs in the BASE repo context (not the fork),
+# so GITHUB_TOKEN has full write access to push to gh-pages.
+permissions: {}
+
+jobs:
+  # ── Deploy preview when the build succeeded ─────────────────────────────────
+  deploy:
+    name: Deploy sandbox preview
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    if: >
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'pull_request'
+
+    steps:
+      - name: Download preview artifact
+        uses: actions/download-artifact@v4
+        with:
+          pattern: sandbox-preview-pr-*
+          merge-multiple: true
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ github.event.workflow_run.id }}
+          path: deploy-preview/
+
+      - name: Read PR metadata
+        id: meta
+        run: |
+          echo "pr_number=$(cat deploy-preview/PR_NUMBER)" >> $GITHUB_OUTPUT
+          echo "head_ref=$(cat deploy-preview/HEAD_REF)" >> $GITHUB_OUTPUT
+          echo "sha=$(cat deploy-preview/SHA)" >> $GITHUB_OUTPUT
+          # Remove metadata files so they don't end up in gh-pages
+          rm deploy-preview/PR_NUMBER deploy-preview/HEAD_REF deploy-preview/SHA
+
+      - name: Deploy sandbox to gh-pages
+        uses: peaceiris/actions-gh-pages@4f9cc6602d3f66b9c108549d475ec49e8ef4d45e
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./deploy-preview
+          publish_branch: gh-pages
+          keep_files: true
+
+      - name: Find existing sandbox preview comment
+        id: find-comment
+        uses: peter-evans/find-comment@3eae4d37986fb5a8592848f6a574febe99e0170f
+        with:
+          issue-number: ${{ steps.meta.outputs.pr_number }}
+          comment-author: 'github-actions[bot]'
+          body-includes: 🧪 Sandbox Preview
+
+      - name: Post preview URL comment
+        uses: peter-evans/create-or-update-comment@5005703541117ac4b73cf0094f9fd11d3f09a769
+        with:
+          comment-id: ${{ steps.find-comment.outputs.comment-id }}
+          issue-number: ${{ steps.meta.outputs.pr_number }}
+          body: |
+            ## 🧪 Sandbox Preview
+
+            | | |
+            |---|---|
+            | **Preview URL** | [opticlick.sudipmondal.co.in/previews/pr-${{ steps.meta.outputs.pr_number }}/](https://opticlick.sudipmondal.co.in/previews/pr-${{ steps.meta.outputs.pr_number }}/) |
+            | **Branch** | `${{ steps.meta.outputs.head_ref }}` |
+            | **Commit** | `${{ steps.meta.outputs.sha }}` |
+
+            ### What is this?
+            A live preview of the extension's sidepanel UI alongside a **real mock browser** — the agent can actually navigate, annotate, and interact with any website through the built-in proxy.
+
+            > **Note**: Enter your API key in the sidepanel's setup screen. The session is stateless (API keys are stored in browser localStorage, not saved to any server).
+          comment-author: 'github-actions[bot]'
+          edit-mode: replace
+
+  # ── Clean up preview when PR was closed ─────────────────────────────────────
+  cleanup:
+    name: Cleanup sandbox preview
+    runs-on: ubuntu-latest
+    if: github.event.workflow_run.event == 'pull_request'
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Download close metadata
+        id: download
+        uses: actions/download-artifact@v4
+        with:
+          pattern: sandbox-close-pr-*
+          merge-multiple: true
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ github.event.workflow_run.id }}
+          path: close-meta/
+        continue-on-error: true
+
+      - name: Read close metadata
+        id: meta
+        if: steps.download.outcome == 'success'
+        run: |
+          echo "pr_number=$(cat close-meta/PR_NUMBER)" >> $GITHUB_OUTPUT
+          echo "head_ref=$(cat close-meta/HEAD_REF)" >> $GITHUB_OUTPUT
+
+      - name: Checkout gh-pages
+        id: checkout
+        if: steps.download.outcome == 'success'
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: gh-pages
+          persist-credentials: false
+        continue-on-error: true
+
+      - name: Remove preview directory
+        if: steps.checkout.outcome == 'success' && steps.download.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR="${{ steps.meta.outputs.pr_number }}"
+          if [ -d "previews/pr-${PR}" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}"
+            git rm -rf "previews/pr-${PR}/"
+            git commit -m "sandbox: remove preview for closed PR #${PR}"
+            git push
+            echo "Removed preview for PR #${PR}"
+          else
+            echo "No preview found for PR #${PR}, skipping."
+          fi
+
+      - name: Find Sandbox Preview Comment
+        uses: peter-evans/find-comment@3eae4d37986fb5a8592848f6a574febe99e0170f
+        id: fc
+        if: steps.download.outcome == 'success'
+        with:
+          issue-number: ${{ steps.meta.outputs.pr_number }}
+          comment-author: 'github-actions[bot]'
+          body-includes: 🧪 Sandbox Preview
+
+      - name: Update PR comment on close
+        uses: peter-evans/create-or-update-comment@5005703541117ac4b73cf0094f9fd11d3f09a769
+        if: steps.download.outcome == 'success'
+        with:
+          comment-id: ${{ steps.fc.outputs.comment-id }}
+          issue-number: ${{ steps.meta.outputs.pr_number }}
+          body: |
+            ## 🧪 Sandbox Preview — Expired
+
+            The sandbox preview for this PR has been removed (PR closed).
+
+            | | |
+            |---|---|
+            | **Branch** | `${{ steps.meta.outputs.head_ref }}` |
+            | **Status** | ❌ Removed |
+          comment-author: 'github-actions[bot]'
+          edit-mode: replace

@@ -184,8 +184,8 @@ describe('LLM action decisions from annotated screenshots', () => {
     const base64 = await screenshotFixture();
     const model = createModel(GEMINI_API_KEY);
 
-    // Todo is already fully done — the agent should call finish() immediately
-    // without any further todo_update, since nothing is pending.
+    // Todo is already fully done — the agent should call finish() immediately.
+    // No todo management is needed since all items are already marked done.
     const completedTodo = [
       { id: 'login', title: 'Log in to Acme Corp', status: 'done' as const, notes: 'Logged in successfully.' },
       { id: 'verify', title: 'Verify the login page loaded', status: 'done' as const, notes: 'Login page confirmed.' },
@@ -194,7 +194,8 @@ describe('LLM action decisions from annotated screenshots', () => {
     const result = await callModel(
       model,
       base64,
-      'All tasks in the todo list are done. Call finish() now with a brief summary.',
+      'All tasks are already marked done — no todo_create or todo_update needed. ' +
+      'Call finish() right now with a brief summary of what was accomplished.',
       [],
       async () => {},
       [],
@@ -202,9 +203,9 @@ describe('LLM action decisions from annotated screenshots', () => {
       completedTodo,
     );
 
-    expect(result.done).toBe(true);
     const finishAction = findAction(result.actions, 'finish');
-    expect(finishAction, 'Expected a finish action').toBeDefined();
+    expect(finishAction, `Expected a finish action. Got actions: ${JSON.stringify(result.actions.map(a => a.type))}`).toBeDefined();
+    expect(result.done).toBe(true);
     expect(finishAction!.summary).toBeTruthy();
   }, 120_000);
 });

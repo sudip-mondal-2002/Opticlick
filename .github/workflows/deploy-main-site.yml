@@ -1,0 +1,38 @@
+name: Deploy Main Site
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'docs/**'
+
+permissions:
+  contents: write
+
+jobs:
+  deploy:
+    name: Deploy main landing site to gh-pages
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout main branch
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+
+      - name: Copy icons to docs
+        run: |
+          cp src/assets/icon-16.png docs/
+          cp src/assets/icon-32.png docs/
+          cp src/assets/icon-48.png docs/
+          cp src/assets/icon-128.png docs/
+          cp src/assets/icon.svg docs/
+
+      - name: Deploy landing page to gh-pages
+        uses: peaceiris/actions-gh-pages@4f9cc6602d3f66b9c108549d475ec49e8ef4d45e
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./docs
+          publish_branch: gh-pages
+          keep_files: true

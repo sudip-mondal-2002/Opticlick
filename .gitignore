@@ -23,3 +23,20 @@ graphify-out/
 # Logs
 npm-debug.log*
 coverage/
+
+# Generated icons
+/public/icon-16.png
+/public/icon-32.png
+/public/icon-48.png
+/public/icon-128.png
+/public/icon.svg
+/docs/icon-16.png
+/docs/icon-32.png
+/docs/icon-48.png
+/docs/icon-128.png
+/docs/icon.svg
+/sandbox/public/icon-16.png
+/sandbox/public/icon-32.png
+/sandbox/public/icon-48.png
+/sandbox/public/icon-128.png
+/sandbox/public/icon.svg

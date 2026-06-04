@@ -1,19 +1,32 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import {
   AVAILABLE_MODELS,
+  GEMINI_MODELS,
+  ANTHROPIC_MODELS,
+  OPENAI_MODELS,
   DEFAULT_MODEL,
   getModelLabel,
+  getProviderForModel,
   isOllamaModel,
+  isAnthropicModel,
+  isOpenAIModel,
+  isCustomOpenAIModel,
   ollamaModelId,
   ollamaModelName,
+  anthropicModelName,
+  openaiModelName,
+  customOpenAIConfigId,
   fetchOllamaModels,
   isOllamaAvailable,
 } from '@/utils/models';
+import type { CustomOpenAIConfig } from '@/utils/models';
 
 describe('models utilities', () => {
   describe('AVAILABLE_MODELS', () => {
-    it('should contain 2 models', () => {
-      expect(AVAILABLE_MODELS).toHaveLength(2);
+    it('should contain all static cloud models', () => {
+      expect(AVAILABLE_MODELS).toHaveLength(
+        GEMINI_MODELS.length + ANTHROPIC_MODELS.length + OPENAI_MODELS.length,
+      );
     });
 
     it('should have required properties for each model', () => {
@@ -25,8 +38,13 @@ describe('models utilities', () => {
         expect(typeof model.id).toBe('string');
         expect(typeof model.label).toBe('string');
         expect(typeof model.description).toBe('string');
-        expect(model.provider).toBe('gemini');
       }
+    });
+
+    it('should have correct providers for each section', () => {
+      for (const m of GEMINI_MODELS) expect(m.provider).toBe('gemini');
+      for (const m of ANTHROPIC_MODELS) expect(m.provider).toBe('anthropic');
+      for (const m of OPENAI_MODELS) expect(m.provider).toBe('openai');
     });
 
     it('should have unique model IDs', () => {
@@ -36,9 +54,31 @@ describe('models utilities', () => {
     });
   });
 
+  describe('per-provider model arrays', () => {
+    it('GEMINI_MODELS should have 2 models', () => {
+      expect(GEMINI_MODELS).toHaveLength(2);
+    });
+
+    it('ANTHROPIC_MODELS should have 2 models', () => {
+      expect(ANTHROPIC_MODELS).toHaveLength(2);
+    });
+
+    it('OPENAI_MODELS should have 3 models', () => {
+      expect(OPENAI_MODELS).toHaveLength(3);
+    });
+
+    it('Anthropic model IDs start with anthropic:', () => {
+      for (const m of ANTHROPIC_MODELS) expect(m.id).toMatch(/^anthropic:/);
+    });
+
+    it('OpenAI model IDs start with openai:', () => {
+      for (const m of OPENAI_MODELS) expect(m.id).toMatch(/^openai:/);
+    });
+  });
+
   describe('DEFAULT_MODEL', () => {
-    it('should be set to the first model ID', () => {
-      expect(DEFAULT_MODEL).toBe(AVAILABLE_MODELS[0].id);
+    it('should be set to the first Gemini model ID', () => {
+      expect(DEFAULT_MODEL).toBe(GEMINI_MODELS[0].id);
     });
 
     it('should be gemini-3.1-flash-lite-preview', () => {
@@ -50,6 +90,14 @@ describe('models utilities', () => {
     it('should return the label for a valid Gemini model ID', () => {
       expect(getModelLabel('gemini-3.1-flash-lite-preview')).toBe('Gemini 3.1 Flash Lite');
       expect(getModelLabel('gemma-4-31b-it')).toBe('Gemma 4 31B');
+    });
+
+    it('should return labels for Anthropic models', () => {
+      expect(getModelLabel('anthropic:claude-sonnet-4-20250514')).toBe('Claude Sonnet 4');
+    });
+
+    it('should return labels for OpenAI models', () => {
+      expect(getModelLabel('openai:gpt-4.1')).toBe('GPT-4.1');
     });
 
     it('should return the ID itself if model not found', () => {
@@ -66,6 +114,17 @@ describe('models utilities', () => {
     it('should resolve Ollama model labels from the provided list', () => {
       const ollama = [{ id: 'ollama:llama3.2:3b', label: 'llama3.2:3b', description: 'Local · 3B', provider: 'ollama' as const }];
       expect(getModelLabel('ollama:llama3.2:3b', ollama)).toBe('llama3.2:3b');
+    });
+
+    it('should resolve custom OpenAI labels from configs', () => {
+      const configs: CustomOpenAIConfig[] = [
+        { id: 'abc-123', name: 'Together AI', baseUrl: 'https://api.together.xyz/v1', modelName: 'llama3' },
+      ];
+      expect(getModelLabel('custom-openai:abc-123', [], configs)).toBe('Together AI');
+    });
+
+    it('should return raw ID for unknown custom config', () => {
+      expect(getModelLabel('custom-openai:unknown', [], [])).toBe('custom-openai:unknown');
     });
   });
 
@@ -85,6 +144,68 @@ describe('models utilities', () => {
     });
   });
 
+  describe('isAnthropicModel', () => {
+    it('should return true for anthropic: prefixed IDs', () => {
+      expect(isAnthropicModel('anthropic:claude-sonnet-4-20250514')).toBe(true);
+    });
+
+    it('should return false for other providers', () => {
+      expect(isAnthropicModel('gemini-3.1-flash-lite-preview')).toBe(false);
+      expect(isAnthropicModel('openai:gpt-4.1')).toBe(false);
+      expect(isAnthropicModel('ollama:llama3')).toBe(false);
+    });
+  });
+
+  describe('isOpenAIModel', () => {
+    it('should return true for openai: prefixed IDs', () => {
+      expect(isOpenAIModel('openai:gpt-4.1')).toBe(true);
+      expect(isOpenAIModel('openai:o4-mini')).toBe(true);
+    });
+
+    it('should return false for other providers', () => {
+      expect(isOpenAIModel('gemini-3.1-flash-lite-preview')).toBe(false);
+      expect(isOpenAIModel('anthropic:claude-sonnet-4')).toBe(false);
+    });
+  });
+
+  describe('isCustomOpenAIModel', () => {
+    it('should return true for custom-openai: prefixed IDs', () => {
+      expect(isCustomOpenAIModel('custom-openai:abc-123')).toBe(true);
+    });
+
+    it('should return false for other providers', () => {
+      expect(isCustomOpenAIModel('openai:gpt-4.1')).toBe(false);
+      expect(isCustomOpenAIModel('ollama:llama3')).toBe(false);
+    });
+  });
+
+  describe('getProviderForModel', () => {
+    it('should detect gemini models (no prefix)', () => {
+      expect(getProviderForModel('gemini-3.1-flash-lite-preview')).toBe('gemini');
+      expect(getProviderForModel('gemma-4-31b-it')).toBe('gemini');
+    });
+
+    it('should detect anthropic models', () => {
+      expect(getProviderForModel('anthropic:claude-sonnet-4-20250514')).toBe('anthropic');
+    });
+
+    it('should detect openai models', () => {
+      expect(getProviderForModel('openai:gpt-4.1')).toBe('openai');
+    });
+
+    it('should detect custom-openai models', () => {
+      expect(getProviderForModel('custom-openai:abc-123')).toBe('custom-openai');
+    });
+
+    it('should detect ollama models', () => {
+      expect(getProviderForModel('ollama:llama3.2:3b')).toBe('ollama');
+    });
+
+    it('should default to gemini for unknown IDs', () => {
+      expect(getProviderForModel('some-unknown-model')).toBe('gemini');
+    });
+  });
+
   describe('ollamaModelId / ollamaModelName', () => {
     it('ollamaModelId should prefix name with ollama:', () => {
       expect(ollamaModelId('llama3.2:3b')).toBe('ollama:llama3.2:3b');
@@ -97,6 +218,24 @@ describe('models utilities', () => {
     it('round-trips correctly', () => {
       const name = 'mistral:latest';
       expect(ollamaModelName(ollamaModelId(name))).toBe(name);
+    });
+  });
+
+  describe('anthropicModelName', () => {
+    it('should strip the anthropic: prefix', () => {
+      expect(anthropicModelName('anthropic:claude-sonnet-4-20250514')).toBe('claude-sonnet-4-20250514');
+    });
+  });
+
+  describe('openaiModelName', () => {
+    it('should strip the openai: prefix', () => {
+      expect(openaiModelName('openai:gpt-4.1')).toBe('gpt-4.1');
+    });
+  });
+
+  describe('customOpenAIConfigId', () => {
+    it('should strip the custom-openai: prefix', () => {
+      expect(customOpenAIConfigId('custom-openai:abc-123-def')).toBe('abc-123-def');
     });
   });
 

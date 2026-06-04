@@ -1,16 +1,54 @@
 import { useState } from 'react';
+import type { CustomOpenAIConfig } from '@/utils/models';
+
+type ProviderChoice = 'gemini' | 'anthropic' | 'openai' | 'custom';
 
 interface Props {
-  onSave: (key: string) => void;
+  onSave: (provider: 'gemini' | 'anthropic' | 'openai', key: string) => void;
+  onSaveCustom: (config: CustomOpenAIConfig) => void;
 }
 
-export function ApiKeySetup({ onSave }: Props) {
+const CLOUD_PROVIDERS: { value: 'gemini' | 'anthropic' | 'openai'; label: string; placeholder: string; hint: string }[] = [
+  { value: 'gemini',    label: 'Gemini', placeholder: 'AIza...',    hint: 'aistudio.google.com'   },
+  { value: 'anthropic', label: 'Claude', placeholder: 'sk-ant-...', hint: 'console.anthropic.com' },
+  { value: 'openai',    label: 'OpenAI', placeholder: 'sk-...',     hint: 'platform.openai.com'   },
+];
+
+export function ApiKeySetup({ onSave, onSaveCustom }: Props) {
+  const [provider, setProvider] = useState<ProviderChoice>('gemini');
   const [input, setInput] = useState('');
 
+  // Custom endpoint fields
+  const [customName, setCustomName]       = useState('');
+  const [customBaseUrl, setCustomBaseUrl] = useState('');
+  const [customModel, setCustomModel]     = useState('');
+  const [customApiKey, setCustomApiKey]   = useState('');
+
+  const currentCloud = CLOUD_PROVIDERS.find((p) => p.value === provider);
+
   const handleSave = () => {
-    const trimmed = input.trim();
-    if (!trimmed) return;
-    onSave(trimmed);
+    if (provider === 'custom') {
+      if (!customBaseUrl.trim() || !customModel.trim()) return;
+      onSaveCustom({
+        id: crypto.randomUUID(),
+        name: customName.trim() || customBaseUrl.trim(),
+        baseUrl: customBaseUrl.trim(),
+        apiKey: customApiKey.trim() || undefined,
+        modelName: customModel.trim(),
+      });
+    } else {
+      const trimmed = input.trim();
+      if (!trimmed) return;
+      onSave(provider, trimmed);
+    }
+  };
+
+  const isCustomSaveDisabled = !customBaseUrl.trim() || !customModel.trim();
+  const isSaveDisabled = provider === 'custom' ? isCustomSaveDisabled : !input.trim();
+
+  const switchProvider = (p: ProviderChoice) => {
+    setProvider(p);
+    setInput('');
   };
 
   return (
@@ -70,6 +108,12 @@ export function ApiKeySetup({ onSave }: Props) {
       >
         Save &amp; Continue
       </button>
+
+      <p className="text-[10px] text-slate-400 dark:text-slate-500 text-center mt-4 leading-relaxed">
+        Or use a local model with{' '}
+        <span className="font-semibold text-slate-500 dark:text-slate-400">Ollama</span>{' '}
+        at localhost:11434
+      </p>
     </div>
   );
 }

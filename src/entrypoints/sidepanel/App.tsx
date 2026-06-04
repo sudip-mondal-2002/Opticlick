@@ -1,8 +1,16 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import type { AgentState, LogEntry, Session, AttachedFile } from '@/utils/types';
+import type { AgentState, LogEntry, Session, AttachedFile, PromptTemplate } from '@/utils/types';
 import { getSessions, getConversationHistory } from '@/utils/db';
-import { DEFAULT_MODEL, fetchOllamaModels, isOllamaModel } from '@/utils/models';
-import type { ModelOption } from '@/utils/models';
+import {
+  DEFAULT_MODEL,
+  GEMINI_MODELS,
+  ANTHROPIC_MODELS,
+  OPENAI_MODELS,
+  fetchOllamaModels,
+  isOllamaModel,
+  getProviderForModel,
+} from '@/utils/models';
+import type { ModelOption, CustomOpenAIConfig } from '@/utils/models';
 import { ThemeProvider } from './context/ThemeContext';
 import { ApiKeySetup } from './components/ApiKeySetup';
 import { ApiKeyOverlay } from './components/ApiKeyOverlay';
@@ -12,6 +20,7 @@ import { ModelSelector } from './components/ModelSelector';
 import { ChatInput } from './components/ChatInput';
 import { ChatFeed } from './components/ChatFeed';
 import { SessionsOverlay } from './components/SessionsOverlay';
+import { TemplatesOverlay } from './components/TemplatesOverlay';
 import type { LogItem, HistoryStep } from './components/ChatFeed';
 
 // ── Parse model turn from IndexedDB ──────────────────────────────────────────
@@ -44,10 +53,22 @@ function parseModelTurn(content: string): HistoryStep[] {
   }
 }
 
+// ── Storage key map ──────────────────────────────────────────────────────────
+
+const STORAGE_KEY_MAP: Record<'gemini' | 'anthropic' | 'openai', string> = {
+  gemini: 'geminiApiKey',
+  anthropic: 'anthropicApiKey',
+  openai: 'openaiApiKey',
+};
+
 // ── Main AgentUI ──────────────────────────────────────────────────────────────
 
 function AgentUI() {
-  const [apiKey, setApiKey] = useState<string | null>(null);
+  // Per-provider API keys
+  const [geminiApiKey, setGeminiApiKey] = useState<string | null>(null);
+  const [anthropicApiKey, setAnthropicApiKey] = useState<string | null>(null);
+  const [openaiApiKey, setOpenaiApiKey] = useState<string | null>(null);
+  const [customConfigs, setCustomConfigs] = useState<CustomOpenAIConfig[]>([]);
   const [keyLoading, setKeyLoading] = useState(true);
   const [showApiKeys, setShowApiKeys] = useState(false);
 
@@ -69,46 +90,133 @@ function AgentUI() {
   const [showSessions, setShowSessions] = useState(false);
   const [chatInputKey, setChatInputKey] = useState(0);
 
+  const [templates, setTemplates] = useState<PromptTemplate[]>([]);
+  const [showTemplates, setShowTemplates] = useState(false);
+  const [injectedPrompt, setInjectedPrompt] = useState<string | null>(null);
+
   const feedRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // ── API key ────────────────────────────────────────────────────────────────
+  // ── API keys ──────────────────────────────────────────────────────────────
 
   useEffect(() => {
     (async () => {
-      const [{ geminiApiKey, selectedModel: stored }, ollama] = await Promise.all([
-        chrome.storage.local.get(['geminiApiKey', 'selectedModel']),
+      const [stored, ollama] = await Promise.all([
+        chrome.storage.local.get(['geminiApiKey', 'anthropicApiKey', 'openaiApiKey', 'customOpenaiConfigs', 'selectedModel', 'promptTemplates']),
         fetchOllamaModels(),
       ]);
-      const key = (geminiApiKey as string) || null;
-      setApiKey(key);
+      const gKey = (stored.geminiApiKey as string) || null;
+      const aKey = (stored.anthropicApiKey as string) || null;
+      const oKey = (stored.openaiApiKey as string) || null;
+      const configs = (stored.customOpenaiConfigs as CustomOpenAIConfig[]) || [];
+      const tmpl = (stored.promptTemplates as PromptTemplate[]) || [];
+
+      setGeminiApiKey(gKey);
+      setAnthropicApiKey(aKey);
+      setOpenaiApiKey(oKey);
+      setCustomConfigs(configs);
+      setTemplates(tmpl);
       setOllamaModels(ollama);
-      // If no Gemini key and a Gemini model is stored, auto-select the first running Ollama model
-      let model = (stored as string) || DEFAULT_MODEL;
-      if (!key && !isOllamaModel(model)) {
-        const firstRunning = ollama.find((m) => m.running);
-        if (firstRunning) model = firstRunning.id;
+
+      // Select a valid model — fall back if the current selection's provider has no key
+      let model = (stored.selectedModel as string) || DEFAULT_MODEL;
+      const provider = getProviderForModel(model);
+      const hasKeyForProvider =
+        (provider === 'gemini' && gKey) ||
+        (provider === 'anthropic' && aKey) ||
+        (provider === 'openai' && oKey) ||
+        (provider === 'custom-openai') ||
+        (provider === 'ollama');
+
+      if (!hasKeyForProvider) {
+        if (aKey) model = ANTHROPIC_MODELS[0].id;
+        else if (oKey) model = OPENAI_MODELS[0].id;
+        else if (gKey) model = GEMINI_MODELS[0].id;
+        else {
+          const firstRunning = ollama.find((m) => m.running);
+          if (firstRunning) model = firstRunning.id;
+        }
       }
       setSelectedModel(model);
       setKeyLoading(false);
     })();
   }, []);
 
-  const saveKey = (key: string) => {
-    chrome.storage.local.set({ geminiApiKey: key }).then(() => {
-      setApiKey(key);
+  const saveProviderKey = (provider: 'gemini' | 'anthropic' | 'openai', key: string) => {
+    chrome.storage.local.set({ [STORAGE_KEY_MAP[provider]]: key }).then(() => {
+      if (provider === 'gemini') setGeminiApiKey(key);
+      else if (provider === 'anthropic') setAnthropicApiKey(key);
+      else setOpenaiApiKey(key);
     });
   };
 
-  const clearKey = () => {
-    chrome.storage.local.remove('geminiApiKey').then(() => {
-      setApiKey(null);
+  const clearProviderKey = (provider: 'gemini' | 'anthropic' | 'openai') => {
+    chrome.storage.local.remove(STORAGE_KEY_MAP[provider]).then(() => {
+      if (provider === 'gemini') setGeminiApiKey(null);
+      else if (provider === 'anthropic') setAnthropicApiKey(null);
+      else setOpenaiApiKey(null);
     });
+  };
+
+  const saveCustomConfig = (config: CustomOpenAIConfig) => {
+    const updated = [...customConfigs, config];
+    setCustomConfigs(updated);
+    chrome.storage.local.set({ customOpenaiConfigs: updated });
+  };
+
+  const deleteCustomConfig = (configId: string) => {
+    const updated = customConfigs.filter((c) => c.id !== configId);
+    setCustomConfigs(updated);
+    chrome.storage.local.set({ customOpenaiConfigs: updated });
   };
 
   const handleModelChange = (modelId: string) => {
     setSelectedModel(modelId);
     chrome.storage.local.set({ selectedModel: modelId });
+  };
+
+  const saveTemplate = (name: string, prompt: string) => {
+    const trimmedName = name.trim();
+    const trimmedPrompt = prompt.trim();
+    if (!trimmedName || !trimmedPrompt) return;
+
+    // Enforce 100-template cap
+    if (templates.length >= 100) {
+      appendLog('Maximum 100 templates reached.', 'warn');
+      return;
+    }
+
+    const newTemplate: PromptTemplate = {
+      id: crypto.randomUUID(),
+      name: trimmedName,
+      prompt: trimmedPrompt,
+      createdAt: Date.now(),
+    };
+
+    const updated = [...templates, newTemplate];
+    setTemplates(updated);
+    chrome.storage.local.set({ promptTemplates: updated });
+    appendLog(`Saved template: "${trimmedName}"`, 'ok');
+  };
+
+  const updateTemplate = (template: PromptTemplate) => {
+    const updated = templates.map((t) =>
+      t.id === template.id ? { ...template, lastUsedAt: Date.now() } : t,
+    );
+    setTemplates(updated);
+    chrome.storage.local.set({ promptTemplates: updated });
+  };
+
+  const deleteTemplate = (id: string) => {
+    const updated = templates.filter((t) => t.id !== id);
+    setTemplates(updated);
+    chrome.storage.local.set({ promptTemplates: updated });
+  };
+
+  const useTemplate = (template: PromptTemplate) => {
+    updateTemplate(template);
+    setInjectedPrompt(template.prompt);
+    setShowTemplates(false);
   };
 
   // ── Agent state / logs ─────────────────────────────────────────────────────
@@ -139,7 +247,6 @@ function AgentUI() {
     osc.connect(gain);
     gain.connect(ctx.destination);
     if (sound === 'finish') {
-      // Two ascending tones
       osc.frequency.setValueAtTime(520, ctx.currentTime);
       osc.frequency.setValueAtTime(780, ctx.currentTime + 0.15);
       gain.gain.setValueAtTime(0.25, ctx.currentTime);
@@ -147,7 +254,6 @@ function AgentUI() {
       osc.start(ctx.currentTime);
       osc.stop(ctx.currentTime + 0.45);
     } else {
-      // Single attention tone
       osc.frequency.setValueAtTime(660, ctx.currentTime);
       gain.gain.setValueAtTime(0.2, ctx.currentTime);
       gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
@@ -264,12 +370,20 @@ function AgentUI() {
 
   if (keyLoading) return null;
 
-  // Require API key setup only when no Gemini key AND no Ollama model is selected
-  if (!apiKey && !isOllamaModel(selectedModel)) {
+  // Require API key setup when no provider has a key AND no Ollama model is selected
+  const hasAnyKey = geminiApiKey || anthropicApiKey || openaiApiKey || customConfigs.length > 0;
+  if (!hasAnyKey && !isOllamaModel(selectedModel)) {
     return (
       <div className="flex flex-col h-screen bg-white dark:bg-slate-950 overflow-hidden">
         <div className="flex-1 overflow-y-auto">
-          <ApiKeySetup onSave={saveKey} />
+          <ApiKeySetup
+            onSave={saveProviderKey}
+            onSaveCustom={(config) => {
+              saveCustomConfig(config);
+              // Auto-select the new custom endpoint
+              handleModelChange(`custom-openai:${config.id}`);
+            }}
+          />
         </div>
       </div>
     );
@@ -290,10 +404,25 @@ function AgentUI() {
 
       {showApiKeys && (
         <ApiKeyOverlay
-          apiKey={apiKey}
-          onSave={saveKey}
-          onClear={clearKey}
+          geminiApiKey={geminiApiKey}
+          anthropicApiKey={anthropicApiKey}
+          openaiApiKey={openaiApiKey}
+          customConfigs={customConfigs}
+          onSaveKey={saveProviderKey}
+          onClearKey={clearProviderKey}
+          onSaveCustomConfig={saveCustomConfig}
+          onDeleteCustomConfig={deleteCustomConfig}
           onClose={() => setShowApiKeys(false)}
+        />
+      )}
+
+      {showTemplates && (
+        <TemplatesOverlay
+          templates={templates}
+          onClose={() => setShowTemplates(false)}
+          onUse={useTemplate}
+          onSave={updateTemplate}
+          onDelete={deleteTemplate}
         />
       )}
 
@@ -303,6 +432,7 @@ function AgentUI() {
         sessionCount={sessions.length}
         onShowSessions={() => setShowSessions(true)}
         onShowApiKeys={() => setShowApiKeys(true)}
+        onShowTemplates={() => setShowTemplates(true)}
       />
 
       {/* Session continuation pill */}
@@ -365,13 +495,20 @@ function AgentUI() {
         textareaRef={textareaRef}
         onRun={handleRun}
         onStop={handleStop}
+        injectedPrompt={injectedPrompt}
+        onClearInjectedPrompt={() => setInjectedPrompt(null)}
+        templates={templates}
+        onSaveTemplate={saveTemplate}
       />
 
       <ModelSelector
         selectedModel={selectedModel}
         onModelChange={handleModelChange}
         ollamaModels={ollamaModels}
-        hasGeminiKey={!!apiKey}
+        customConfigs={customConfigs}
+        hasGeminiKey={!!geminiApiKey}
+        hasAnthropicKey={!!anthropicApiKey}
+        hasOpenaiKey={!!openaiApiKey}
       />
 
     </div>

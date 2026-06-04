@@ -19,9 +19,11 @@ import {
   getAllMemories,
 } from '@/utils/db';
 import { createAnyModel } from '@/utils/llm';
+import type { ApiKeys } from '@/utils/llm';
 import { loadTodoFromVFS, TODO_VFS_FILENAME } from '@/utils/todo';
 import { loadScratchpadFromVFS } from '@/utils/scratchpad';
-import { isOllamaModel, isOllamaAvailable, DEFAULT_MODEL } from '@/utils/models';
+import { getProviderForModel, isOllamaAvailable, DEFAULT_MODEL, customOpenAIConfigId } from '@/utils/models';
+import type { CustomOpenAIConfig } from '@/utils/models';
 import { log } from '@/utils/agent-log';
 import { getAgentState, setAgentState } from '@/utils/agent-state';
 import {
@@ -83,19 +85,47 @@ export async function runAgentLoop(
     : userPrompt;
 
   try {
-    const { geminiApiKey } = await chrome.storage.local.get('geminiApiKey');
-    const usingOllama = isOllamaModel(modelId ?? '');
-    if (!geminiApiKey && !usingOllama) {
+    const { geminiApiKey, anthropicApiKey, openaiApiKey, customOpenaiConfigs } =
+      await chrome.storage.local.get(['geminiApiKey', 'anthropicApiKey', 'openaiApiKey', 'customOpenaiConfigs']);
+
+    const effectiveModelId = modelId ?? DEFAULT_MODEL;
+    const provider = getProviderForModel(effectiveModelId);
+
+    if (provider === 'ollama') {
+      if (!(await isOllamaAvailable())) {
+        await log('Ollama is not running. Start Ollama on http://localhost:11434 and try again.', 'error');
+        await setAgentState({ status: 'error' });
+        return;
+      }
+    } else if (provider === 'gemini' && !geminiApiKey) {
       await log('No Gemini API key set. Open the extension and add your key.', 'error');
       await setAgentState({ status: 'error' });
       return;
-    }
-    if (usingOllama && !(await isOllamaAvailable())) {
-      await log('Ollama is not running. Start Ollama on http://localhost:11434 and try again.', 'error');
+    } else if (provider === 'anthropic' && !anthropicApiKey) {
+      await log('No Anthropic API key set. Open the extension and add your key.', 'error');
       await setAgentState({ status: 'error' });
       return;
+    } else if (provider === 'openai' && !openaiApiKey) {
+      await log('No OpenAI API key set. Open the extension and add your key.', 'error');
+      await setAgentState({ status: 'error' });
+      return;
+    } else if (provider === 'custom-openai') {
+      const configs = (customOpenaiConfigs as CustomOpenAIConfig[]) ?? [];
+      const configId = customOpenAIConfigId(effectiveModelId);
+      if (!configs.find((c) => c.id === configId)) {
+        await log(`Custom endpoint config "${configId}" not found.`, 'error');
+        await setAgentState({ status: 'error' });
+        return;
+      }
     }
-    const model = createAnyModel((geminiApiKey as string) || null, modelId ?? DEFAULT_MODEL);
+
+    const keys: ApiKeys = {
+      geminiApiKey: (geminiApiKey as string) || null,
+      anthropicApiKey: (anthropicApiKey as string) || null,
+      openaiApiKey: (openaiApiKey as string) || null,
+      customOpenaiConfigs: (customOpenaiConfigs as CustomOpenAIConfig[]) ?? [],
+    };
+    const model = createAnyModel(keys, effectiveModelId);
 
     // Navigate if the current tab cannot accept a content script
     if (!(await isTabInjectable(tabId))) {

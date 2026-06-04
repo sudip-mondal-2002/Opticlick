@@ -12,6 +12,7 @@ export default tseslint.config(
       '.output/**',
       'node_modules/**',
       'coverage/**',
+      'sandbox/dist/**',
     ],
   },
 
@@ -21,9 +22,9 @@ export default tseslint.config(
   // ── TypeScript recommended (parser + rules for all TS/TSX files) ─────────
   ...tseslint.configs.recommended,
 
-  // ── Source files (src/**) ─────────────────────────────────────────────────
+  // ── Source files (src/**, sandbox/src/**) ─────────────────────────────────
   {
-    files: ['src/**/*.{ts,tsx}', 'wxt.config.ts', 'vitest.config.ts', 'vitest.config.e2e.ts'],
+    files: ['src/**/*.{ts,tsx}', 'sandbox/src/**/*.{ts,tsx}', 'wxt.config.ts', 'vitest.config.ts', 'vitest.config.e2e.ts'],
     plugins: {
       react,
       'react-hooks': reactHooks,
@@ -70,6 +71,41 @@ export default tseslint.config(
       '@typescript-eslint/no-non-null-assertion': 'off',
       // Test setup files use process.env and similar node-isms
       'no-undef': 'off',
+    },
+  },
+
+  // ── Sandbox Service Worker ────────────────────────────────────────────────
+  {
+    files: ['sandbox/public/sw.js'],
+    languageOptions: {
+      globals: {
+        ...globals.browser,
+        ...globals.serviceworker,
+      },
+    },
+    rules: {
+      'no-useless-escape': 'off',
+      'no-empty': ['error', { allowEmptyCatch: true }],
+      '@typescript-eslint/no-unused-vars': 'off',
+    },
+  },
+
+  // ── Sandbox Chrome Mock Shims ─────────────────────────────────────────────
+  {
+    files: ['sandbox/src/chrome-mock/**/*.{ts,tsx}'],
+    rules: {
+      '@typescript-eslint/no-explicit-any': 'off',
+      '@typescript-eslint/no-unused-vars': 'off',
+    },
+  },
+
+  // ── Scripts & Configuration Files ─────────────────────────────────────────
+  {
+    files: ['scripts/**/*.mjs', 'postcss.config.mjs'],
+    languageOptions: {
+      globals: {
+        ...globals.node,
+      },
     },
   },
 );

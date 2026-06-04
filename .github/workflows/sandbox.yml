@@ -1,0 +1,92 @@
+name: PR Sandbox — Build
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+
+# Fork PRs only get read access — no secrets, no writes.
+permissions:
+  contents: read
+
+jobs:
+  # ── Build sandbox on PR open / update ──────────────────────────────────────
+  build:
+    name: Build sandbox preview
+    runs-on: ubuntu-latest
+    if: github.event.action != 'closed'
+
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Copy icons
+        run: npm run copy-icons
+
+      - name: Install sandbox dependencies
+        run: npm ci
+        working-directory: sandbox
+
+      - name: Build sandbox
+        env:
+          VITE_BASE_PATH: /previews/pr-${{ github.event.number }}/
+          VITE_PR_NUMBER: ${{ github.event.number }}
+          VITE_BRANCH_NAME: ${{ github.head_ref }}
+        run: npm run build
+        working-directory: sandbox
+
+      - name: Prepare preview folder
+        run: |
+          mkdir -p deploy-preview/previews/pr-${{ github.event.number }}
+          cp -r sandbox/dist/. deploy-preview/previews/pr-${{ github.event.number }}/
+
+      # Save the PR number so the deploy workflow can use it
+      - name: Save PR metadata
+        env:
+          PR_NUMBER: ${{ github.event.number }}
+          HEAD_REF: ${{ github.head_ref }}
+          SHA: ${{ github.sha }}
+        run: |
+          echo "$PR_NUMBER" > deploy-preview/PR_NUMBER
+          echo "$HEAD_REF" > deploy-preview/HEAD_REF
+          echo "$SHA" > deploy-preview/SHA
+
+      - name: Upload preview artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sandbox-preview-pr-${{ github.event.number }}
+          path: deploy-preview/
+          retention-days: 1
+
+  # ── Record closed PR number so the deploy workflow can clean up ─────────────
+  record-close:
+    name: Record PR close
+    runs-on: ubuntu-latest
+    if: github.event.action == 'closed'
+
+    steps:
+      - name: Save close metadata
+        env:
+          PR_NUMBER: ${{ github.event.number }}
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          mkdir close-meta
+          echo "$PR_NUMBER" > close-meta/PR_NUMBER
+          echo "$HEAD_REF" > close-meta/HEAD_REF
+
+      - name: Upload close metadata
+        uses: actions/upload-artifact@v4
+        with:
+          name: sandbox-close-pr-${{ github.event.number }}
+          path: close-meta/
+          retention-days: 1

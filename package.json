@@ -1,13 +1,16 @@
 {
   "name": "opticlick-engine",
   "version": "1.0.1",
-  "description": "Autonomous web agent using Set-of-Mark visual prompting with Gemini and Ollama models",
+  "description": "Autonomous web agent using Set-of-Mark visual prompting with Gemini, Claude, OpenAI, and Ollama models",
   "type": "module",
   "scripts": {
+    "copy-icons": "node scripts/copy-icons.mjs",
+    "predev": "npm run copy-icons",
     "dev": "wxt",
+    "prebuild": "npm run copy-icons",
     "build": "wxt build",
     "zip": "wxt zip",
-    "postinstall": "wxt prepare",
+    "postinstall": "wxt prepare && npm run copy-icons",
     "test": "vitest run --project unit --project integration --project dom --project e2e",
     "test:unit": "vitest run --project unit",
     "test:integration": "vitest run --project integration",
@@ -19,10 +22,12 @@
     "lint:fix": "eslint . --fix"
   },
   "dependencies": {
+    "@langchain/anthropic": "^1.3.26",
     "@langchain/core": "^1.1.38",
     "@langchain/google-genai": "^2.1.26",
     "@langchain/langgraph": "^1.2.7",
     "@langchain/ollama": "^1.2.6",
+    "@langchain/openai": "^1.4.4",
     "@tailwindcss/vite": "^4.2.2",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
