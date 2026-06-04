@@ -1,12 +1,15 @@
 import { useState, useRef, useEffect } from 'react';
-import { AVAILABLE_MODELS, getModelLabel } from '@/utils/models';
-import type { ModelOption } from '@/utils/models';
+import { GEMINI_MODELS, ANTHROPIC_MODELS, OPENAI_MODELS, getModelLabel } from '@/utils/models';
+import type { ModelOption, CustomOpenAIConfig } from '@/utils/models';
 
 interface Props {
   selectedModel: string;
   onModelChange: (modelId: string) => void;
   ollamaModels: ModelOption[];
+  customConfigs: CustomOpenAIConfig[];
   hasGeminiKey: boolean;
+  hasAnthropicKey: boolean;
+  hasOpenaiKey: boolean;
 }
 
 function ChevronIcon() {
@@ -25,11 +28,23 @@ function SectionHeader({ label }: { label: string }) {
   );
 }
 
-export function ModelSelector({ selectedModel, onModelChange, ollamaModels, hasGeminiKey }: Props) {
+// ── Selection color per provider ─────────────────────────────────────────────
+
+function selectedClass(provider: string): string {
+  switch (provider) {
+    case 'anthropic': return 'bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-200';
+    case 'openai': return 'bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-200';
+    case 'custom-openai': return 'bg-purple-50 dark:bg-purple-900/30 text-purple-700 dark:text-purple-200';
+    case 'ollama': return 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-200';
+    default: return 'bg-sky-50 dark:bg-sky-900/30 text-sky-700 dark:text-sky-200';
+  }
+}
+
+export function ModelSelector({ selectedModel, onModelChange, ollamaModels, customConfigs, hasGeminiKey, hasAnthropicKey, hasOpenaiKey }: Props) {
   const [isOpen, setIsOpen] = useState(false);
   const [openAbove, setOpenAbove] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
-  const currentLabel = getModelLabel(selectedModel, ollamaModels);
+  const currentLabel = getModelLabel(selectedModel, ollamaModels, customConfigs);
 
   const handleSelect = (modelId: string) => {
     onModelChange(modelId);
@@ -39,11 +54,16 @@ export function ModelSelector({ selectedModel, onModelChange, ollamaModels, hasG
   useEffect(() => {
     if (!isOpen || !containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
-    // If dropdown would go off-screen, position it above
-    setOpenAbove(window.innerHeight - rect.bottom < 200);
+    setOpenAbove(window.innerHeight - rect.bottom < 280);
   }, [isOpen]);
 
-  const allCount = AVAILABLE_MODELS.length + ollamaModels.length;
+  // Build custom model options from configs
+  const customModelOptions: ModelOption[] = customConfigs.map((c) => ({
+    id: `custom-openai:${c.id}`,
+    label: c.name,
+    description: `${c.modelName} @ ${new URL(c.baseUrl).hostname}`,
+    provider: 'custom-openai' as const,
+  }));
 
   return (
     <div ref={containerRef} className="relative px-3 py-2 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950">
@@ -66,48 +86,51 @@ export function ModelSelector({ selectedModel, onModelChange, ollamaModels, hasG
             openAbove ? 'bottom-full mb-1' : 'top-full mt-1'
           }`}
         >
-          <div className="max-h-[240px] overflow-y-auto">
+          <div className="max-h-[320px] overflow-y-auto">
+            {/* Gemini */}
             <SectionHeader label="Gemini" />
-            {AVAILABLE_MODELS.map((model, idx) => (
-              <button
-                key={model.id}
-                onClick={() => hasGeminiKey && handleSelect(model.id)}
-                disabled={!hasGeminiKey}
-                className={`w-full px-3 py-2 text-left text-[10px] transition-colors ${
-                  idx < allCount - 1 ? 'border-b border-slate-100 dark:border-slate-800' : ''
-                } ${
-                  !hasGeminiKey
-                    ? 'opacity-40 cursor-not-allowed'
-                    : selectedModel === model.id
-                      ? 'bg-sky-50 dark:bg-sky-900/30 text-sky-700 dark:text-sky-200'
-                      : 'text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/50'
-                }`}
-              >
-                <div className="font-semibold leading-tight">{model.label}</div>
-                <div className="text-[9px] text-slate-500 dark:text-slate-400 mt-0.5 leading-tight">
-                  {hasGeminiKey ? model.description : 'API key required'}
-                </div>
-              </button>
+            {GEMINI_MODELS.map((model) => (
+              <ModelItem key={model.id} model={model} selected={selectedModel === model.id} disabled={!hasGeminiKey} disabledReason="API key required" onSelect={handleSelect} />
             ))}
 
+            {/* Claude */}
+            <SectionHeader label="Claude" />
+            {ANTHROPIC_MODELS.map((model) => (
+              <ModelItem key={model.id} model={model} selected={selectedModel === model.id} disabled={!hasAnthropicKey} disabledReason="API key required" onSelect={handleSelect} />
+            ))}
+
+            {/* OpenAI */}
+            <SectionHeader label="OpenAI" />
+            {OPENAI_MODELS.map((model) => (
+              <ModelItem key={model.id} model={model} selected={selectedModel === model.id} disabled={!hasOpenaiKey} disabledReason="API key required" onSelect={handleSelect} />
+            ))}
+
+            {/* Custom endpoints */}
+            {customModelOptions.length > 0 && (
+              <>
+                <SectionHeader label="Custom" />
+                {customModelOptions.map((model) => (
+                  <ModelItem key={model.id} model={model} selected={selectedModel === model.id} disabled={false} onSelect={handleSelect} />
+                ))}
+              </>
+            )}
+
+            {/* Ollama */}
             {ollamaModels.length > 0 && (
               <>
                 <SectionHeader label="Ollama (Local)" />
-                {ollamaModels.map((model, idx) => {
+                {ollamaModels.map((model) => {
                   const isRunning = model.running === true;
-                  const isSelected = selectedModel === model.id;
                   return (
                     <button
                       key={model.id}
                       onClick={() => isRunning && handleSelect(model.id)}
                       disabled={!isRunning}
-                      className={`w-full px-3 py-2 text-left text-[10px] transition-colors ${
-                        idx < ollamaModels.length - 1 ? 'border-b border-slate-100 dark:border-slate-800' : ''
-                      } ${
+                      className={`w-full px-3 py-2 text-left text-[10px] transition-colors border-b border-slate-100 dark:border-slate-800 last:border-b-0 ${
                         !isRunning
                           ? 'opacity-40 cursor-not-allowed'
-                          : isSelected
-                            ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-200'
+                          : selectedModel === model.id
+                            ? selectedClass('ollama')
                             : 'text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/50'
                       }`}
                     >
@@ -129,5 +152,34 @@ export function ModelSelector({ selectedModel, onModelChange, ollamaModels, hasG
         </div>
       )}
     </div>
+  );
+}
+
+// ── Reusable model item ──────────────────────────────────────────────────────
+
+function ModelItem({ model, selected, disabled, disabledReason, onSelect }: {
+  model: ModelOption;
+  selected: boolean;
+  disabled: boolean;
+  disabledReason?: string;
+  onSelect: (id: string) => void;
+}) {
+  return (
+    <button
+      onClick={() => !disabled && onSelect(model.id)}
+      disabled={disabled}
+      className={`w-full px-3 py-2 text-left text-[10px] transition-colors border-b border-slate-100 dark:border-slate-800 last:border-b-0 ${
+        disabled
+          ? 'opacity-40 cursor-not-allowed'
+          : selected
+            ? selectedClass(model.provider)
+            : 'text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/50'
+      }`}
+    >
+      <div className="font-semibold leading-tight">{model.label}</div>
+      <div className="text-[9px] text-slate-500 dark:text-slate-400 mt-0.5 leading-tight">
+        {disabled && disabledReason ? disabledReason : model.description}
+      </div>
+    </button>
   );
 }

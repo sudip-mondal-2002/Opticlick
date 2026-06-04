@@ -1,0 +1,113 @@
+name: PR Sandbox — Build & Deploy
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+
+# Needed to post PR comments and push to gh-pages
+permissions:
+  contents: write
+  pull-requests: write
+  pages: write
+
+jobs:
+  # ── Deploy sandbox on PR open / update ────────────────────────────────────────
+  deploy:
+    name: Deploy sandbox preview
+    runs-on: ubuntu-latest
+    if: github.event.action != 'closed'
+
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install root dependencies
+        run: npm ci
+
+      - name: Copy icons
+        run: npm run copy-icons
+
+      - name: Install sandbox dependencies
+        run: npm ci
+        working-directory: sandbox
+
+      - name: Build sandbox
+        env:
+          VITE_BASE_PATH: /previews/pr-${{ github.event.number }}/
+          VITE_PR_NUMBER: ${{ github.event.number }}
+          VITE_BRANCH_NAME: ${{ github.head_ref }}
+        run: npm run build
+        working-directory: sandbox
+
+      - name: Prepare preview folder
+        run: |
+          mkdir -p deploy-preview/previews/pr-${{ github.event.number }}
+          cp -r sandbox/dist/. deploy-preview/previews/pr-${{ github.event.number }}/
+
+      - name: Deploy sandbox to gh-pages
+        uses: peaceiris/actions-gh-pages@4f9cc6602d3f66b9c108549d475ec49e8ef4d45e
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./deploy-preview
+          publish_branch: gh-pages
+          keep_files: true
+
+
+  # ── Cleanup sandbox on PR close ───────────────────────────────────────────────
+  cleanup:
+    name: Cleanup sandbox preview
+    runs-on: ubuntu-latest
+    if: github.event.action == 'closed'
+
+    steps:
+      - name: Checkout gh-pages
+        id: checkout
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+        continue-on-error: true
+
+      - name: Remove preview directory
+        if: steps.checkout.outcome == 'success'
+        run: |
+          if [ -d "previews/pr-${{ github.event.number }}" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git rm -rf previews/pr-${{ github.event.number }}/
+            git commit -m "sandbox: remove preview for closed PR #${{ github.event.number }}"
+            git push
+            echo "Removed preview for PR #${{ github.event.number }}"
+          else
+            echo "No preview found for PR #${{ github.event.number }}, skipping."
+          fi
+
+      - name: Find Sandbox Preview Comment
+        uses: peter-evans/find-comment@v3
+        id: fc
+        with:
+          issue-number: ${{ github.event.number }}
+          comment-author: 'github-actions[bot]'
+          body-includes: 🧪 Sandbox Preview
+
+      - name: Update PR comment on close
+        uses: peter-evans/create-or-update-comment@5005703541117ac4b73cf0094f9fd11d3f09a769
+        with:
+          comment-id: ${{ steps.fc.outputs.comment-id }}
+          issue-number: ${{ github.event.number }}
+          body: |
+            ## 🧪 Sandbox Preview — Expired
+
+            The sandbox preview for this PR has been removed (PR closed).
+
+            | | |
+            |---|---|
+            | **Branch** | `${{ github.head_ref }}` |
+            | **Status** | ❌ Removed |
+          comment-author: 'github-actions[bot]'
+          edit-mode: replace
