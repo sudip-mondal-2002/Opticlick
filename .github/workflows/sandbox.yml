@@ -1,25 +1,25 @@
-name: PR Sandbox — Build & Deploy
+name: PR Sandbox — Build
 
 on:
   pull_request:
     types: [opened, synchronize, reopened, closed]
 
-# Needed to post PR comments and push to gh-pages
+# Fork PRs only get read access — no secrets, no writes.
 permissions:
-  contents: write
-  pull-requests: write
-  pages: write
+  contents: read
 
 jobs:
-  # ── Deploy sandbox on PR open / update ────────────────────────────────────────
-  deploy:
-    name: Deploy sandbox preview
+  # ── Build sandbox on PR open / update ──────────────────────────────────────
+  build:
+    name: Build sandbox preview
     runs-on: ubuntu-latest
     if: github.event.action != 'closed'
 
     steps:
       - name: Checkout PR branch
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -50,64 +50,43 @@ jobs:
           mkdir -p deploy-preview/previews/pr-${{ github.event.number }}
           cp -r sandbox/dist/. deploy-preview/previews/pr-${{ github.event.number }}/
 
-      - name: Deploy sandbox to gh-pages
-        uses: peaceiris/actions-gh-pages@4f9cc6602d3f66b9c108549d475ec49e8ef4d45e
+      # Save the PR number so the deploy workflow can use it
+      - name: Save PR metadata
+        env:
+          PR_NUMBER: ${{ github.event.number }}
+          HEAD_REF: ${{ github.head_ref }}
+          SHA: ${{ github.sha }}
+        run: |
+          echo "$PR_NUMBER" > deploy-preview/PR_NUMBER
+          echo "$HEAD_REF" > deploy-preview/HEAD_REF
+          echo "$SHA" > deploy-preview/SHA
+
+      - name: Upload preview artifact
+        uses: actions/upload-artifact@v4
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./deploy-preview
-          publish_branch: gh-pages
-          keep_files: true
+          name: sandbox-preview-pr-${{ github.event.number }}
+          path: deploy-preview/
+          retention-days: 1
 
-
-  # ── Cleanup sandbox on PR close ───────────────────────────────────────────────
-  cleanup:
-    name: Cleanup sandbox preview
+  # ── Record closed PR number so the deploy workflow can clean up ─────────────
+  record-close:
+    name: Record PR close
     runs-on: ubuntu-latest
     if: github.event.action == 'closed'
 
     steps:
-      - name: Checkout gh-pages
-        id: checkout
-        uses: actions/checkout@v4
-        with:
-          ref: gh-pages
-        continue-on-error: true
-
-      - name: Remove preview directory
-        if: steps.checkout.outcome == 'success'
+      - name: Save close metadata
+        env:
+          PR_NUMBER: ${{ github.event.number }}
+          HEAD_REF: ${{ github.head_ref }}
         run: |
-          if [ -d "previews/pr-${{ github.event.number }}" ]; then
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-            git rm -rf previews/pr-${{ github.event.number }}/
-            git commit -m "sandbox: remove preview for closed PR #${{ github.event.number }}"
-            git push
-            echo "Removed preview for PR #${{ github.event.number }}"
-          else
-            echo "No preview found for PR #${{ github.event.number }}, skipping."
-          fi
+          mkdir close-meta
+          echo "$PR_NUMBER" > close-meta/PR_NUMBER
+          echo "$HEAD_REF" > close-meta/HEAD_REF
 
-      - name: Find Sandbox Preview Comment
-        uses: peter-evans/find-comment@v3
-        id: fc
+      - name: Upload close metadata
+        uses: actions/upload-artifact@v4
         with:
-          issue-number: ${{ github.event.number }}
-          comment-author: 'github-actions[bot]'
-          body-includes: 🧪 Sandbox Preview
-
-      - name: Update PR comment on close
-        uses: peter-evans/create-or-update-comment@5005703541117ac4b73cf0094f9fd11d3f09a769
-        with:
-          comment-id: ${{ steps.fc.outputs.comment-id }}
-          issue-number: ${{ github.event.number }}
-          body: |
-            ## 🧪 Sandbox Preview — Expired
-
-            The sandbox preview for this PR has been removed (PR closed).
-
-            | | |
-            |---|---|
-            | **Branch** | `${{ github.head_ref }}` |
-            | **Status** | ❌ Removed |
-          comment-author: 'github-actions[bot]'
-          edit-mode: replace
+          name: sandbox-close-pr-${{ github.event.number }}
+          path: close-meta/
+          retention-days: 1
