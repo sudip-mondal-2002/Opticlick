@@ -53,7 +53,6 @@ export function MockBrowser({ initialUrl = 'https://example.com' }: MockBrowserP
       }
     }
 
-    setCurrentUrlState(target);
     setCurrentUrl(target);
     setAddressInput(target);
     setIsLoading(true);
