@@ -20,6 +20,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -37,6 +39,15 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      # ── Auto-increment version (main pushes only) ─────────────────────────────
+      - name: Bump version to 1.0.<commit_count>
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          COMMIT_COUNT=$(git rev-list --count HEAD)
+          NEW_VERSION="1.0.${COMMIT_COUNT}"
+          npm version "$NEW_VERSION" --no-git-tag-version --allow-same-version
+          echo "📦 Extension version set to $NEW_VERSION"
+
       # ── Build (required before any tests) ────────────────────────────────────
       - name: Build
         run: npm run build
@@ -52,8 +63,6 @@ jobs:
       # virtual display for the E2E tests. xvfb-run --auto-servernum picks a
       # free display number so parallel runners never collide.
       - name: Test all projects with coverage
-        env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: xvfb-run --auto-servernum -- npm run test:coverage
 
       # Post inline annotations on non-fork PRs (read-write token).

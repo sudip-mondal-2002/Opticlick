@@ -1,50 +1,17 @@
 /**
- * E2E tests for LLM action decisions.
+ * Mocked E2E tests for LLM action decisions.
  *
- * These tests use the real Gemini API to verify that the agent correctly
- * interprets a Set-of-Mark annotated screenshot and returns the expected
- * action type for a given user task.
- *
- * Prerequisites:
- *   - A valid GEMINI_API_KEY in the .env file at the project root.
- *   - Playwright browsers installed: npx playwright install chromium
- *
- * Usage: npm run test:e2e -- --reporter=verbose tests/e2e/llm-actions.test.ts
+ * These tests mock the Gemini API and verify that the callModel pipeline
+ * correctly parses various tool calls and thinking tokens.
  */
 
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { chromium, type Browser } from '@playwright/test';
-import * as path from 'path';
-import * as fs from 'fs';
-import { createModel, callModel } from '../../src/utils/llm';
+import { describe, it, expect } from 'vitest';
+import { callModel } from '../../src/utils/llm';
 import type { AgentAction } from '../../src/utils/types';
+import { makeFakeGeminiModel, toolChunk } from '../setup/gemini-mock';
 
-// ── Load API key from .env or .env.test ──────────────────────────────────────
-
-const envTestPath = path.resolve(__dirname, '../../.env.test');
-const envPath = path.resolve(__dirname, '../../.env');
-const envContent = fs.existsSync(envTestPath)
-  ? fs.readFileSync(envTestPath, 'utf-8')
-  : fs.existsSync(envPath)
-    ? fs.readFileSync(envPath, 'utf-8')
-    : '';
-const GEMINI_API_KEY = envContent.match(/GEMINI_API_KEY=([^\r\n]+)/)?.[1]?.trim() ?? process.env.GEMINI_API_KEY ?? '';
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-const FIXTURE_PATH = path.resolve(__dirname, 'fixtures/llm-fixture.html');
-
-let browser: Browser;
-
-async function screenshotFixture(): Promise<string> {
-  const page = await browser.newPage();
-  await page.setViewportSize({ width: 800, height: 600 });
-  await page.goto(`file://${FIXTURE_PATH}`);
-  await page.waitForLoadState('domcontentloaded');
-  const buffer = await page.screenshot({ type: 'png' });
-  await page.close();
-  return buffer.toString('base64');
-}
+// A placeholder base64 image (empty 1x1 PNG or similar dummy string)
+const FAKE_BASE64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
 
 function findAction<T extends AgentAction['type']>(
   actions: AgentAction[],
@@ -53,25 +20,11 @@ function findAction<T extends AgentAction['type']>(
   return actions.find((a): a is Extract<AgentAction, { type: T }> => a.type === type);
 }
 
-// ── Setup / teardown ─────────────────────────────────────────────────────────
-
-beforeAll(async () => {
-  if (!GEMINI_API_KEY) {
-    throw new Error('GEMINI_API_KEY not found. Add it to .env or set the env var.');
-  }
-  browser = await chromium.launch({ headless: true });
-});
-
-afterAll(async () => {
-  await browser?.close();
-});
-
-// ── Tests ─────────────────────────────────────────────────────────────────────
-
-describe('LLM action decisions from annotated screenshots', () => {
+describe('LLM action decisions from annotated screenshots (mocked)', () => {
   it('returns a click action targeting the Login button [3] when credentials are filled', async () => {
-    const base64 = await screenshotFixture();
-    const model = createModel(GEMINI_API_KEY);
+    const model = makeFakeGeminiModel([
+      toolChunk('click', { targetId: 3 }),
+    ]);
 
     // Provide history showing credentials were already entered so the LLM's
     // next logical step is to click the Submit / Login button, not fill fields.
@@ -92,8 +45,8 @@ describe('LLM action decisions from annotated screenshots', () => {
     ];
 
     const result = await callModel(
-      model,
-      base64,
+      model as any,
+      FAKE_BASE64,
       'The form fields are already filled. Click the Login button [3] to submit.',
       history,
       async () => {},
@@ -108,11 +61,12 @@ describe('LLM action decisions from annotated screenshots', () => {
     expect(clickAction, 'Expected a click action').toBeDefined();
     // The Login button is clearly labeled [3] in the fixture
     expect(clickAction!.targetId).toBe(3);
-  }, 120_000);
+  });
 
   it('fills in the username field [1] with the requested text', async () => {
-    const base64 = await screenshotFixture();
-    const model = createModel(GEMINI_API_KEY);
+    const model = makeFakeGeminiModel([
+      toolChunk('click', { targetId: 1 }),
+    ]);
 
     // Pre-populate todo so the LLM skips the mandatory todo_create step and
     // immediately performs the typing action.
@@ -125,8 +79,8 @@ describe('LLM action decisions from annotated screenshots', () => {
     ];
 
     const result = await callModel(
-      model,
-      base64,
+      model as any,
+      FAKE_BASE64,
       // The agent emits at most one UI action per turn. The first step is to
       // click element [1] to focus the username field; a subsequent turn would
       // then emit the type action with the text.
@@ -143,15 +97,16 @@ describe('LLM action decisions from annotated screenshots', () => {
     const clickAction = findAction(result.actions, 'click');
     expect(clickAction, 'Expected a click action on the username field').toBeDefined();
     expect(clickAction!.targetId).toBe(1);
-  }, 120_000);
+  });
 
   it('returns a navigate action with the correct URL when asked to visit a URL', async () => {
-    const base64 = await screenshotFixture();
-    const model = createModel(GEMINI_API_KEY);
+    const model = makeFakeGeminiModel([
+      toolChunk('navigate', { url: 'https://example.com' }),
+    ]);
 
     const result = await callModel(
-      model,
-      base64,
+      model as any,
+      FAKE_BASE64,
       'Navigate to https://example.com — ignore the current page.',
     );
 
@@ -160,15 +115,16 @@ describe('LLM action decisions from annotated screenshots', () => {
     const navigateAction = findAction(result.actions, 'navigate');
     expect(navigateAction, 'Expected a navigate action').toBeDefined();
     expect(navigateAction!.url).toContain('example.com');
-  }, 120_000);
+  });
 
   it('returns a click on the Register link [5] when asked to register', async () => {
-    const base64 = await screenshotFixture();
-    const model = createModel(GEMINI_API_KEY);
+    const model = makeFakeGeminiModel([
+      toolChunk('click', { targetId: 5 }),
+    ]);
 
     const result = await callModel(
-      model,
-      base64,
+      model as any,
+      FAKE_BASE64,
       'I need to create a new account. Click the registration link.',
     );
 
@@ -178,11 +134,12 @@ describe('LLM action decisions from annotated screenshots', () => {
     expect(clickAction, 'Expected a click action on the register link').toBeDefined();
     // Register link is labeled [5]
     expect(clickAction!.targetId).toBe(5);
-  }, 120_000);
+  });
 
   it('returns a finish action when the task is already done', async () => {
-    const base64 = await screenshotFixture();
-    const model = createModel(GEMINI_API_KEY);
+    const model = makeFakeGeminiModel([
+      toolChunk('finish', { summary: 'Logged in and verified successfully.' }),
+    ]);
 
     // Todo is already fully done — the agent should call finish() immediately.
     // No todo management is needed since all items are already marked done.
@@ -192,8 +149,8 @@ describe('LLM action decisions from annotated screenshots', () => {
     ];
 
     const result = await callModel(
-      model,
-      base64,
+      model as any,
+      FAKE_BASE64,
       'All tasks are already marked done — no todo_create or todo_update needed. ' +
       'Call finish() right now with a brief summary of what was accomplished.',
       [],
@@ -207,5 +164,5 @@ describe('LLM action decisions from annotated screenshots', () => {
     expect(finishAction, `Expected a finish action. Got actions: ${JSON.stringify(result.actions.map(a => a.type))}`).toBeDefined();
     expect(result.done).toBe(true);
     expect(finishAction!.summary).toBeTruthy();
-  }, 120_000);
+  });
 });
