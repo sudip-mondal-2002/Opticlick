@@ -176,8 +176,17 @@ export const debuggerShim = {
         const text = (params?.text as string) ?? '';
         const active = doc?.activeElement as HTMLInputElement | HTMLTextAreaElement | null;
         if (active && ('value' in active)) {
-          const nativeInputValueSetter = Object.getOwnPropertyDescriptor(win.HTMLInputElement.prototype, 'value')?.set
-            || Object.getOwnPropertyDescriptor(win.HTMLTextAreaElement.prototype, 'value')?.set;
+          let proto = Object.getPrototypeOf(active);
+          let nativeInputValueSetter = null;
+          while (proto) {
+            const desc = Object.getOwnPropertyDescriptor(proto, 'value');
+            if (desc?.set) {
+              nativeInputValueSetter = desc.set;
+              break;
+            }
+            proto = Object.getPrototypeOf(proto);
+          }
+
           if (nativeInputValueSetter) {
             nativeInputValueSetter.call(active, active.value + text);
           } else {
@@ -191,6 +200,7 @@ export const debuggerShim = {
         }
         return {};
       }
+
 
       // ── Key events ────────────────────────────────────────────────────────
       case 'Input.dispatchKeyEvent': {
