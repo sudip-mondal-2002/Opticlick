@@ -81,6 +81,15 @@ export type AgentAction =
   | { type: 'press_key'; key: string }
   // ── DOM inspection ───────────────────────────────────────────────────────
   | { type: 'fetch_dom'; targetId: number }
+  // ── Network Tools ─────────────────────────────────────────────────────────
+  | { 
+      type: 'fetch_url'; 
+      url: string; 
+      method?: 'GET' | 'POST' | 'PUT' | 'DELETE'; 
+      headers?: Record<string, string>; 
+      body?: string; 
+      maxResponseBytes?: number; 
+    }
   // ── VFS mutations ────────────────────────────────────────────────────────
   | { type: 'vfs_save_screenshot'; name: string }
   | { type: 'vfs_write'; name: string; content: string; mimeType?: string }
@@ -142,6 +151,15 @@ export interface AgentState {
   step: number;
   prompt?: string;
   sessionId?: number;
+  actions: AgentAction[];
+  rawToolCalls: RawToolCall[];
+  base64Image?: string;
+  coordinateMap?: CoordinateEntry[];
+  userPrompt?: string;
+  currentTodo?: TodoItem[];
+  memoryEntries?: any[];
+  scratchpadEntries?: any[];
+  askUserQuestion?: string;
 }
 
 /** A stored chat session. */
@@ -223,8 +241,6 @@ export type Message =
       x: number;
       /** CSS-pixel center Y of the target file input. */
       y: number;
-      fileName: string;
-      mimeType: string;
-      /** Base64-encoded file data (no data-URL prefix). */
-      base64Data: string;
+      /** VFS file ID or filename to upload. */
+      fileId: string;
     };
