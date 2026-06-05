@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { dispatchHardwareClick, _resetAttachedDebuggers } from '@/utils/cdp';
+import { dispatchDragAndDrop, dispatchHardwareClick, _resetAttachedDebuggers } from '@/utils/cdp';
 import { getMockDebugger } from '../setup/chrome-mocks';
 
 beforeEach(() => {
@@ -105,5 +105,39 @@ describe('dispatchHardwareClick', () => {
     await dispatchHardwareClick(1, 10, 20);
     await dispatchHardwareClick(1, 30, 40);
     expect(getMockDebugger().attach).toHaveBeenCalledOnce();
+  });
+});
+
+describe('dispatchDragAndDrop', () => {
+  it('sends the drag mouse event sequence from source to target', async () => {
+    await dispatchDragAndDrop(1, { x: 30, y: 60 }, { x: 330, y: 360 });
+
+    const mouseCalls = getMockDebugger().sendCommand.mock.calls
+      .filter((c: unknown[]) => c[1] === 'Input.dispatchMouseEvent')
+      .map((c: unknown[]) => c[2] as { type: string; x: number; y: number; buttons: number });
+
+    expect(mouseCalls).toHaveLength(6);
+    expect(mouseCalls.map((c) => c.type)).toEqual([
+      'mouseMoved',
+      'mousePressed',
+      'mouseMoved',
+      'mouseMoved',
+      'mouseMoved',
+      'mouseReleased',
+    ]);
+    expect(mouseCalls[0]).toMatchObject({ x: 30, y: 60, buttons: 0 });
+    expect(mouseCalls[1]).toMatchObject({ x: 30, y: 60, buttons: 1 });
+    expect(mouseCalls[4]).toMatchObject({ x: 330, y: 360, buttons: 1 });
+    expect(mouseCalls[5]).toMatchObject({ x: 330, y: 360, buttons: 0 });
+  });
+
+  it('attempts CDP drag events as an HTML5 fallback', async () => {
+    await dispatchDragAndDrop(1, { x: 30, y: 60 }, { x: 330, y: 360 });
+
+    const dragTypes = getMockDebugger().sendCommand.mock.calls
+      .filter((c: unknown[]) => c[1] === 'Input.dispatchDragEvent')
+      .map((c: unknown[]) => (c[2] as { type: string }).type);
+
+    expect(dragTypes).toEqual(['dragEnter', 'dragOver', 'drop']);
   });
 });

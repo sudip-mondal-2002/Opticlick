@@ -67,6 +67,13 @@ describe('isInteractable — ARIA roles', () => {
     const el = make('div');
     expect(isInteractable(el)).toBe(false);
   });
+
+  it('returns true for draggable elements', () => {
+    const el = make('div', { draggable: 'true' }, (node) => {
+      node.textContent = 'Card A';
+    });
+    expect(isInteractable(el)).toBe(true);
+  });
 });
 
 describe('isInteractable — tabindex', () => {
@@ -123,6 +130,13 @@ describe('collectInteractables', () => {
     make('div'); // not interactive
     const results = collectInteractables(document.body);
     expect(results).toHaveLength(3);
+  });
+
+  it('includes draggable elements in the coordinate-map candidates', () => {
+    const card = make('div', { draggable: 'true' }, (el) => (el.textContent = 'Card A'));
+    const results = collectInteractables(document.body);
+    expect(results).toContain(card);
+    expect(getLabel(card)).toBe('Card A');
   });
 
   it('does not include disabled inputs', () => {

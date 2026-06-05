@@ -111,4 +111,11 @@ export const tabsShim = {
     },
     hasListener: () => false,
   },
+
+  onCreated: {
+    addListener(cb: (tab: chrome.tabs.Tab) => void) {},
+    removeListener(cb: any) {},
+    hasListener: () => false,
+  },
 };
+

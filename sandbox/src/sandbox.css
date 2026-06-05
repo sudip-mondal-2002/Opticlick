@@ -523,3 +523,122 @@ html, body, #root {
   from { transform: translateX(120%); opacity: 0; }
   to { transform: translateX(0); opacity: 1; }
 }
+
+/* ── Proxy Panel ────────────────────────────────────────────────────────────── */
+
+.proxy-panel {
+  border-top: 1px solid var(--border);
+  background: var(--bg-surface);
+  flex-shrink: 0;
+}
+
+.proxy-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s;
+}
+
+.proxy-header:hover { background: rgba(255,255,255,0.03); }
+
+.proxy-icon {
+  font-size: 14px;
+}
+
+.proxy-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  flex: 1;
+}
+
+.proxy-status {
+  font-size: 10px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+.proxy-status.active {
+  background: rgba(34,197,94,0.15);
+  color: var(--green);
+  border: 1px solid rgba(34,197,94,0.25);
+}
+
+.proxy-status.default {
+  background: rgba(245,158,11,0.15);
+  color: var(--amber);
+  border: 1px solid rgba(245,158,11,0.25);
+}
+
+.proxy-status.inactive {
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--red);
+  border: 1px solid rgba(239, 68, 68, 0.25);
+}
+
+.proxy-chevron {
+  font-size: 10px;
+  color: var(--text-muted);
+  transition: transform 0.2s;
+}
+
+.proxy-chevron.open { transform: rotate(180deg); }
+
+.proxy-body {
+  padding: 0 14px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  animation: slide-down 0.15s ease;
+}
+
+.proxy-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.proxy-label {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.proxy-input {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  color: var(--text-primary);
+  font-size: 12px;
+  font-family: var(--font-mono);
+  outline: none;
+  width: 100%;
+  transition: border-color 0.15s;
+}
+
+.proxy-input:focus {
+  border-color: var(--border-focus);
+}
+
+.proxy-save-btn {
+  padding: 6px 14px;
+  background: linear-gradient(135deg, var(--accent), #38bdf8);
+  border: none;
+  border-radius: 6px;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  align-self: flex-end;
+  transition: opacity 0.15s, transform 0.1s;
+}
+
+.proxy-save-btn:hover { opacity: 0.9; }
+.proxy-save-btn:active { transform: scale(0.97); }

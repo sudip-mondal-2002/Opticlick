@@ -54,19 +54,18 @@ export function ApiKeySetup({ onSave, onSaveCustom }: Props) {
   return (
     <div className="flex flex-col items-center px-6 pt-8 pb-6 bg-white dark:bg-slate-950 min-h-[300px]">
 
-      {/* Logo with glow */}
-      <div className="relative flex items-center justify-center mb-5">
-        <div className="absolute w-16 h-16 rounded-full bg-sky-500/20 blur-xl pointer-events-none" />
-        <div className="relative w-11 h-11 rounded-xl bg-gradient-to-br from-sky-600 to-sky-400 shadow-[0_0_24px_rgba(14,165,233,0.45)]" />
+      {/* Logo */}
+      <div className="flex items-center justify-center mb-5">
+        <img src="/icon.svg" width={44} height={44} className="rounded-[8px]" alt="Opticlick" />
       </div>
 
       {/* Title */}
-      <h2 className="text-[15px] font-bold text-slate-800 dark:text-slate-100 mb-1">
+      <h2 className="text-[15px] font-bold text-slate-800 dark:text-slate-100 mb-2">
         Opticlick Engine
       </h2>
 
       {/* Engine badge */}
-      <span className="font-mono text-[9px] tracking-[1.5px] uppercase text-sky-500 border border-sky-800 bg-sky-950/50 px-2 py-[3px] rounded mb-4">
+      <span className="inline-block font-mono text-[9px] tracking-[1.5px] uppercase text-sky-600 dark:text-sky-400 border border-sky-300 dark:border-sky-800 bg-white dark:bg-slate-900 px-2.5 py-[3px] rounded mb-4">
         AI Web Agent
       </span>
 

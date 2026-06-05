@@ -101,27 +101,33 @@ Tools are categorized into UI actions, DOM inspection, VFS mutations, memory, sc
 - **Typical Workflow:** Click (focus) → Type (enter text) → Press_key (submit)
 - **Anti-Loop Rules:** The system tracks action history and uses `shouldPivot()` to detect repeated identical actions (3+ identical click/scroll pairs). When detected, the agent must switch strategies: navigate to a reconstructed URL, try a different interaction path, or ask the user for clarification.
 
-### 6. Persistent Memory
+### 6. Session History Search
+- **Session metadata:** `Session` records store optional `modelId`, `startUrl`, and denormalized `searchText` (lowercase, max 4 KB) for client-side filtering. Set on create in `loop.ts`; `searchText` is appended after each LLM turn in `observe.ts`.
+- **Search module:** `searchSessions()` in `src/utils/session-search.ts` filters/sorts in memory after `getSessions()`. Supports text query (title, URL, `searchText`), date range, model filter, and relevance/newest/oldest sort.
+- **Legacy backfill:** `backfillSessionMetadata()` in `src/utils/session-backfill.ts` parses conversation history for missing `startUrl`/`searchText` when the sessions overlay opens.
+- **IndexedDB:** `DB_VERSION = 5` adds a `by-session` index on the `conversations` store for efficient per-session history reads.
+
+### 7. Persistent Memory
 - **Purpose:** Cross-session memory that lets the agent remember facts about the user (accounts, preferences, display names, etc.) across sessions.
-- **Storage:** IndexedDB `memory` object store (`DB_VERSION = 4`). Each entry is a `MemoryEntry` with `key` (namespaced, e.g. `"github/username"`), `values` (string array for multi-account support), `category`, optional `sourceUrl`, and timestamps.
+- **Storage:** IndexedDB `memory` object store (`DB_VERSION = 5`). Each entry is a `MemoryEntry` with `key` (namespaced, e.g. `"github/username"`), `values` (string array for multi-account support), `category`, optional `sourceUrl`, and timestamps.
 - **Agent Tools:** `memory_upsert` (save/merge values) and `memory_delete` (remove entry). Defined in `src/utils/tools/memory.ts`.
 - **Context Injection:** All memory entries are loaded at loop start (`getAllMemories()`) and injected into every LLM prompt as a `── Long-term Memory ──` context block via `formatMemoryForPrompt()` in `src/utils/memory.ts`.
 - **Upsert Semantics:** When the agent calls `memory_upsert` with an existing key, new values are merged and deduplicated into the existing array. This naturally handles multi-account discovery.
 - **Module layout:** DB CRUD in `src/utils/db.ts`, formatting in `src/utils/memory.ts`, tool schemas in `src/utils/tools/memory.ts`, action handling in `src/entrypoints/background/loop.ts`.
 - **Security Rule:** The LLM is instructed to NEVER store passwords, tokens, or API keys in memory.
 
-### 7. In-Session Scratchpad Memory
+### 8. In-Session Scratchpad Memory
 - **Purpose:** Short-term memory for accumulating intermediate findings (e.g. issues extracted across multiple pages) during a single thread/session. Does NOT persist across sessions.
 - **Storage:** Synced to VFS as `__scratchpad.json` to survive service worker restarts. Cleared automatically on session completion.
 - **Agent Tools:** `note_write` (save/update note) and `note_delete` (remove note). Defined in `src/utils/tools/scratchpad.ts`.
 - **Context Injection:** Injected into every LLM prompt as a `── Scratchpad ──` block via `formatScratchpadForPrompt()` in `src/utils/scratchpad.ts`.
 
-### 8. File Upload Handling
+### 9. File Upload Handling
 - **File Chooser Suppression:** The background loop uses Chrome Debugger Protocol (`Page.setInterceptFileChooserDialog`) combined with JS-level overrides of `HTMLInputElement.prototype.click` and `window.showOpenFilePicker` to suppress any OS file picker dialogs.
 - **VFS File Injection:** When the agent calls `click` with an `uploadFileId` parameter (a VFS file UUID), the loop uses `DOM.setFileInputFiles` to inject the file contents directly into the `<input type="file">` element. This bypasses the native file picker entirely.
 - **Fallback:** For pages that require actual file operations, the agent can use `vfs_download` to fetch remote files into VFS, then reference them by filename or UUID in click actions.
 
-### 9. Attachment Handling (User-Provided Files and Images)
+### 10. Attachment Handling (User-Provided Files and Images)
 - **Attachment Flow:** User-attached files arrive in the `START_AGENT` message as `AttachedFile[]` with fields `name`, `mimeType`, and base64-encoded `data`.
 - **VFS Seeding:** All attachments are immediately saved to the session's VFS via `saveVFSFile()`, making them accessible by filename or UUID throughout the session.
 - **Image Injection:** On step 1 only, image attachments (those whose `mimeType` starts with `image/`) are extracted and injected into the LLM prompt as inline multimodal content:

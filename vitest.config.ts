@@ -28,6 +28,17 @@ export default defineConfig({
           globals: true,
         },
       },
+      // ── Sandbox: mock Chrome APIs and proxy environments ─────────────────
+      {
+        resolve: { alias: srcAlias },
+        test: {
+          name: 'sandbox',
+          include: ['tests/sandbox/**/*.test.ts'],
+          environment: 'node',
+          globals: true,
+        },
+      },
+
       // ── Integration: IndexedDB + Chrome API mocks ────────────────────────
       {
         resolve: { alias: srcAlias },

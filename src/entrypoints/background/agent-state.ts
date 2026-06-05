@@ -18,7 +18,7 @@ export const MAX_EMPTY_RETRIES = 3;
 
 // ── UI action type sets ───────────────────────────────────────────────────────
 
-export const UI_ACTION_TYPES = new Set(['click', 'type', 'navigate', 'scroll', 'press_key']);
+export const UI_ACTION_TYPES = new Set(['click', 'type', 'navigate', 'scroll', 'press_key', 'drag_and_drop']);
 export const UI_ACTION_TYPES_NO_CLICK = new Set(['navigate', 'scroll', 'press_key']);
 
 /** Returns true if the action list contains at least one UI action. */

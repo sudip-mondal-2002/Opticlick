@@ -16,6 +16,11 @@ import { getIframe } from './tabs';
 
 let html2canvasLib: ((el: HTMLElement, opts?: object) => Promise<HTMLCanvasElement>) | null = null;
 
+const _objectIdMap = new Map<string, HTMLElement>();
+const _virtualFiles = new Map<string, { data: string; filename: string; mimeType: string }>();
+const _downloadIdMap = new Map<number, string>();
+
+
 // ── Named exports required by @/utils/cdp imports ─────────────────────────────
 // The real cdp/ module exports these; Vite aliases @/utils/cdp to this file.
 
@@ -58,18 +63,33 @@ export async function typeTextCDP(tabId: number, text: string, _clearField = fal
 export async function dispatchScrollWheel(tabId: number, cssX: number, cssY: number, deltaX: number, deltaY: number): Promise<void> {
   await debuggerShim.sendCommand({ tabId }, 'Input.dispatchMouseEvent', { type: 'mouseWheel', x: cssX, y: cssY, deltaX, deltaY });
 }
+export async function dispatchDragAndDrop(
+    _tabId: number,
+    _sourceCoords: { x: number; y: number },
+    _targetCoords: { x: number; y: number },
+  ): Promise<void> {
+    // no-op sandbox implementation
+}
 
-// File upload helpers — no-op in sandbox (file access not supported)
+// File upload helpers — mock implementation to persist base64 data for sandbox DOM.setFileInputFiles
 export async function writeTempFile(
-  _base64Data: string, _filename: string, _mimeType: string,
+  base64Data: string, filename: string, mimeType: string,
 ): Promise<{ downloadId: number; filePath: string }> {
-  console.warn('[sandbox] writeTempFile: not supported in sandbox mode');
-  return { downloadId: -1, filePath: '' };
+  const downloadId = Math.floor(Math.random() * 1000000);
+  const filePath = `/tmp/opticlick_upload_${downloadId}_${filename}`;
+  _virtualFiles.set(filePath, { data: base64Data, filename, mimeType });
+  _downloadIdMap.set(downloadId, filePath);
+  return { downloadId, filePath };
 }
 
-export async function cleanupTempFile(_downloadId: number): Promise<void> {
-  // no-op
+export async function cleanupTempFile(downloadId: number): Promise<void> {
+  const filePath = _downloadIdMap.get(downloadId);
+  if (filePath) {
+    _virtualFiles.delete(filePath);
+    _downloadIdMap.delete(downloadId);
+  }
 }
+
 
 async function getHtml2Canvas() {
   if (html2canvasLib) return html2canvasLib;
@@ -106,14 +126,20 @@ export const debuggerShim = {
     switch (method) {
       // ── Screenshot ────────────────────────────────────────────────────────
       case 'Page.captureScreenshot': {
-        if (!doc?.body) throw new Error('Sandbox: iframe not ready for screenshot');
+        if (!doc?.body || !win) throw new Error('Sandbox: iframe not ready for screenshot');
         const h2c = await getHtml2Canvas();
         const canvas = await h2c(doc.body, {
           useCORS: true,
           allowTaint: true,
-          scale: window.devicePixelRatio || 1,
+          scale: 1, // Cap at 1x resolution to keep performance fast and prevent thread freeze
           logging: false,
           foreignObjectRendering: false,
+          width: win.innerWidth,
+          height: win.innerHeight,
+          scrollX: win.scrollX,
+          scrollY: win.scrollY,
+          windowWidth: win.innerWidth,
+          windowHeight: win.innerHeight,
         });
         // Return raw base64 without data-URI prefix (matches real CDP response)
         const dataUrl = canvas.toDataURL('image/png');
@@ -170,8 +196,17 @@ export const debuggerShim = {
         const text = (params?.text as string) ?? '';
         const active = doc?.activeElement as HTMLInputElement | HTMLTextAreaElement | null;
         if (active && ('value' in active)) {
-          const nativeInputValueSetter = Object.getOwnPropertyDescriptor(win.HTMLInputElement.prototype, 'value')?.set
-            || Object.getOwnPropertyDescriptor(win.HTMLTextAreaElement.prototype, 'value')?.set;
+          let proto = Object.getPrototypeOf(active);
+          let nativeInputValueSetter = null;
+          while (proto) {
+            const desc = Object.getOwnPropertyDescriptor(proto, 'value');
+            if (desc?.set) {
+              nativeInputValueSetter = desc.set;
+              break;
+            }
+            proto = Object.getPrototypeOf(proto);
+          }
+
           if (nativeInputValueSetter) {
             nativeInputValueSetter.call(active, active.value + text);
           } else {
@@ -185,6 +220,7 @@ export const debuggerShim = {
         }
         return {};
       }
+
 
       // ── Key events ────────────────────────────────────────────────────────
       case 'Input.dispatchKeyEvent': {
@@ -211,22 +247,91 @@ export const debuggerShim = {
       case 'Runtime.evaluate': {
         if (!win) return { result: { type: 'undefined', value: undefined } };
         try {
-          // Use indirect eval in the iframe's context
-          const fn = new win.Function(params?.expression as string);
-          const value = fn();
-          return { result: { type: typeof value, value } };
+          const expr = params?.expression as string;
+          let value;
+          try {
+            // Attempt to treat it as a returnable expression first
+            const fn = new win.Function(`return (${expr});`);
+            value = fn();
+          } catch {
+            // Fall back to statement block execution
+            const fn = new win.Function(expr);
+            value = fn();
+          }
+
+          let result: Record<string, unknown> = { type: typeof value, value };
+          if (value && typeof value === 'object') {
+            const isDomElement = (win.HTMLElement && value instanceof win.HTMLElement) ||
+                                 (typeof (value as any).nodeType === 'number');
+            if (isDomElement) {
+              const objectId = 'node_' + Math.random().toString(36).slice(2);
+              _objectIdMap.set(objectId, value as HTMLElement);
+              result = {
+                type: 'object',
+                subtype: 'node',
+                objectId
+              };
+            }
+          }
+          return { result };
         } catch (e) {
           return { result: { type: 'undefined' }, exceptionDetails: { text: (e as Error).message } };
         }
       }
 
+
+
+      case 'DOM.setFileInputFiles': {
+        const { objectId, files } = params ?? {};
+        const inputEl = _objectIdMap.get(objectId as string) as HTMLInputElement | undefined;
+        if (!inputEl) {
+          console.error('[sandbox] DOM.setFileInputFiles: input element not found for objectId', objectId);
+          return {};
+        }
+        if (Array.isArray(files) && files.length > 0) {
+          const fileItem = files[0];
+          if (win) {
+            try {
+              let file: File;
+              if (typeof fileItem === 'string') {
+                const fileData = _virtualFiles.get(fileItem);
+                if (fileData) {
+                  const bytes = Uint8Array.from(atob(fileData.data), c => c.charCodeAt(0));
+                  file = new win.File([bytes], fileData.filename, { type: fileData.mimeType });
+                } else {
+                  file = new win.File([new TextEncoder().encode(fileItem)], 'file.txt', { type: 'text/plain' });
+                }
+              } else if (fileItem instanceof win.File || fileItem instanceof File) {
+                file = fileItem as File;
+              } else if (fileItem instanceof ArrayBuffer || ArrayBuffer.isView(fileItem)) {
+                file = new win.File([fileItem], 'file.bin', { type: 'application/octet-stream' });
+              } else if (fileItem && typeof fileItem === 'object' && ('buffer' in fileItem || 'data' in fileItem)) {
+                const data = (fileItem as any).buffer || (fileItem as any).data || fileItem;
+                file = new win.File([data], 'file.bin', { type: 'application/octet-stream' });
+              } else {
+                file = new win.File([String(fileItem)], 'file.txt', { type: 'text/plain' });
+              }
+
+              const dt = new win.DataTransfer();
+              dt.items.add(file);
+              inputEl.files = dt.files;
+              inputEl.dispatchEvent(new win.Event('change', { bubbles: true }));
+              inputEl.dispatchEvent(new win.Event('input', { bubbles: true }));
+            } catch (err) {
+              console.error('[sandbox] DOM.setFileInputFiles failed to set files:', err);
+            }
+          }
+        }
+        return {};
+      }
+
       // ── No-ops ────────────────────────────────────────────────────────────
       case 'Page.setInterceptFileChooserDialog':
-      case 'DOM.setFileInputFiles':
       default:
         return {};
     }
   },
+
 
   onEvent: {
     addListener(_cb: unknown) {},
