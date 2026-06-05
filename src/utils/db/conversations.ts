@@ -51,7 +51,11 @@ export async function getConversationHistory(sessionId: number): Promise<Convers
 
     const req = store.getAll();
     req.onsuccess = (e) =>
-      resolve(((e.target as IDBRequest).result as ConversationTurn[]).filter((r) => r.sessionId === sessionId));
+      resolve(
+        ((e.target as IDBRequest).result as ConversationTurn[])
+          .filter((r) => r.sessionId === sessionId)
+          .sort((a, b) => a.ts - b.ts),
+      );
     req.onerror = (e) => reject((e.target as IDBRequest).error);
   });
 }

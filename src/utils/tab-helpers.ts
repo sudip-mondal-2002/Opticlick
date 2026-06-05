@@ -16,7 +16,9 @@ export async function retryTabUpdate(
 ): Promise<chrome.tabs.Tab> {
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
-      return await chrome.tabs.update(tabId, props);
+      const tab = await chrome.tabs.update(tabId, props);
+      if (!tab) throw new Error(`Unable to update tab ${tabId}.`);
+      return tab;
     } catch (err) {
       const msg = (err as Error).message ?? '';
       if (attempt < maxAttempts && msg.includes(TAB_DRAG_ERROR)) {
@@ -69,7 +71,7 @@ export async function waitForInjectableTab(tabId: number, timeoutMs = 30_000): P
 
     const listener = (
       updatedTabId: number,
-      changeInfo: chrome.tabs.TabChangeInfo,
+      changeInfo: chrome.tabs.OnUpdatedInfo,
       tab: chrome.tabs.Tab,
     ) => {
       if (updatedTabId !== tabId) return;
@@ -113,7 +115,7 @@ export function waitForTabLoad(
       }
     };
 
-    const listener = (updatedTabId: number, changeInfo: chrome.tabs.TabChangeInfo) => {
+    const listener = (updatedTabId: number, changeInfo: chrome.tabs.OnUpdatedInfo) => {
       if (updatedTabId !== tabId) return;
       if (!sawLoading && changeInfo.status === 'loading') {
         sawLoading = true;

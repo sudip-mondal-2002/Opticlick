@@ -14,9 +14,15 @@
 
 import {
   createSession,
+  getSessionById,
   updateSessionMetadata,
   saveVFSFile,
   getAllMemories,
+<<<<<<< Updated upstream
+  updateSession,
+=======
+  updateSessionFields,
+>>>>>>> Stashed changes
 } from '@/utils/db';
 import { createAnyModel } from '@/utils/llm';
 import type { ApiKeys } from '@/utils/llm';
@@ -46,6 +52,7 @@ export async function runAgentLoop(
   attachments?: AttachedFile[],
   modelId?: string,
 ): Promise<void> {
+<<<<<<< Updated upstream
   const effectiveModelId = modelId ?? DEFAULT_MODEL;
 
   // Capture the starting URL for context anchoring and session metadata
@@ -66,6 +73,10 @@ export async function runAgentLoop(
     });
   }
 
+=======
+  const sessionId = existingSessionId ?? (await createSession(userPrompt));
+  const effectiveModelId = modelId ?? DEFAULT_MODEL;
+>>>>>>> Stashed changes
   await setAgentState({ status: 'running', tabId, step: 0, prompt: userPrompt, sessionId });
 
   // Seed VFS with any user-attached files
@@ -95,6 +106,12 @@ export async function runAgentLoop(
   const anchoredPrompt = startingUrl
     ? `${userPrompt}\n\n[CONTEXT: The task started on ${startingUrl}. If you are on an unrelated page, navigate back.]`
     : userPrompt;
+
+  await updateSessionFields(sessionId, {
+    modelId: effectiveModelId,
+    startingUrl: startingUrl || undefined,
+    status: 'in_progress',
+  });
 
   try {
     const { geminiApiKey, anthropicApiKey, openaiApiKey, customOpenaiConfigs } =
@@ -136,6 +153,16 @@ export async function runAgentLoop(
       customOpenaiConfigs: (customOpenaiConfigs as CustomOpenAIConfig[]) ?? [],
     };
     const model = createAnyModel(keys, effectiveModelId);
+
+    const existingSession = await getSessionById(sessionId);
+    const sessionPatch: { modelId: string; status: 'running'; startUrl?: string } = {
+      modelId: effectiveModelId,
+      status: 'running',
+    };
+    if (startingUrl && !existingSession?.startUrl) {
+      sessionPatch.startUrl = startingUrl;
+    }
+    await updateSession(sessionId, sessionPatch);
 
     // Navigate if the current tab cannot accept a content script
     if (!(await isTabInjectable(tabId))) {
@@ -231,6 +258,11 @@ export async function runAgentLoop(
     } catch (err) {
       await log(`Unhandled agent error: ${(err as Error).message}`, 'error');
       await setAgentState({ status: 'error' });
+<<<<<<< Updated upstream
+      await updateSession(sessionId, { status: 'error' });
+=======
+      await updateSessionFields(sessionId, { status: 'error' });
+>>>>>>> Stashed changes
     } finally {
       const finalTabId = tabIdRef.current;
 
@@ -259,10 +291,29 @@ export async function runAgentLoop(
         );
       } catch { /* */ }
       await detachDebugger(finalTabId);
+<<<<<<< Updated upstream
+=======
+      try { await clearVFSFiles(sessionId, [TODO_VFS_FILENAME]); } catch { /* */ }
+
+      const finalState = await getAgentState();
+      if (finalState?.status === 'done') {
+        await updateSessionFields(sessionId, { status: 'completed' });
+      } else if (finalState?.status === 'stopped') {
+        await updateSessionFields(sessionId, { status: 'stopped' });
+      } else if (finalState?.status === 'error') {
+        await updateSessionFields(sessionId, { status: 'error' });
+      }
+
+>>>>>>> Stashed changes
       chrome.runtime.sendMessage({ type: 'AGENT_STATE_CHANGE' }).catch(() => {});
     }
   } catch (err) {
     await log(`Fatal: ${(err as Error).message}`, 'error');
     await setAgentState({ status: 'error' });
+<<<<<<< Updated upstream
+    await updateSession(sessionId, { status: 'error' });
+=======
+    await updateSessionFields(sessionId, { status: 'error' });
+>>>>>>> Stashed changes
   }
 }

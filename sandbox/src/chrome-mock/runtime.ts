@@ -90,6 +90,22 @@ export const runtimeShim = {
       return Promise.resolve({ stopped: true });
     }
 
+    if (message?.type === 'EXPORT_SESSION') {
+      return import('@/utils/export')
+        .then(({ exportSessionToFile }) => {
+          const { sessionId, format } = message as { sessionId: number; format: 'json' | 'markdown' };
+          return exportSessionToFile(sessionId, format);
+        })
+        .then(({ filename }) => {
+          cb?.({ success: true, filename });
+          return { success: true, filename };
+        })
+        .catch((err: Error) => {
+          cb?.({ success: false, error: err.message });
+          return { success: false, error: err.message };
+        });
+    }
+
     const sender: chrome.runtime.MessageSender = { id: this.id, tab: { id: 1 } as any };
     runtimeEventBus.emit(message, sender, cb);
 

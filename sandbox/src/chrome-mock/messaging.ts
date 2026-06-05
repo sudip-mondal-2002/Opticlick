@@ -42,7 +42,7 @@ export function sendToIframe(message: Record<string, any>): Promise<any> {
     const id = Math.random().toString(36).slice(2);
     const timeout = setTimeout(() => {
       pendingReplies.delete(id);
-      resolve(undefined);
+      reject(new Error('Content script timeout'));
     }, 3000);
 
     pendingReplies.set(id, { resolve, reject, timeout });
@@ -87,10 +87,14 @@ export async function retryTabUpdateShim(
 }
 
 export async function ensureContentScriptShim(_tabId: number): Promise<void> {
-  try {
-    await sendToIframe({ type: 'PING' });
-  } catch {
-    // Expected if iframe not yet fully loaded
+  for (let i = 0; i < 5; i++) {
+    try {
+      const res = await sendToIframe({ type: 'PING' });
+      if (res && res.alive) return;
+    } catch {
+      // Expected if iframe not yet fully loaded
+    }
+    await new Promise(r => setTimeout(r, 1000));
   }
 }
 

@@ -96,6 +96,7 @@ function AgentUI() {
 
   const [historySteps, setHistorySteps] = useState<HistoryStep[]>([]);
   const [showSessions, setShowSessions] = useState(false);
+  const [exportingId, setExportingId] = useState<number | null>(null);
   const [chatInputKey, setChatInputKey] = useState(0);
   const [activeView, setActiveView] =
   useState<'chat' | 'files'>('chat');
@@ -362,6 +363,44 @@ const refreshSessions = useCallback(async () => {
     textareaRef.current?.focus();
   };
 
+  const handleExportSession = async (sessionId: number, format: 'json' | 'markdown') => {
+<<<<<<< Updated upstream
+    setExportingId(sessionId);
+    appendLog(`Exporting session as ${format.toUpperCase()}…`, 'info');
+    try {
+      const response = await chrome.runtime.sendMessage({
+        type: 'EXPORT_SESSION',
+        sessionId,
+        format,
+      }) as { ok?: boolean; filename?: string; error?: string };
+      if (response?.ok) {
+        appendLog(`Exported ${response.filename ?? 'session'}`, 'ok');
+      } else {
+        appendLog(`Export failed: ${response?.error ?? 'unknown error'}`, 'error');
+      }
+    } catch (err) {
+      appendLog(`Export failed: ${(err as Error).message}`, 'error');
+    } finally {
+      setExportingId(null);
+=======
+    appendLog(`Exporting session as ${format.toUpperCase()}…`, 'info');
+    try {
+      const response = await chrome.runtime.sendMessage({ type: 'EXPORT_SESSION', sessionId, format }) as {
+        success?: boolean;
+        filename?: string;
+        error?: string;
+      };
+      if (response?.success && response.filename) {
+        appendLog(`Download started: ${response.filename}`, 'ok');
+      } else {
+        appendLog(`Export failed: ${response?.error ?? 'Unknown error'}`, 'error');
+      }
+    } catch (err) {
+      appendLog(`Export failed: ${(err as Error).message}`, 'error');
+>>>>>>> Stashed changes
+    }
+  };
+
   const handleResumeSession = async (session: Session) => {
     if (session.id == null) return;
     setCurrentSessionId(session.id);
@@ -418,10 +457,15 @@ const refreshSessions = useCallback(async () => {
         <SessionsOverlay
           key="sessions-overlay"
           sessions={sessions}
+          exportingId={exportingId}
           onClose={() => setShowSessions(false)}
-          onResume={handleResumeSession}
+          onResume={(s) => { handleResumeSession(s); setShowSessions(false); }}
+          onExport={handleExportSession}
+<<<<<<< Updated upstream
           onRefresh={refreshSessions}
           modelLabel={(id) => getModelLabel(id, ollamaModels, customConfigs)}
+=======
+>>>>>>> Stashed changes
         />
       )}
 
@@ -488,6 +532,26 @@ const refreshSessions = useCallback(async () => {
           <span className="text-slate-500 dark:text-slate-400 truncate flex-1 min-w-0">
             Continuing: <span className="text-slate-700 dark:text-slate-200 font-medium">{activeSession.title}</span>
           </span>
+          {activeSession.id != null && (
+            <>
+              <button
+                type="button"
+                disabled={exportingId === activeSession.id}
+                onClick={() => handleExportSession(activeSession.id!, 'json')}
+                className="shrink-0 text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 font-medium transition-colors disabled:opacity-40"
+              >
+                JSON
+              </button>
+              <button
+                type="button"
+                disabled={exportingId === activeSession.id}
+                onClick={() => handleExportSession(activeSession.id!, 'markdown')}
+                className="shrink-0 text-slate-500 hover:text-slate-700 dark:hover:text-slate-200 font-medium transition-colors disabled:opacity-40"
+              >
+                MD
+              </button>
+            </>
+          )}
           <button
             onClick={handleNewChat}
             className="shrink-0 text-sky-500 hover:text-sky-600 dark:hover:text-sky-400 font-medium transition-colors"

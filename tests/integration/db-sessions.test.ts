@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
+<<<<<<< Updated upstream
 import {
   createSession,
   getSession,
@@ -8,6 +9,9 @@ import {
   appendToSessionSearchText,
 } from '@/utils/db';
 import { openDB, CONV_STORE, CONV_BY_SESSION_INDEX } from '@/utils/db/core';
+=======
+import { createSession, getSessions, getSessionById, touchSession, updateSessionFields } from '@/utils/db';
+>>>>>>> Stashed changes
 
 afterEach(() => {
   vi.useRealTimers();
@@ -65,6 +69,37 @@ describe('getSessions', () => {
     const sessions = await getSessions();
     expect(sessions[0].id).toBe(id1);
     expect(sessions[1].id).toBe(id2);
+  });
+});
+
+describe('getSessionById', () => {
+  it('returns a session by id', async () => {
+    const id = await createSession('Lookup me');
+    const session = await getSessionById(id);
+    expect(session?.title).toBe('Lookup me');
+    expect(session?.id).toBe(id);
+  });
+
+  it('returns undefined for a missing session', async () => {
+    expect(await getSessionById(99999)).toBeUndefined();
+  });
+});
+
+describe('updateSessionFields', () => {
+  it('persists export metadata fields', async () => {
+    const id = await createSession('Export metadata');
+    await updateSessionFields(id, {
+      modelId: 'openai:gpt-4.1',
+      startingUrl: 'https://example.com',
+      status: 'in_progress',
+      finishSummary: 'Done.',
+    });
+
+    const session = await getSessionById(id);
+    expect(session?.modelId).toBe('openai:gpt-4.1');
+    expect(session?.startingUrl).toBe('https://example.com');
+    expect(session?.status).toBe('in_progress');
+    expect(session?.finishSummary).toBe('Done.');
   });
 });
 

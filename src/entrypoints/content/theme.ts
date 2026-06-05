@@ -20,6 +20,7 @@ const LIGHT: ContentTheme = {
   badgeBg:       '#0284c7',               // sky-600
   badgeText:     '#ffffff',
   blockerBg:     'radial-gradient(ellipse at center, rgba(14, 165, 233, 0) 60%, rgba(14, 165, 233, 0.9) 120%)',
+  blockerBorder: 'rgba(2, 132, 199, 0.45)',
   bannerBg:      'rgba(2, 132, 199, 0)',
 };
 
@@ -29,6 +30,7 @@ const DARK: ContentTheme = {
   badgeBg:       '#0369a1',               // sky-700
   badgeText:     '#ffffff',
   blockerBg:     'radial-gradient(ellipse at center, rgba(2, 132, 199, 0.20) 60%, rgba(2, 132, 199, 0.9) 120%)',
+  blockerBorder: 'rgba(56, 189, 248, 0.55)',
   bannerBg:      'rgba(3, 105, 161, 0)',
 };
 

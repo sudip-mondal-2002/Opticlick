@@ -2,5 +2,18 @@
   "extends": "./.wxt/tsconfig.json",
   "compilerOptions": {
     "jsx": "react-jsx"
-  }
+  },
+  "include": [
+    ".wxt/wxt.d.ts",
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "wxt.config.ts",
+    "vitest.config.ts"
+  ],
+  "exclude": [
+    ".output",
+    "node_modules",
+    "sandbox",
+    "tests"
+  ]
 }

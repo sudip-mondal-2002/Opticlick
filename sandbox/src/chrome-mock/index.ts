@@ -18,9 +18,17 @@ const chromeMock = {
   scripting: scriptingShim,
   runtime: runtimeShim,
 
-  // Downloads — no-op in sandbox
+  // Downloads — simulate in sandbox via <a> click
   downloads: {
-    download: () => {},
+    download: (options: { url: string; filename?: string }, cb?: (downloadId: number) => void) => {
+      const a = document.createElement('a');
+      a.href = options.url;
+      if (options.filename) a.download = options.filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      if (cb) cb(1);
+    },
     cancel: () => {},
     erase: () => {},
     search: (_q: object, cb?: (items: unknown[]) => void) => cb?.([]),

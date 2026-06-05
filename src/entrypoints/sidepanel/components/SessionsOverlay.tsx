@@ -1,4 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+<<<<<<< Updated upstream
+import { useState, useRef, useEffect, useMemo } from 'react';
+=======
+import { useEffect, useRef, useState } from 'react';
+>>>>>>> Stashed changes
 import type { Session } from '@/utils/types';
 import {
   searchSessions,
@@ -45,6 +49,146 @@ function ChevronIcon() {
   );
 }
 
+<<<<<<< Updated upstream
+function DownloadIcon() {
+=======
+function ExportIcon() {
+>>>>>>> Stashed changes
+  return (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <polyline points="7 10 12 15 17 10" />
+      <line x1="12" y1="15" x2="12" y2="3" />
+    </svg>
+  );
+}
+
+function ExportMenu({
+<<<<<<< Updated upstream
+  sessionId,
+  exporting,
+  onExport,
+}: {
+  sessionId: number;
+  exporting: boolean;
+  onExport: (sessionId: number, format: 'json' | 'markdown') => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative shrink-0">
+      <button
+        type="button"
+        disabled={exporting}
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen((v) => !v);
+        }}
+        className="flex items-center gap-1 px-1.5 py-1 rounded-md text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors disabled:opacity-40"
+        title="Export session"
+      >
+        <DownloadIcon />
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full mt-1 z-40 min-w-[148px] rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-lg py-1">
+          <button
+            type="button"
+            disabled={exporting}
+            onClick={(e) => {
+              e.stopPropagation();
+              setOpen(false);
+              onExport(sessionId, 'json');
+            }}
+            className="w-full text-left px-3 py-1.5 text-[11px] text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-40"
+          >
+            Export as JSON
+          </button>
+          <button
+            type="button"
+            disabled={exporting}
+            onClick={(e) => {
+              e.stopPropagation();
+              setOpen(false);
+              onExport(sessionId, 'markdown');
+            }}
+            className="w-full text-left px-3 py-1.5 text-[11px] text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-40"
+          >
+            Export as Markdown
+=======
+  session,
+  onExport,
+}: {
+  session: Session;
+  onExport: (sessionId: number, format: 'json' | 'markdown') => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (event: MouseEvent) => {
+      if (!menuRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onPointerDown);
+    return () => document.removeEventListener('mousedown', onPointerDown);
+  }, [open]);
+
+  const sessionId = session.id;
+  if (sessionId == null) return null;
+
+  const handleExport = (format: 'json' | 'markdown') => {
+    onExport(sessionId, format);
+    setOpen(false);
+  };
+
+  return (
+    <div className="relative shrink-0" ref={menuRef}>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen((prev) => !prev);
+        }}
+        className="flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+        aria-label={`Export session: ${session.title}`}
+      >
+        <ExportIcon />
+        Export
+      </button>
+      {open && (
+        <div className="absolute right-0 top-full mt-1 z-40 min-w-[9rem] rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-lg py-1">
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); handleExport('json'); }}
+            className="w-full text-left px-3 py-1.5 text-[11px] text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
+          >
+            Download JSON
+          </button>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); handleExport('markdown'); }}
+            className="w-full text-left px-3 py-1.5 text-[11px] text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
+          >
+            Download Markdown
+>>>>>>> Stashed changes
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+<<<<<<< Updated upstream
 const DATE_PRESETS: { id: DateRangePreset; label: string }[] = [
   { id: 'today', label: 'Today' },
   { id: 'week', label: 'This week' },
@@ -62,48 +206,88 @@ function SessionCard({
   session,
   query,
   modelLabel,
+  exportingId,
+=======
+function SessionCard({
+  session,
+>>>>>>> Stashed changes
   onOpen,
+  onExport,
 }: {
   session: Session;
+<<<<<<< Updated upstream
   query: string;
   modelLabel: (id: string) => string;
+  exportingId: number | null;
   onOpen: (s: Session) => void;
+  onExport: (sessionId: number, format: 'json' | 'markdown') => void;
 }) {
   const metaParts = [formatSessionDate(session.updatedAt)];
   if (session.modelId) metaParts.push(modelLabel(session.modelId));
+  if (session.status) metaParts.push(session.status);
 
+=======
+  onOpen: (s: Session) => void;
+  onExport: (sessionId: number, format: 'json' | 'markdown') => void;
+}) {
+>>>>>>> Stashed changes
   return (
-    <button
-      onClick={() => onOpen(session)}
-      className="w-full text-left px-4 py-3 flex items-start gap-3 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors border-b border-slate-100 dark:border-slate-800/60 last:border-b-0 group"
-    >
-      <div className="mt-0.5 shrink-0 w-6 h-6 rounded-full bg-sky-100 dark:bg-sky-950/60 border border-sky-200 dark:border-sky-800/60 flex items-center justify-center text-sky-500">
-        <HistoryIcon />
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-[12px] font-medium text-slate-700 dark:text-slate-200 leading-snug line-clamp-2">
-          <HighlightedText text={session.title} query={query} />
-        </p>
-        <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">
-          {metaParts.join(' · ')}
-        </p>
-      </div>
-      <span className="shrink-0 text-slate-300 dark:text-slate-600 group-hover:text-slate-400 dark:group-hover:text-slate-400 mt-1 transition-colors">
-        <ChevronIcon />
-      </span>
-    </button>
+    <div className="flex items-start gap-3 px-4 py-3 border-b border-slate-100 dark:border-slate-800/60 last:border-b-0 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors group">
+      <button
+        type="button"
+        onClick={() => onOpen(session)}
+        className="flex items-start gap-3 flex-1 min-w-0 text-left"
+      >
+        <div className="mt-0.5 shrink-0 w-6 h-6 rounded-full bg-sky-100 dark:bg-sky-950/60 border border-sky-200 dark:border-sky-800/60 flex items-center justify-center text-sky-500">
+          <HistoryIcon />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-[12px] font-medium text-slate-700 dark:text-slate-200 leading-snug line-clamp-2">
+<<<<<<< Updated upstream
+            <HighlightedText text={session.title} query={query} />
+          </p>
+          <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">
+            {metaParts.join(' · ')}
+=======
+            {session.title}
+          </p>
+          <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">
+            {formatRelativeDate(session.updatedAt)}
+            {session.status ? ` · ${session.status.replace('_', ' ')}` : ''}
+>>>>>>> Stashed changes
+          </p>
+        </div>
+        <span className="shrink-0 text-slate-300 dark:text-slate-600 group-hover:text-slate-400 dark:group-hover:text-slate-400 mt-1 transition-colors">
+          <ChevronIcon />
+        </span>
+      </button>
+<<<<<<< Updated upstream
+      {session.id != null && (
+        <ExportMenu
+          sessionId={session.id}
+          exporting={exportingId === session.id}
+          onExport={onExport}
+        />
+      )}
+=======
+      <ExportMenu session={session} onExport={onExport} />
+>>>>>>> Stashed changes
+    </div>
   );
 }
 
 interface Props {
   sessions: Session[];
+  exportingId: number | null;
   onClose: () => void;
   onResume: (session: Session) => void;
+  onExport: (sessionId: number, format: 'json' | 'markdown') => void;
+<<<<<<< Updated upstream
   onRefresh: () => Promise<void>;
   modelLabel: (modelId: string) => string;
 }
 
-export function SessionsOverlay({ sessions, onClose, onResume, onRefresh, modelLabel }: Props) {
+export function SessionsOverlay({ sessions, exportingId, onClose, onResume, onExport, onRefresh, modelLabel }: Props) {
   const [query, setQuery] = useState('');
   const [datePreset, setDatePreset] = useState<DateRangePreset>('all');
   const [modelFilter, setModelFilter] = useState('');
@@ -140,6 +324,11 @@ export function SessionsOverlay({ sessions, onClose, onResume, onRefresh, modelL
 
   const hasActiveFilters = query.trim() !== '' || datePreset !== 'all' || modelFilter !== '';
 
+=======
+}
+
+export function SessionsOverlay({ sessions, onClose, onResume, onExport }: Props) {
+>>>>>>> Stashed changes
   return (
     <div className="absolute inset-0 z-30 flex flex-col bg-white dark:bg-slate-950">
       <div className="shrink-0 flex items-center gap-2 px-3 py-2.5 bg-slate-50 dark:bg-slate-900/60 border-b border-slate-200 dark:border-slate-800">
@@ -237,7 +426,9 @@ export function SessionsOverlay({ sessions, onClose, onResume, onRefresh, modelL
               session={session}
               query={debouncedQuery}
               modelLabel={modelLabel}
+              exportingId={exportingId}
               onOpen={(s) => { onResume(s); onClose(); }}
+              onExport={onExport}
             />
           ))}
         </div>
