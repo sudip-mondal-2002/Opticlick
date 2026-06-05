@@ -36,4 +36,29 @@ describe('backfillSessionMetadata', () => {
     const updated = await backfillSessionMetadata(sessions);
     expect(updated).toBe(0);
   });
+
+  it('returns 0 when session needs backfill but history is empty', async () => {
+    const id = await createSession('Legacy empty');
+    const sessions = await getSessions();
+    const updated = await backfillSessionMetadata(sessions);
+    expect(updated).toBe(0);
+  });
+
+  it('skips non-user/non-model turns (e.g. tool turns)', async () => {
+    const id = await createSession('Tool only');
+    await appendConversationTurn(id, 'tool', 'tool output', { toolCallId: '1', toolName: 'wait' });
+
+    const sessions = await getSessions();
+    const updated = await backfillSessionMetadata(sessions);
+    expect(updated).toBe(0);
+
+    const session = await getSession(id);
+    expect(session?.startUrl).toBeUndefined();
+  });
+
+  it('ignores sessions without an ID', async () => {
+    const sessions = [{ title: 'No ID', createdAt: 0, updatedAt: 0 }];
+    const updated = await backfillSessionMetadata(sessions as any);
+    expect(updated).toBe(0);
+  });
 });

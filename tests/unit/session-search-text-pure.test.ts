@@ -25,6 +25,12 @@ describe('mergeSearchText', () => {
   it('skips duplicate snippet', () => {
     expect(mergeSearchText('hello world', 'world')).toBe('hello world');
   });
+
+  it('returns existing search text if snippet is empty or whitespace', () => {
+    expect(mergeSearchText('hello', '')).toBe('hello');
+    expect(mergeSearchText('hello', '   ')).toBe('hello');
+    expect(mergeSearchText(undefined, '   ')).toBe('');
+  });
 });
 
 describe('parseStartUrlFromContent', () => {

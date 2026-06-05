@@ -83,9 +83,6 @@ export default defineConfig({
       provider: 'v8',
       include: ['src/utils/**', 'src/entrypoints/content/**'],
       exclude: [
-        'src/utils/llm.ts',
-        'src/utils/screenshot.ts',
-        'src/utils/tab-helpers.ts',
       ],
       reporter: ['text', 'html', 'lcov', 'json', 'json-summary'],
       reportOnFailure: true,

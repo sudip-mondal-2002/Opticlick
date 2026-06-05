@@ -78,6 +78,11 @@ describe('searchSessions', () => {
     expect(results.map((s) => s.id)).toEqual([1, 2]);
   });
 
+  it('filters by createdBefore', () => {
+    const results = searchSessions(sessions, '', { createdBefore: 1_650_000_000_000 });
+    expect(results.map((s) => s.id)).toEqual([2, 3]);
+  });
+
   it('sorts by relevance when query is set', () => {
     const mixed: Session[] = [
       makeSession({ id: 10, title: 'Notion notes', updatedAt: 100, searchText: 'competitor' }),
@@ -124,6 +129,11 @@ describe('scoreSession', () => {
     const textMatch = makeSession({ title: 'Research', searchText: 'competitor' });
     expect(scoreSession(titleMatch, 'competitor')).toBeGreaterThan(scoreSession(textMatch, 'competitor'));
   });
+
+  it('returns 0 for no match at all', () => {
+    const s = makeSession({ title: 'Some title', searchText: 'some text', startUrl: 'https://url.com' });
+    expect(scoreSession(s, 'completely-unrelated')).toBe(0);
+  });
 });
 
 describe('dateRangeToBounds', () => {
@@ -142,6 +152,11 @@ describe('dateRangeToBounds', () => {
   it('returns week bounds', () => {
     const bounds = dateRangeToBounds('week', now);
     expect(bounds.createdAfter).toBe(now - 7 * 24 * 60 * 60 * 1000);
+  });
+
+  it('returns month bounds', () => {
+    const bounds = dateRangeToBounds('month', now);
+    expect(bounds.createdAfter).toBe(now - 30 * 24 * 60 * 60 * 1000);
   });
 });
 
