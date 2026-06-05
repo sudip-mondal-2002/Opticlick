@@ -49,104 +49,115 @@ export const AGENT_TOOLS = [
 type ScrollDirection = (AgentAction & { type: 'scroll' })['direction'];
 type TodoUpdateItem = (AgentAction & { type: 'todo_update' })['updates'][number];
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const parsers: Record<string, (args: Record<string, any>) => AgentAction> = {
+  click: (args) => ({
+    type: 'click',
+    targetId: args.targetId as number,
+    modifier: args.modifier as 'ctrl' | 'meta' | 'shift' | 'alt' | undefined,
+    uploadFileId: args.uploadFileId as string | undefined,
+  }),
+  type: (args) => ({
+    type: 'type',
+    text: args.text as string,
+    clearField: args.clearField as boolean | undefined,
+  }),
+  navigate: (args) => ({
+    type: 'navigate',
+    url: args.url as string,
+  }),
+  scroll: (args) => ({
+    type: 'scroll',
+    direction: args.direction as ScrollDirection,
+    scrollTargetId: args.scrollTargetId as number | undefined,
+  }),
+  press_key: (args) => ({
+    type: 'press_key',
+    key: args.key as string,
+  }),
+  drag_and_drop: (args) => ({
+    type: 'drag_and_drop',
+    sourceId: args.sourceId as number,
+    targetId: args.targetId as number | undefined,
+    targetX: args.targetX as number | undefined,
+    targetY: args.targetY as number | undefined,
+  }),
+  fetch_dom: (args) => ({
+    type: 'fetch_dom',
+    targetId: args.targetId as number,
+  }),
+  vfs_save_screenshot: (args) => ({
+    type: 'vfs_save_screenshot',
+    name: args.name as string,
+  }),
+  vfs_write: (args) => ({
+    type: 'vfs_write',
+    name: args.name as string,
+    content: args.content as string,
+    mimeType: args.mimeType as string | undefined,
+  }),
+  vfs_delete: (args) => ({
+    type: 'vfs_delete',
+    fileId: args.fileId as string,
+  }),
+  vfs_download: (args) => ({
+    type: 'vfs_download',
+    url: args.url as string,
+    name: args.name as string | undefined,
+  }),
+  todo_create: (args) => ({
+    type: 'todo_create',
+    items: args.items as TodoItem[],
+  }),
+  todo_update: (args) => ({
+    type: 'todo_update',
+    updates: args.updates as TodoUpdateItem[],
+  }),
+  todo_add: (args) => ({
+    type: 'todo_add',
+    items: args.items as TodoItem[],
+  }),
+  note_write: (args) => ({
+    type: 'note_write',
+    key: args.key as string,
+    value: args.value as string,
+  }),
+  note_delete: (args) => ({
+    type: 'note_delete',
+    key: args.key as string,
+  }),
+  memory_upsert: (args) => ({
+    type: 'memory_upsert',
+    key: args.key as string,
+    values: args.values as string[],
+    category: args.category as string,
+    sourceUrl: args.sourceUrl as string | undefined,
+  }),
+  memory_delete: (args) => ({
+    type: 'memory_delete',
+    key: args.key as string,
+  }),
+  finish: (args) => ({
+    type: 'finish',
+    summary: args.summary as string | undefined,
+  }),
+  wait: (args) => ({
+    type: 'wait',
+    ms: args.ms as number,
+  }),
+  ask_user: (args) => ({
+    type: 'ask_user',
+    question: args.question as string,
+  }),
+};
+
 /**
  * Convert a raw LangChain tool_call (name + untyped args) into a typed AgentAction.
  * Returns null for unknown tool names so callers can log and skip gracefully.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function parseToolCall(name: string, args: Record<string, any>): AgentAction | null {
-  switch (name) {
-    // ── UI ──────────────────────────────────────────────────────────────────
-    case 'click':
-      return {
-        type: 'click',
-        targetId: args.targetId as number,
-        modifier: args.modifier as 'ctrl' | 'meta' | 'shift' | 'alt' | undefined,
-        uploadFileId: args.uploadFileId as string | undefined,
-      };
-    case 'type':
-      return {
-        type: 'type',
-        text: args.text as string,
-        clearField: args.clearField as boolean | undefined,
-      };
-    case 'navigate':
-      return { type: 'navigate', url: args.url as string };
-    case 'scroll':
-      return {
-        type: 'scroll',
-        direction: args.direction as ScrollDirection,
-        scrollTargetId: args.scrollTargetId as number | undefined,
-      };
-    case 'press_key':
-      return { type: 'press_key', key: args.key as string };
-    case 'drag_and_drop':
-      return {
-        type: 'drag_and_drop',
-        sourceId: args.sourceId as number,
-        targetId: args.targetId as number | undefined,
-        targetX: args.targetX as number | undefined,
-        targetY: args.targetY as number | undefined,
-      };
-
-    // ── DOM ─────────────────────────────────────────────────────────────────
-    case 'fetch_dom':
-      return { type: 'fetch_dom', targetId: args.targetId as number };
-
-    // ── VFS ─────────────────────────────────────────────────────────────────
-    case 'vfs_save_screenshot':
-      return { type: 'vfs_save_screenshot', name: args.name as string };
-    case 'vfs_write':
-      return {
-        type: 'vfs_write',
-        name: args.name as string,
-        content: args.content as string,
-        mimeType: args.mimeType as string | undefined,
-      };
-    case 'vfs_delete':
-      return { type: 'vfs_delete', fileId: args.fileId as string };
-    case 'vfs_download':
-      return {
-        type: 'vfs_download',
-        url: args.url as string,
-        name: args.name as string | undefined,
-      };
-
-    // ── Todo ─────────────────────────────────────────────────────────────────
-    case 'todo_create':
-      return { type: 'todo_create', items: args.items as TodoItem[] };
-    case 'todo_update':
-      return { type: 'todo_update', updates: args.updates as TodoUpdateItem[] };
-    case 'todo_add':
-      return { type: 'todo_add', items: args.items as TodoItem[] };
-
-    // ── Scratchpad ────────────────────────────────────────────────────────────
-    case 'note_write':
-      return { type: 'note_write', key: args.key as string, value: args.value as string };
-    case 'note_delete':
-      return { type: 'note_delete', key: args.key as string };
-
-    // ── Memory ────────────────────────────────────────────────────────────────
-    case 'memory_upsert':
-      return {
-        type: 'memory_upsert',
-        key: args.key as string,
-        values: args.values as string[],
-        category: args.category as string,
-        sourceUrl: args.sourceUrl as string | undefined,
-      };
-    case 'memory_delete':
-      return { type: 'memory_delete', key: args.key as string };
-
-    // ── Control ──────────────────────────────────────────────────────────────
-    case 'finish':
-      return { type: 'finish', summary: args.summary as string | undefined };
-    case 'wait':
-      return { type: 'wait', ms: args.ms as number };
-    case 'ask_user':
-      return { type: 'ask_user', question: args.question as string };
-
-    default:
-      return null;
-  }
+  const parser = parsers[name];
+  if (!parser) return null;
+  return parser(args);
 }
