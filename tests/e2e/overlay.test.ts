@@ -1,11 +1,12 @@
 /* global chrome */
-declare const chrome: any;
-
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+// Keep the rest of your clean imports below...
 import { chromium, type BrowserContext } from '@playwright/test';
 import * as path from 'path';
 import * as os from 'os';
 import * as fs from 'fs';
+
+declare const chrome: any;
 
 const EXTENSION_PATH = path.resolve(__dirname, '../../.output/chrome-mv3');
 const FIXTURE_PATH = path.resolve(__dirname, 'fixtures/upload-target.html');
