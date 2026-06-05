@@ -11,8 +11,15 @@ initializeLangSmith();
 import { log } from '@/utils/agent-log';
 import { getAgentState, setAgentState } from '@/utils/agent-state';
 import { tempDownloadIds } from '@/utils/cdp';
-import { writeVFSFile } from '@/utils/db';
+import { writeVFSFile, updateSession } from '@/utils/db';
 import { arrayBufferToBase64 } from '@/utils/base64';
+import {
+  loadSessionExportBundle,
+  exportSessionAsJSON,
+  exportSessionAsMarkdown,
+  buildExportFilename,
+  triggerDownload,
+} from '@/utils/export';
 import { runAgentLoop } from './background/loop';
 
 function filenameFromUrl(url: string): string {
@@ -100,9 +107,31 @@ export default defineBackground(() => {
     }
 
     if (msg.type === 'STOP_AGENT') {
-      setAgentState({ status: 'stopped' }).then(() => {
+      setAgentState({ status: 'stopped' }).then(async () => {
+        const state = await getAgentState();
+        if (state?.sessionId) {
+          await updateSession(state.sessionId, { status: 'stopped' });
+        }
         sendResponse({ stopped: true });
       });
+    }
+
+    if (msg.type === 'EXPORT_SESSION') {
+      const { sessionId, format } = msg as { sessionId: number; format: 'json' | 'markdown' };
+      void (async () => {
+        try {
+          const bundle = await loadSessionExportBundle(sessionId);
+          const isJson = format === 'json';
+          const content = isJson ? exportSessionAsJSON(bundle) : exportSessionAsMarkdown(bundle);
+          const ext = isJson ? 'json' : 'md';
+          const mimeType = isJson ? 'application/json' : 'text/markdown';
+          const filename = buildExportFilename(bundle.session, ext);
+          await triggerDownload(content, filename, mimeType);
+          sendResponse({ ok: true, filename });
+        } catch (err) {
+          sendResponse({ ok: false, error: (err as Error).message });
+        }
+      })();
     }
 
     return true;

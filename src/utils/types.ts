@@ -144,12 +144,20 @@ export interface AgentState {
   sessionId?: number;
 }
 
+/** Session lifecycle status persisted for export and history. */
+export type SessionStatus = 'running' | 'completed' | 'stopped' | 'error';
+
 /** A stored chat session. */
 export interface Session {
   id?: number;
   title: string;
   createdAt: number;
   updatedAt: number;
+  /** Tab URL when the agent loop started. */
+  startUrl?: string;
+  /** LLM model ID used for this session (e.g. gemini-3.1-flash-lite). */
+  modelId?: string;
+  status?: SessionStatus;
 }
 
 /** A reusable prompt template. */
@@ -216,6 +224,11 @@ export type Message =
   | {
       /** Signals that thinking streaming is complete. */
       type: 'AGENT_THINKING_DONE';
+    }
+  | {
+      type: 'EXPORT_SESSION';
+      sessionId: number;
+      format: 'json' | 'markdown';
     }
   | {
       type: 'UPLOAD_FILE';

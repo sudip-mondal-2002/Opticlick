@@ -14,6 +14,33 @@ export async function createSession(title: string): Promise<number> {
   });
 }
 
+export async function getSessionById(sessionId: number): Promise<Session | undefined> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(SESSIONS_STORE, 'readonly');
+    const req = tx.objectStore(SESSIONS_STORE).get(sessionId);
+    req.onsuccess = (e) => resolve((e.target as IDBRequest).result as Session | undefined);
+    req.onerror = (e) => reject((e.target as IDBRequest).error);
+  });
+}
+
+export async function updateSession(sessionId: number, patch: Partial<Session>): Promise<void> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(SESSIONS_STORE, 'readwrite');
+    const store = tx.objectStore(SESSIONS_STORE);
+    const getReq = store.get(sessionId);
+    getReq.onsuccess = (e) => {
+      const session = (e.target as IDBRequest).result as Session | undefined;
+      if (session) {
+        store.put({ ...session, ...patch, updatedAt: Date.now() });
+      }
+    };
+    tx.oncomplete = () => resolve();
+    tx.onerror = (e) => reject((e.target as IDBTransaction).error);
+  });
+}
+
 export async function getSessions(): Promise<Session[]> {
   const db = await openDB();
   return new Promise((resolve, reject) => {

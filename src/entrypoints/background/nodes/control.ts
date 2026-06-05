@@ -6,7 +6,7 @@
  * complete  — logs the finish summary, plays a sound, and marks the session done.
  */
 
-import { appendConversationTurn } from '@/utils/db';
+import { appendConversationTurn, updateSession } from '@/utils/db';
 import { log } from '@/utils/agent-log';
 import { getAgentState, setAgentState } from '@/utils/agent-state';
 import { sleep } from '@/utils/sleep';
@@ -77,6 +77,7 @@ export async function completeNode(state: AgentState): Promise<Partial<AgentStat
   if (finishAction?.summary) await log(finishAction.summary, 'ok');
   await log('Task complete!', 'ok');
   chrome.runtime.sendMessage({ type: 'PLAY_SOUND', sound: 'finish' }).catch(() => {});
+  await updateSession(state.sessionId, { status: 'completed' });
   await setAgentState({ status: 'done' });
   return {};
 }

@@ -121,7 +121,16 @@ Tools are categorized into UI actions, DOM inspection, VFS mutations, memory, sc
 - **VFS File Injection:** When the agent calls `click` with an `uploadFileId` parameter (a VFS file UUID), the loop uses `DOM.setFileInputFiles` to inject the file contents directly into the `<input type="file">` element. This bypasses the native file picker entirely.
 - **Fallback:** For pages that require actual file operations, the agent can use `vfs_download` to fetch remote files into VFS, then reference them by filename or UUID in click actions.
 
-### 9. Attachment Handling (User-Provided Files and Images)
+### 9. Session Export
+- **Purpose:** Let users archive or share completed (or in-progress) sessions as JSON (programmatic) or Markdown (human-readable).
+- **Module layout:** `src/utils/export/` — `load.ts` assembles a `SessionExportBundle` from IndexedDB; `json.ts` / `markdown.ts` format output; `download.ts` triggers `chrome.downloads.download` via Blob URL.
+- **Message:** Side panel sends `EXPORT_SESSION` `{ sessionId, format: 'json' | 'markdown' }` to the background worker. Background loads data, formats, and downloads — **never** returns large payloads over `sendMessage`.
+- **Session metadata:** `Session` stores optional `startUrl`, `modelId`, and `status` (`running` | `completed` | `stopped` | `error`). Set at loop start; updated on finish, stop, or error. Older sessions infer `startUrl` from `[CONTEXT: …]` turns.
+- **Large files:** VFS files > 1 MB are metadata-only in JSON (`embedded: false`) and referenced by name in Markdown. Screenshots (`step_N.png`) embed when under the limit.
+- **Memory in export:** Session-scoped memory updates are derived from `memory_upsert` / `memory_delete` **tool turns**, not the global memory store.
+- **UI:** Export dropdown on each session card in `SessionsOverlay.tsx`; JSON/MD quick-export on the active-session continuation pill.
+
+### 10. Attachment Handling (User-Provided Files and Images)
 - **Attachment Flow:** User-attached files arrive in the `START_AGENT` message as `AttachedFile[]` with fields `name`, `mimeType`, and base64-encoded `data`.
 - **VFS Seeding:** All attachments are immediately saved to the session's VFS via `saveVFSFile()`, making them accessible by filename or UUID throughout the session.
 - **Image Injection:** On step 1 only, image attachments (those whose `mimeType` starts with `image/`) are extracted and injected into the LLM prompt as inline multimodal content:

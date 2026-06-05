@@ -14,9 +14,11 @@
 
 import {
   createSession,
+  getSessionById,
   saveVFSFile,
   clearVFSFiles,
   getAllMemories,
+  updateSession,
 } from '@/utils/db';
 import { createAnyModel } from '@/utils/llm';
 import type { ApiKeys } from '@/utils/llm';
@@ -127,6 +129,16 @@ export async function runAgentLoop(
     };
     const model = createAnyModel(keys, effectiveModelId);
 
+    const existingSession = await getSessionById(sessionId);
+    const sessionPatch: { modelId: string; status: 'running'; startUrl?: string } = {
+      modelId: effectiveModelId,
+      status: 'running',
+    };
+    if (startingUrl && !existingSession?.startUrl) {
+      sessionPatch.startUrl = startingUrl;
+    }
+    await updateSession(sessionId, sessionPatch);
+
     // Navigate if the current tab cannot accept a content script
     if (!(await isTabInjectable(tabId))) {
       const urlMatch = userPrompt.match(/https?:\/\/[^\s"'<>]+/i);
@@ -221,6 +233,7 @@ export async function runAgentLoop(
     } catch (err) {
       await log(`Unhandled agent error: ${(err as Error).message}`, 'error');
       await setAgentState({ status: 'error' });
+      await updateSession(sessionId, { status: 'error' });
     } finally {
       const finalTabId = tabIdRef.current;
 
@@ -255,5 +268,6 @@ export async function runAgentLoop(
   } catch (err) {
     await log(`Fatal: ${(err as Error).message}`, 'error');
     await setAgentState({ status: 'error' });
+    await updateSession(sessionId, { status: 'error' });
   }
 }
