@@ -1,3 +1,4 @@
+<<<<<<< Updated upstream
 export {
   createSession,
   getSession,
@@ -9,6 +10,9 @@ export {
   appendToSessionSearchText,
 } from './sessions';
 export type { CreateSessionOptions, SessionMetadataPatch } from './sessions';
+=======
+export { createSession, getSessions, getSessionById, touchSession, updateSessionFields } from './sessions';
+>>>>>>> Stashed changes
 export { appendConversationTurn, getConversationHistory } from './conversations';
 export type { ConversationTurn } from './conversations';
 export { saveVFSFile, getVFSFile, listVFSFiles, deleteVFSFile, writeVFSFile, clearVFSFiles } from './vfs';

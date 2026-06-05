@@ -153,6 +153,7 @@ export interface Session {
   title: string;
   createdAt: number;
   updatedAt: number;
+<<<<<<< Updated upstream
   /** Model used when the session was created or last resumed. */
   modelId?: string;
   /** Tab URL when the agent loop started. */
@@ -161,6 +162,16 @@ export interface Session {
   status?: SessionStatus;
   /** Lowercase denormalized text for client-side search (title, URL, conversation snippets). */
   searchText?: string;
+=======
+  /** LLM model used for this session (persisted at loop start). */
+  modelId?: string;
+  /** Tab URL when the agent loop began. */
+  startingUrl?: string;
+  /** Last known session lifecycle status for exports and history. */
+  status?: 'in_progress' | 'completed' | 'stopped' | 'error';
+  /** Final answer from the agent's finish action. */
+  finishSummary?: string;
+>>>>>>> Stashed changes
 }
 
 /** A reusable prompt template. */
@@ -243,4 +254,9 @@ export type Message =
       mimeType: string;
       /** Base64-encoded file data (no data-URL prefix). */
       base64Data: string;
+    }
+  | {
+      type: 'EXPORT_SESSION';
+      sessionId: number;
+      format: 'json' | 'markdown';
     };

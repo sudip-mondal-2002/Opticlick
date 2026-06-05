@@ -15,10 +15,15 @@ export const scriptingShim = {
 
     if ('func' in injection && injection.func) {
       try {
-        const args = (injection.args ?? []) as unknown[];
-        const result = injection.func(...args);
-        return [{ result, frameId: 0 }];
-      } catch {
+        const args = ('args' in injection ? injection.args : []) as unknown[];
+        const code = `return (${injection.func.toString()})(...${JSON.stringify(args)});`;
+        const fn = new (win as any).Function(code);
+        const execPromise = Promise.resolve(fn());
+        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout')), 10000));
+        const result = await Promise.race([execPromise, timeoutPromise]);
+        return [{ result, frameId: 0, documentId: 'sandbox' }];
+      } catch (e) {
+        console.warn('[sandbox] executeScript func error:', e);
         return [];
       }
     }

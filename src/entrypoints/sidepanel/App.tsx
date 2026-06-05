@@ -364,6 +364,7 @@ const refreshSessions = useCallback(async () => {
   };
 
   const handleExportSession = async (sessionId: number, format: 'json' | 'markdown') => {
+<<<<<<< Updated upstream
     setExportingId(sessionId);
     appendLog(`Exporting session as ${format.toUpperCase()}…`, 'info');
     try {
@@ -381,6 +382,22 @@ const refreshSessions = useCallback(async () => {
       appendLog(`Export failed: ${(err as Error).message}`, 'error');
     } finally {
       setExportingId(null);
+=======
+    appendLog(`Exporting session as ${format.toUpperCase()}…`, 'info');
+    try {
+      const response = await chrome.runtime.sendMessage({ type: 'EXPORT_SESSION', sessionId, format }) as {
+        success?: boolean;
+        filename?: string;
+        error?: string;
+      };
+      if (response?.success && response.filename) {
+        appendLog(`Download started: ${response.filename}`, 'ok');
+      } else {
+        appendLog(`Export failed: ${response?.error ?? 'Unknown error'}`, 'error');
+      }
+    } catch (err) {
+      appendLog(`Export failed: ${(err as Error).message}`, 'error');
+>>>>>>> Stashed changes
     }
   };
 
@@ -444,8 +461,11 @@ const refreshSessions = useCallback(async () => {
           onClose={() => setShowSessions(false)}
           onResume={(s) => { handleResumeSession(s); setShowSessions(false); }}
           onExport={handleExportSession}
+<<<<<<< Updated upstream
           onRefresh={refreshSessions}
           modelLabel={(id) => getModelLabel(id, ollamaModels, customConfigs)}
+=======
+>>>>>>> Stashed changes
         />
       )}
 

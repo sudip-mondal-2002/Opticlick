@@ -13,6 +13,7 @@ import { getAgentState, setAgentState } from '@/utils/agent-state';
 import { tempDownloadIds } from '@/utils/cdp';
 import { writeVFSFile, updateSession } from '@/utils/db';
 import { arrayBufferToBase64 } from '@/utils/base64';
+<<<<<<< Updated upstream
 import {
   loadSessionExportBundle,
   exportSessionAsJSON,
@@ -20,6 +21,9 @@ import {
   buildExportFilename,
   triggerDownload,
 } from '@/utils/export';
+=======
+import { exportSessionToFile } from '@/utils/export';
+>>>>>>> Stashed changes
 import { runAgentLoop } from './background/loop';
 
 function filenameFromUrl(url: string): string {
@@ -118,6 +122,7 @@ export default defineBackground(() => {
 
     if (msg.type === 'EXPORT_SESSION') {
       const { sessionId, format } = msg as { sessionId: number; format: 'json' | 'markdown' };
+<<<<<<< Updated upstream
       void (async () => {
         try {
           const bundle = await loadSessionExportBundle(sessionId);
@@ -132,6 +137,11 @@ export default defineBackground(() => {
           sendResponse({ ok: false, error: (err as Error).message });
         }
       })();
+=======
+      exportSessionToFile(sessionId, format)
+        .then(({ filename }) => sendResponse({ success: true, filename }))
+        .catch((err: Error) => sendResponse({ success: false, error: err.message }));
+>>>>>>> Stashed changes
     }
 
     return true;

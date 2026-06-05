@@ -8,6 +8,7 @@
 let iframeEl: HTMLIFrameElement | null = null;
 let currentUrl = 'https://example.com';
 let tabUpdateListeners: Array<(tabId: number, changeInfo: Partial<chrome.tabs.TabChangeInfo>, tab: Partial<chrome.tabs.Tab>) => void> = [];
+let tabCreatedListeners: Array<(tab: chrome.tabs.Tab) => void> = [];
 
 const MOCK_TAB_ID = 1;
 
@@ -110,5 +111,15 @@ export const tabsShim = {
       tabUpdateListeners = tabUpdateListeners.filter(l => l !== cb);
     },
     hasListener: () => false,
+  },
+
+  onCreated: {
+    addListener(cb: (tab: chrome.tabs.Tab) => void) {
+      tabCreatedListeners.push(cb);
+    },
+    removeListener(cb: (tab: chrome.tabs.Tab) => void) {
+      tabCreatedListeners = tabCreatedListeners.filter((l) => l !== cb);
+    },
+    hasListener: () => tabCreatedListeners.length > 0,
   },
 };
