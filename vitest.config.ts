@@ -59,7 +59,7 @@ export default defineConfig({
         resolve: { alias: srcAlias },
         test: {
           name: 'dom',
-          include: ['tests/dom/**/*.test.ts'],
+          include: ['tests/dom/**/*.test.{ts,tsx}'],
           environment: 'jsdom',
           setupFiles: ['tests/setup/dom-setup.ts'],
           globals: true,
