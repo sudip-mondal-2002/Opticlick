@@ -25,28 +25,28 @@
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>0/34</span>
+                <span class='fraction'>0/23</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">100% </span>
+                <span class="strong">0% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>1/1</span>
+                <span class='fraction'>0/12</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">100% </span>
+                <span class="strong">0% </span>
                 <span class="quiet">Functions</span>
-                <span class='fraction'>1/1</span>
+                <span class='fraction'>0/1</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>0/34</span>
+                <span class='fraction'>0/21</span>
             </div>
         
             
@@ -113,10 +113,10 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -135,69 +135,69 @@
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">/**
  * GET_ELEMENT_DOM handler — fetches the full outerHTML of the element
  * closest to the provided (x, y) coordinates.
  */
 &nbsp;
-<span class="cstat-no" title="statement not covered" >export function handleGetElementDom(</span>
-<span class="cstat-no" title="statement not covered" >  msg: { x: number; y: number },</span>
-<span class="cstat-no" title="statement not covered" >  sendResponse: (response: unknown) =&gt; void,</span>
-<span class="cstat-no" title="statement not covered" >): void {</span>
-<span class="cstat-no" title="statement not covered" >  const { x, y } = msg;</span>
+export function <span class="fstat-no" title="function not covered" >handleGetElementDom(</span>
+  msg: { x: number; y: number },
+  sendResponse: (response: unknown) =&gt; void,
+): void {
+  const { x, y } = <span class="cstat-no" title="statement not covered" >msg;</span>
 &nbsp;
   // Collect all interactables and find the one closest to (x, y).
   // We deliberately avoid elementFromPoint because the blocker overlay
   // sits on top and would return the wrong element.
-<span class="cstat-no" title="statement not covered" >  const candidates = Array.from(document.querySelectorAll('*')) as HTMLElement[];</span>
-<span class="cstat-no" title="statement not covered" >  let closest: HTMLElement | null = null;</span>
-<span class="cstat-no" title="statement not covered" >  let minDist = Infinity;</span>
+  const candidates = <span class="cstat-no" title="statement not covered" >Array.from(document.querySelectorAll('*')) as HTMLElement[];</span>
+  let closest: HTMLElement | null = <span class="cstat-no" title="statement not covered" >null;</span>
+  let minDist = <span class="cstat-no" title="statement not covered" >Infinity;</span>
 <span class="cstat-no" title="statement not covered" >  for (const el of candidates) {</span>
-<span class="cstat-no" title="statement not covered" >    if (!(el instanceof HTMLElement)) continue;</span>
-<span class="cstat-no" title="statement not covered" >    const r = el.getBoundingClientRect();</span>
-<span class="cstat-no" title="statement not covered" >    if (r.width === 0 &amp;&amp; r.height === 0) continue;</span>
-<span class="cstat-no" title="statement not covered" >    const cx = r.left + r.width / 2;</span>
-<span class="cstat-no" title="statement not covered" >    const cy = r.top + r.height / 2;</span>
-<span class="cstat-no" title="statement not covered" >    const dist = Math.hypot(cx - x, cy - y);</span>
+<span class="cstat-no" title="statement not covered" >    if (!(el instanceof HTMLElement)) <span class="cstat-no" title="statement not covered" >continue;</span></span>
+    const r = <span class="cstat-no" title="statement not covered" >el.getBoundingClientRect();</span>
+<span class="cstat-no" title="statement not covered" >    if (r.width === 0 &amp;&amp; r.height === 0) <span class="cstat-no" title="statement not covered" >continue;</span></span>
+    const cx = <span class="cstat-no" title="statement not covered" >r.left + r.width / 2;</span>
+    const cy = <span class="cstat-no" title="statement not covered" >r.top + r.height / 2;</span>
+    const dist = <span class="cstat-no" title="statement not covered" >Math.hypot(cx - x, cy - y);</span>
 <span class="cstat-no" title="statement not covered" >    if (dist &lt; minDist) {</span>
 <span class="cstat-no" title="statement not covered" >      minDist = dist;</span>
 <span class="cstat-no" title="statement not covered" >      closest = el;</span>
-<span class="cstat-no" title="statement not covered" >    }</span>
-<span class="cstat-no" title="statement not covered" >  }</span>
+    }
+  }
 &nbsp;
 <span class="cstat-no" title="statement not covered" >  if (!closest) {</span>
 <span class="cstat-no" title="statement not covered" >    sendResponse({ success: false, error: 'No element found near coordinates' });</span>
 <span class="cstat-no" title="statement not covered" >    return;</span>
-<span class="cstat-no" title="statement not covered" >  }</span>
+  }
 &nbsp;
-<span class="cstat-no" title="statement not covered" >  const MAX_CHARS = 40_000;</span>
-<span class="cstat-no" title="statement not covered" >  const full = closest.outerHTML;</span>
-<span class="cstat-no" title="statement not covered" >  const truncated = full.length &gt; MAX_CHARS;</span>
+  const MAX_CHARS = <span class="cstat-no" title="statement not covered" >40_000;</span>
+  const full = <span class="cstat-no" title="statement not covered" >closest.outerHTML;</span>
+  const truncated = <span class="cstat-no" title="statement not covered" >full.length &gt; MAX_CHARS;</span>
 <span class="cstat-no" title="statement not covered" >  sendResponse({</span>
-<span class="cstat-no" title="statement not covered" >    success: true,</span>
-<span class="cstat-no" title="statement not covered" >    outerHTML: truncated ? full.slice(0, MAX_CHARS) + '\n&lt;!-- [truncated] --&gt;' : full,</span>
-<span class="cstat-no" title="statement not covered" >    tag: closest.tagName.toLowerCase(),</span>
-<span class="cstat-no" title="statement not covered" >    truncated,</span>
-<span class="cstat-no" title="statement not covered" >  });</span>
-<span class="cstat-no" title="statement not covered" >}</span>
+    success: true,
+    outerHTML: truncated ? full.slice(0, MAX_CHARS) + '\n&lt;!-- [truncated] --&gt;' : full,
+    tag: closest.tagName.toLowerCase(),
+    truncated,
+  });
+}
 &nbsp;</pre></td></tr></table></pre>
 
                 <div class='push'></div><!-- for sticky footer -->
@@ -205,7 +205,7 @@
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-06-05T09:46:28.108Z
+                at 2026-06-05T18:13:09.399Z
             </div>
         <script src="../../../prettify.js"></script>
         <script>

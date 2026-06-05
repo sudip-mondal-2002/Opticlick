@@ -23,16 +23,16 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">26.92% </span>
+                <span class="strong">14.28% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>7/26</span>
+                <span class='fraction'>2/14</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">100% </span>
+                <span class="strong">0% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>1/1</span>
+                <span class='fraction'>0/9</span>
             </div>
         
             
@@ -44,9 +44,9 @@
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">26.92% </span>
+                <span class="strong">14.28% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>7/26</span>
+                <span class='fraction'>2/14</span>
             </div>
         
             
@@ -110,29 +110,23 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-yes">2x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
@@ -140,9 +134,15 @@
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">13x</span>
-<span class="cline-any cline-yes">13x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">/**
  * LangSmith configuration helper for Chrome extension context.
  *
@@ -155,29 +155,29 @@ import { Client } from 'langsmith';
 &nbsp;
 let _tracer: LangChainTracer | null = null;
 &nbsp;
-export <span class="fstat-no" title="function not covered" >function initializeLangSmith(): void {</span>
-<span class="cstat-no" title="statement not covered" >  const apiKey = import.meta.env.VITE_LANGSMITH_API_KEY as string | undefined;</span>
-<span class="cstat-no" title="statement not covered" >  const endpoint = import.meta.env.VITE_LANGSMITH_ENDPOINT as string | undefined;</span>
-<span class="cstat-no" title="statement not covered" >  const project = import.meta.env.VITE_LANGSMITH_PROJECT as string | undefined;</span>
-<span class="cstat-no" title="statement not covered" >  const tracing = import.meta.env.VITE_LANGSMITH_TRACING === 'true';</span>
+export function <span class="fstat-no" title="function not covered" >initializeLangSmith(): void {</span>
+  const apiKey = <span class="cstat-no" title="statement not covered" >import.meta.env.VITE_LANGSMITH_API_KEY as string | undefined;</span>
+  const endpoint = <span class="cstat-no" title="statement not covered" >import.meta.env.VITE_LANGSMITH_ENDPOINT as string | undefined;</span>
+  const project = <span class="cstat-no" title="statement not covered" >import.meta.env.VITE_LANGSMITH_PROJECT as string | undefined;</span>
+  const tracing = <span class="cstat-no" title="statement not covered" >import.meta.env.VITE_LANGSMITH_TRACING === 'true';</span>
 &nbsp;
 <span class="cstat-no" title="statement not covered" >  console.log('[LangSmith] Initializing with config:', {</span>
-<span class="cstat-no" title="statement not covered" >    tracing,</span>
-<span class="cstat-no" title="statement not covered" >    endpoint: endpoint ? '✓ set' : '✗ empty',</span>
-<span class="cstat-no" title="statement not covered" >    apiKey: apiKey ? `✓ set (${apiKey.substring(0, 20)}...)` : '✗ empty',</span>
-<span class="cstat-no" title="statement not covered" >    project,</span>
-<span class="cstat-no" title="statement not covered" >  });</span>
+    tracing,
+    endpoint: endpoint ? '✓ set' : '✗ empty',
+    apiKey: apiKey ? `✓ set (${apiKey.substring(0, 20)}...)` : '✗ empty',
+    project,
+  });
 &nbsp;
 <span class="cstat-no" title="statement not covered" >  if (!tracing || !apiKey || !endpoint) {</span>
 <span class="cstat-no" title="statement not covered" >    console.warn('[LangSmith] Tracing disabled or missing config — no traces will be sent.');</span>
 <span class="cstat-no" title="statement not covered" >    _tracer = null;</span>
 <span class="cstat-no" title="statement not covered" >    return;</span>
-<span class="cstat-no" title="statement not covered" >  }</span>
+  }
 &nbsp;
-<span class="cstat-no" title="statement not covered" >  const client = new Client({ apiKey, apiUrl: endpoint });</span>
+  const client = <span class="cstat-no" title="statement not covered" >new Client({ apiKey, apiUrl: endpoint });</span>
 <span class="cstat-no" title="statement not covered" >  _tracer = new LangChainTracer({ projectName: project, client });</span>
 <span class="cstat-no" title="statement not covered" >  console.log('[LangSmith] Tracer initialized ✓');</span>
-<span class="cstat-no" title="statement not covered" >}</span>
+}
 &nbsp;
 /** Returns the active LangChainTracer, or null if tracing is disabled. */
 export function getLangSmithTracer(): LangChainTracer | null {
@@ -190,7 +190,7 @@ export function getLangSmithTracer(): LangChainTracer | null {
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-06-05T09:46:28.132Z
+                at 2026-06-05T18:13:09.430Z
             </div>
         <script src="../prettify.js"></script>
         <script>
