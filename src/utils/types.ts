@@ -42,7 +42,7 @@ export interface TodoUpdate {
 
 /**
  * Discriminated union of every action the agent can take in a single turn.
- * UI actions (click/navigate/scroll/press_key) are mutually exclusive;
+ * UI actions (click/navigate/scroll/press_key/drag_and_drop) are mutually exclusive;
  * VFS, DOM, and todo actions may be combined freely with each other and
  * with at most one UI action per turn.
  */
@@ -79,6 +79,17 @@ export type AgentAction =
       scrollTargetId?: number;
     }
   | { type: 'press_key'; key: string }
+  | {
+      type: 'drag_and_drop';
+      /** Numeric ID of the annotated element to drag. */
+      sourceId: number;
+      /** Numeric ID of the annotated element to drop onto. */
+      targetId?: number;
+      /** Page coordinate X to drop onto when targetId is omitted. */
+      targetX?: number;
+      /** Page coordinate Y to drop onto when targetId is omitted. */
+      targetY?: number;
+    }
   // ── DOM inspection ───────────────────────────────────────────────────────
   | { type: 'fetch_dom'; targetId: number }
   // ── VFS mutations ────────────────────────────────────────────────────────

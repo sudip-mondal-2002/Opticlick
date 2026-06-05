@@ -5,7 +5,7 @@
  * raw LangChain tool_calls into typed AgentAction objects.
  */
 
-export { UI_TOOLS, clickTool, typeTool, navigateTool, scrollTool, pressKeyTool } from './ui';
+export { UI_TOOLS, clickTool, typeTool, navigateTool, scrollTool, pressKeyTool, dragAndDropTool } from './ui';
 export { DOM_TOOLS, fetchDOMTool } from './dom';
 export { VFS_TOOLS, vfsSaveScreenshotTool, vfsWriteTool, vfsDeleteTool, vfsDownloadTool } from './vfs';
 export { MEMORY_TOOLS, memoryUpsertTool, memoryDeleteTool } from './memory';
@@ -80,6 +80,14 @@ export function parseToolCall(name: string, args: Record<string, any>): AgentAct
       };
     case 'press_key':
       return { type: 'press_key', key: args.key as string };
+    case 'drag_and_drop':
+      return {
+        type: 'drag_and_drop',
+        sourceId: args.sourceId as number,
+        targetId: args.targetId as number | undefined,
+        targetX: args.targetX as number | undefined,
+        targetY: args.targetY as number | undefined,
+      };
 
     // ── DOM ─────────────────────────────────────────────────────────────────
     case 'fetch_dom':

@@ -117,6 +117,41 @@ describe('LLM action decisions from annotated screenshots (mocked)', () => {
     expect(navigateAction!.url).toContain('example.com');
   });
 
+  it('returns a drag_and_drop action targeting another annotated element', async () => {
+    const model = makeFakeGeminiModel([
+      toolChunk('drag_and_drop', { sourceId: 1, targetId: 2 }),
+    ]);
+
+    const result = await callModel(
+      model as any,
+      FAKE_BASE64,
+      'Drag card [1] onto column [2].',
+    );
+
+    const dragAction = findAction(result.actions, 'drag_and_drop');
+    expect(dragAction, 'Expected a drag_and_drop action').toBeDefined();
+    expect(dragAction!.sourceId).toBe(1);
+    expect(dragAction!.targetId).toBe(2);
+  });
+
+  it('returns a drag_and_drop action targeting page coordinates', async () => {
+    const model = makeFakeGeminiModel([
+      toolChunk('drag_and_drop', { sourceId: 1, targetX: 400, targetY: 200 }),
+    ]);
+
+    const result = await callModel(
+      model as any,
+      FAKE_BASE64,
+      'Drag card [1] to coordinates (400, 200).',
+    );
+
+    const dragAction = findAction(result.actions, 'drag_and_drop');
+    expect(dragAction, 'Expected a drag_and_drop action').toBeDefined();
+    expect(dragAction!.sourceId).toBe(1);
+    expect(dragAction!.targetX).toBe(400);
+    expect(dragAction!.targetY).toBe(200);
+  });
+
   it('returns a click on the Register link [5] when asked to register', async () => {
     const model = makeFakeGeminiModel([
       toolChunk('click', { targetId: 5 }),

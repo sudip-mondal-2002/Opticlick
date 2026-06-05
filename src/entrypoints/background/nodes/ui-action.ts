@@ -15,6 +15,7 @@ import { handleScroll } from './actions/scroll';
 import { handleType } from './actions/type';
 import { handlePressKey } from './actions/press-key';
 import { handleClick } from './actions/click';
+import { handleDragAndDrop } from './actions/drag-and-drop';
 import type { ActionCtx } from './actions/ctx';
 
 export async function uiActionNode(
@@ -66,6 +67,11 @@ export async function uiActionNode(
 
   if (uiAction.type === 'click') {
     tabId = await handleClick(uiAction, ctx, coordinateMap, tabIdRef);
+    return { tabId };
+  }
+
+  if (uiAction.type === 'drag_and_drop') {
+    await handleDragAndDrop(uiAction, ctx, coordinateMap);
     return { tabId };
   }
 
