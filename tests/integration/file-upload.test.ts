@@ -96,4 +96,15 @@ describe('injectFileUpload', () => {
     );
     expect(cleanupTempFile).toHaveBeenCalledWith(100);
   });
+
+  it('resolves the file by name when uploadFileId is the filename instead of fileId', async () => {
+    await saveVFSFile(sessionId, 'named-file.txt', btoa('hello world'), 'text/plain');
+    const dbg = getMockDebugger();
+    dbg.sendCommand.mockResolvedValue({ result: { subtype: 'null', value: null } });
+
+    await injectFileUpload(1, sessionId, 'named-file.txt', target);
+
+    const evaluateCalls = dbg.sendCommand.mock.calls.filter(c => c[1] === 'Runtime.evaluate');
+    expect(evaluateCalls.length).toBeGreaterThanOrEqual(2);
+  });
 });

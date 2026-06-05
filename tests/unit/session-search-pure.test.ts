@@ -130,6 +130,24 @@ describe('scoreSession', () => {
     expect(scoreSession(titleMatch, 'competitor')).toBeGreaterThan(scoreSession(textMatch, 'competitor'));
   });
 
+  it('returns 60 when query matches only the startUrl', () => {
+    // title does not contain the query, startUrl does — covers the `return 60` branch.
+    const s = makeSession({ title: 'My task', startUrl: 'https://notion.so/workspace' });
+    expect(scoreSession(s, 'notion.so')).toBe(60);
+  });
+
+  it('returns 40 when query matches only the searchText', () => {
+    // title and startUrl don't match, but searchText does — covers the `return 40` branch.
+    const s = makeSession({ title: 'My task', searchText: 'pricing plans comparison' });
+    expect(scoreSession(s, 'pricing')).toBe(40);
+  });
+
+  it('handles nullish startUrl and searchText gracefully', () => {
+    // Neither startUrl nor searchText set — optional chaining and nullish coalescing should not throw.
+    const s = makeSession({ title: 'Some title' });
+    expect(scoreSession(s, 'notion')).toBe(0);
+  });
+
   it('returns 0 for no match at all', () => {
     const s = makeSession({ title: 'Some title', searchText: 'some text', startUrl: 'https://url.com' });
     expect(scoreSession(s, 'completely-unrelated')).toBe(0);

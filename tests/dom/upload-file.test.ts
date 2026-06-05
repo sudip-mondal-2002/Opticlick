@@ -85,6 +85,14 @@ describe('handleUploadFile', () => {
     } as DOMRect);
     document.body.appendChild(input2);
 
+    const input3 = document.createElement('input');
+    input3.type = 'file';
+    input3.id = 'inp3';
+    input3.getBoundingClientRect = () => ({
+      left: 200, top: 200, width: 20, height: 20, right: 220, bottom: 220, x: 200, y: 200
+    } as DOMRect);
+    document.body.appendChild(input3);
+
     const sendResponse = vi.fn();
     // Close to input2
     handleUploadFile({
@@ -96,6 +104,7 @@ describe('handleUploadFile', () => {
     expect(input2.files).toHaveLength(1);
     expect(input2.files![0].name).toBe('proximity.txt');
     expect(input1.files).toHaveLength(0);
+    expect(input3.files).toHaveLength(0);
   });
 
   it('falls back to first hidden input if multiple exist but all are 0x0', () => {
@@ -164,6 +173,13 @@ describe('handleUploadFile', () => {
     } as DOMRect);
     document.body.appendChild(unrelatedDropZone);
 
+    const farUnrelatedDropZone = document.createElement('div');
+    farUnrelatedDropZone.id = 'far-unrelated';
+    farUnrelatedDropZone.getBoundingClientRect = () => ({
+      left: 300, top: 300, width: 60, height: 60, right: 360, bottom: 360, x: 300, y: 300
+    } as DOMRect);
+    document.body.appendChild(farUnrelatedDropZone);
+
     const input = document.createElement('input');
     input.type = 'file';
     input.getBoundingClientRect = () => ({
@@ -208,5 +224,34 @@ describe('handleUploadFile', () => {
     const response = sendResponse.mock.calls[0][0] as any;
     expect(response.success).toBe(false);
     expect(response.error).toBeDefined();
+  });
+
+  it('falls back to direct assignment if prototype files setter is missing', () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    document.body.appendChild(input);
+
+    const originalDesc = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'files');
+    if (originalDesc) {
+      Object.defineProperty(HTMLInputElement.prototype, 'files', {
+        value: [],
+        writable: true,
+        configurable: true,
+      });
+    }
+
+    try {
+      const sendResponse = vi.fn();
+      handleUploadFile({
+        x: 10, y: 10, fileName: 'test.txt', mimeType: 'text/plain', base64Data: 'aGVsbG8='
+      }, sendResponse);
+
+      expect(sendResponse).toHaveBeenCalledOnce();
+      expect(sendResponse.mock.calls[0][0]).toEqual({ success: true });
+    } finally {
+      if (originalDesc) {
+        Object.defineProperty(HTMLInputElement.prototype, 'files', originalDesc);
+      }
+    }
   });
 });

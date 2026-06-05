@@ -15,7 +15,6 @@ export function openDB(): Promise<IDBDatabase> {
       const db = (e.target as IDBOpenDBRequest).result;
       const tx = (e.target as IDBOpenDBRequest).transaction;
       if (!tx) return;
-      const oldVersion = e.oldVersion;
 
       if (!db.objectStoreNames.contains(SESSIONS_STORE)) {
         db.createObjectStore(SESSIONS_STORE, { keyPath: 'id', autoIncrement: true });
@@ -24,8 +23,6 @@ export function openDB(): Promise<IDBDatabase> {
       let convStore: IDBObjectStore;
       if (!db.objectStoreNames.contains(CONV_STORE)) {
         convStore = db.createObjectStore(CONV_STORE, { keyPath: 'id', autoIncrement: true });
-      } else if (oldVersion < 5) {
-        convStore = tx.objectStore(CONV_STORE);
       } else {
         convStore = tx.objectStore(CONV_STORE);
       }

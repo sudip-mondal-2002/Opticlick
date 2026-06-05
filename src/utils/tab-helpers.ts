@@ -26,8 +26,6 @@ export async function retryTabUpdate(
       throw err;
     }
   }
-  // unreachable — loop always throws or returns
-  throw new Error('retryTabUpdate: exhausted attempts');
 }
 
 const UNINJECTABLE_PATTERNS = /^(about:|chrome:|chrome-extension:|edge:|brave:)/;

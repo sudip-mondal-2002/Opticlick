@@ -80,4 +80,28 @@ describe('waitForDOMIdle inner MutationObserver', () => {
     // Must resolve close to 150ms because max timeout fires
     expect(duration).toBeLessThan(300);
   });
+
+  it('falls back to document.documentElement if document.body is null', async () => {
+    (globalThis.chrome.scripting as any).executeScript = vi.fn(async (config: any) => {
+      const originalBody = document.body;
+      Object.defineProperty(document, 'body', {
+        get() { return null; },
+        configurable: true
+      });
+      try {
+        await config.func(...config.args);
+      } finally {
+        Object.defineProperty(document, 'body', {
+          get() { return originalBody; },
+          configurable: true
+        });
+      }
+      return [{ result: undefined }];
+    });
+
+    const start = Date.now();
+    await waitForDOMIdle(1, 50, 500);
+    const duration = Date.now() - start;
+    expect(duration).toBeGreaterThanOrEqual(40);
+  });
 });

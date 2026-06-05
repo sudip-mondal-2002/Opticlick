@@ -263,4 +263,49 @@ describe('getLabel', () => {
     const el = make('button', {}, (el) => (el.textContent = 'hello   world'));
     expect(getLabel(el)).toBe('hello world');
   });
+
+  it('returns true for element with cursor style set to pointer', () => {
+    const el = make('div');
+    el.style.cursor = 'pointer';
+    expect(isInteractable(el)).toBe(true);
+  });
+
+  it('returns false when window.getComputedStyle throws (e.g. cross-origin iframe)', () => {
+    const el = make('div');
+    const spy = vi.spyOn(window, 'getComputedStyle').mockImplementationOnce(() => {
+      throw new Error('SecurityError: Blocked a frame with origin...');
+    });
+    try {
+      expect(isInteractable(el)).toBe(false);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('returns tag name when aria-labelledby refers to a non-existent element', () => {
+    const el = make('button', { 'aria-labelledby': 'nonexistent' });
+    expect(getLabel(el)).toBe('button');
+  });
+
+  it('falls back to input type/placeholder when aria-labelledby element does not exist', () => {
+    const el = make('input', { 'aria-labelledby': 'nonexistent', type: 'password' });
+    expect(getLabel(el)).toBe('password');
+  });
+
+  it('returns empty string if aria-labelledby points to an element with null textContent', () => {
+    const label = document.createElement('span');
+    label.id = 'null-label';
+    Object.defineProperty(label, 'textContent', { get() { return null; }, configurable: true });
+    document.body.appendChild(label);
+    const el = make('input', { 'aria-labelledby': 'null-label' });
+    expect(getLabel(el)).toBe('');
+  });
+
+  it('falls back to "input" if input has empty placeholder, name, and type', () => {
+    const el = document.createElement('input');
+    Object.defineProperty(el, 'placeholder', { get() { return ''; }, configurable: true });
+    Object.defineProperty(el, 'name', { get() { return ''; }, configurable: true });
+    Object.defineProperty(el, 'type', { get() { return ''; }, configurable: true });
+    expect(getLabel(el)).toBe('input');
+  });
 });

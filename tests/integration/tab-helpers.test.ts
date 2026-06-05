@@ -127,6 +127,50 @@ describe('tab-helpers', () => {
       vi.mocked(chrome.tabs.get).mockResolvedValueOnce({ id: 1, url: 'chrome://newtab' } as any);
       await expect(waitForInjectableTab(1, 20)).rejects.toThrow('Timed out waiting for tab');
     });
+
+    it('ignores updates for a different tabId and only resolves once the correct tab fires', async () => {
+      // Covers the `updatedTabId !== tabId` early-return branch in the onUpdated listener.
+      vi.mocked(chrome.tabs.get).mockResolvedValueOnce({ id: 1, url: 'chrome://newtab' } as any);
+
+      let listener: any;
+      vi.mocked(chrome.tabs.onUpdated.addListener).mockImplementation((l) => {
+        listener = l;
+      });
+
+      const promise = waitForInjectableTab(1, 1000);
+
+      setTimeout(() => {
+        // Fire for a DIFFERENT tab first — should be ignored
+        listener(999, { status: 'complete' }, { id: 999, url: 'https://other.com' });
+        // Then fire for the correct tab
+        listener(1, { status: 'complete' }, { id: 1, url: 'https://example.com' });
+      }, 20);
+
+      await expect(promise).resolves.toBeUndefined();
+    });
+
+    it('guards against done() being called more than once (resolved flag)', async () => {
+      // Covers the `if (resolved) return` guard — firing the onUpdated listener twice for the
+      // same tab should only call removeListener once (proves the flag stops double resolution).
+      vi.mocked(chrome.tabs.get).mockResolvedValueOnce({ id: 1, url: 'chrome://newtab' } as any);
+
+      let listener: any;
+      vi.mocked(chrome.tabs.onUpdated.addListener).mockImplementation((l) => {
+        listener = l;
+      });
+
+      const promise = waitForInjectableTab(1, 1000);
+
+      setTimeout(() => {
+        listener(1, { status: 'complete' }, { id: 1, url: 'https://example.com' });
+        // Fire again immediately — should be a no-op
+        listener(1, { status: 'complete' }, { id: 1, url: 'https://example.com' });
+      }, 20);
+
+      await expect(promise).resolves.toBeUndefined();
+      // removeListener must only be called once despite double-fire
+      expect(chrome.tabs.onUpdated.removeListener).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe('waitForTabLoad', () => {
@@ -151,6 +195,39 @@ describe('tab-helpers', () => {
       }, 20);
 
       await expect(promise).resolves.toBeUndefined();
+    });
+
+    it('ignores onUpdated events for a different tabId', async () => {
+      // Covers the `updatedTabId !== tabId` early-return branch in waitForTabLoad's listener.
+      let listener: any;
+      vi.mocked(chrome.tabs.onUpdated.addListener).mockImplementation((l) => {
+        listener = l;
+      });
+
+      const promise = waitForTabLoad(1, 1000, true);
+
+      setTimeout(() => {
+        // Fire for wrong tab — should be ignored
+        listener(999, { status: 'complete' });
+        // Fire the real loading + complete sequence
+        listener(1, { status: 'loading' });
+        listener(1, { status: 'complete' });
+      }, 20);
+
+      await expect(promise).resolves.toBeUndefined();
+    });
+
+    it('resolves via the catch path when chrome.tabs.get rejects', async () => {
+      // Covers `.catch(done)` in waitForTabLoad when not expecting navigation.
+      // If the initial chrome.tabs.get call rejects, `done` is called immediately.
+      let listener: any;
+      vi.mocked(chrome.tabs.onUpdated.addListener).mockImplementation((l) => {
+        listener = l;
+      });
+      // Reject the initial get() so the catch branch calls done() and resolves the promise
+      vi.mocked(chrome.tabs.get).mockRejectedValueOnce(new Error('Tab gone'));
+
+      await expect(waitForTabLoad(1, 1000, false)).resolves.toBeUndefined();
     });
   });
 

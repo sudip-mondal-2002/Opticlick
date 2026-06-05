@@ -52,6 +52,18 @@ describe('langsmith-config', () => {
     expect(getLangSmithTracer()).toBeNull();
   });
 
+  it('does not initialize tracer if endpoint is missing', () => {
+    // Covers the `!endpoint` branch of the `if (!tracing || !apiKey || !endpoint)` guard.
+    vi.stubEnv('VITE_LANGSMITH_TRACING', 'true');
+    vi.stubEnv('VITE_LANGSMITH_API_KEY', 'my-secret-key-1234567890');
+    vi.stubEnv('VITE_LANGSMITH_ENDPOINT', '');
+
+    initializeLangSmith();
+
+    expect(Client).not.toHaveBeenCalled();
+    expect(getLangSmithTracer()).toBeNull();
+  });
+
   it('initializes tracer correctly when all configs are present', () => {
     vi.stubEnv('VITE_LANGSMITH_TRACING', 'true');
     vi.stubEnv('VITE_LANGSMITH_API_KEY', 'my-secret-key-1234567890');

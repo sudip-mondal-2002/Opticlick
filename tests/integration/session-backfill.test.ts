@@ -5,6 +5,7 @@ import {
   appendConversationTurn,
   getSessions,
 } from '@/utils/db';
+import { openDB } from '@/utils/db/core';
 import { backfillSessionMetadata } from '@/utils/session-backfill';
 
 describe('backfillSessionMetadata', () => {
@@ -60,5 +61,47 @@ describe('backfillSessionMetadata', () => {
     const sessions = [{ title: 'No ID', createdAt: 0, updatedAt: 0 }];
     const updated = await backfillSessionMetadata(sessions as any);
     expect(updated).toBe(0);
+  });
+
+  it('handles user/model turns that do not contain a start URL context', async () => {
+    const id = await createSession('No context URL');
+    await appendConversationTurn(id, 'user', 'Search for hotels');
+
+    const sessions = await getSessions();
+    const updated = await backfillSessionMetadata(sessions);
+    expect(updated).toBe(1);
+
+    const session = await getSession(id);
+    expect(session?.startUrl).toBeUndefined();
+    expect(session?.searchText).toContain('hotels');
+  });
+
+  it('does not overwrite searchText if session already has distinct custom searchText', async () => {
+    const id = await createSession('Legacy', { startUrl: '' });
+    
+    // Manually set searchText to a distinct value
+    const db = await openDB();
+    const tx = db.transaction('sessions', 'readwrite');
+    const store = tx.objectStore('sessions');
+    const sessionObj = await new Promise<any>((resolve) => {
+      const req = store.get(id);
+      req.onsuccess = () => resolve(req.result);
+    });
+    sessionObj.searchText = 'custom-distinct-search-text';
+    sessionObj.startUrl = '';
+    await new Promise<void>((resolve) => {
+      const req = store.put(sessionObj);
+      req.onsuccess = () => resolve();
+    });
+
+    await appendConversationTurn(id, 'user', 'Search for hotels\n\n[CONTEXT: The task started on https://hotels.example. If you are on an unrelated page, navigate back.]');
+
+    const sessions = await getSessions();
+    const updated = await backfillSessionMetadata(sessions);
+    expect(updated).toBe(1);
+
+    const session = await getSession(id);
+    expect(session?.startUrl).toBe('https://hotels.example');
+    expect(session?.searchText).toBe('custom-distinct-search-text');
   });
 });

@@ -31,6 +31,12 @@ describe('mergeSearchText', () => {
     expect(mergeSearchText('hello', '   ')).toBe('hello');
     expect(mergeSearchText(undefined, '   ')).toBe('');
   });
+
+  it('appends snippet to undefined existing text', () => {
+    // Covers the `const base = existing ?? ''` branch when existing is undefined
+    // AND the snippet is a non-empty, non-duplicate value.
+    expect(mergeSearchText(undefined, 'world')).toBe('world');
+  });
 });
 
 describe('parseStartUrlFromContent', () => {

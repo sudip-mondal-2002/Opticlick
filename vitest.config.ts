@@ -83,6 +83,9 @@ export default defineConfig({
       provider: 'v8',
       include: ['src/utils/**', 'src/entrypoints/content/**'],
       exclude: [
+        'src/utils/types.ts',
+        'src/utils/cdp/index.ts',
+        'src/utils/db/index.ts',
       ],
       reporter: ['text', 'html', 'lcov', 'json', 'json-summary'],
       reportOnFailure: true,

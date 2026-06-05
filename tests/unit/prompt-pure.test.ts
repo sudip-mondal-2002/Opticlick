@@ -54,6 +54,18 @@ describe('buildHistory', () => {
     expect(msgs[0]).toBeInstanceOf(HumanMessage);
     expect((msgs[0] as HumanMessage).content).toBe('Find hotels');
   });
+
+  it('falls back to empty string when toolCallId is undefined on a tool turn', () => {
+    // Covers `turn.toolCallId ?? ''` branch — some legacy DB entries may lack this field.
+    const turns: ConversationTurn[] = [
+      { role: 'tool', content: 'result data', toolCallId: undefined as unknown as string, toolName: 'vfs_read' },
+    ];
+    const msgs = buildHistory(turns);
+    expect(msgs).toHaveLength(1);
+    const msg = msgs[0] as ToolMessage;
+    expect(msg).toBeInstanceOf(ToolMessage);
+    expect(msg.tool_call_id).toBe('');
+  });
 });
 
 describe('buildUserMessage', () => {
