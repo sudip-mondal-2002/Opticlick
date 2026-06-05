@@ -82,22 +82,49 @@ function saveCookiesFromHeaders(urlStr, headers) {
   } catch (e) {}
 }
 
+async function checkIfCustomProxyConfigured() {
+  try {
+    const cache = await caches.open('opticlick-proxy-config');
+    const customResp = await cache.match('/proxy-url');
+    if (customResp) {
+      const customUrl = (await customResp.text()).trim();
+      return !!customUrl;
+    }
+  } catch (e) {}
+  return false;
+}
+
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
-
-  // In local dev mode, let the Vite dev server handle proxy requests server-side (Node.js) to bypass browser CORS restrictions.
-  if (url.hostname === 'localhost' || url.hostname === '127.0.0.1') {
-    return;
-  }
 
   const scopePath = new URL(self.registration.scope).pathname;
   const normalizedScope = scopePath.endsWith('/') ? scopePath : scopePath + '/';
   const proxyPrefix = getProxyPrefix();
 
+  const isProxyRequest = url.pathname.startsWith(proxyPrefix) || url.pathname.includes('/__proxy__/');
+  const isLocal = url.hostname === 'localhost' || url.hostname === '127.0.0.1';
+
+  // In local dev mode, let the Vite dev server handle sandbox assets/default requests server-side.
+  if (isLocal && !isProxyRequest) {
+    return;
+  }
+
   // 1. If it's explicitly a proxy request
-  if (url.pathname.startsWith(proxyPrefix) || url.pathname.includes('/__proxy__/')) {
+  if (isProxyRequest) {
     const target = url.searchParams.get('url');
     if (target) {
+      if (isLocal) {
+        event.respondWith((async () => {
+          const hasCustomProxy = await checkIfCustomProxyConfigured();
+          if (hasCustomProxy) {
+            return handleProxy(target, event.request);
+          }
+          // Fall back to default local dev proxy (Vite dev server)
+          return fetch(event.request);
+        })());
+        return;
+      }
+
       event.respondWith(handleProxy(target, event.request));
       return;
     }
@@ -121,6 +148,18 @@ self.addEventListener('fetch', event => {
                                url.pathname.includes('/@vite/') ||
                                url.pathname.includes('/@fs/');
         if (!isSandboxAsset) {
+          if (isLocal) {
+            event.respondWith((async () => {
+              const hasCustomProxy = await checkIfCustomProxyConfigured();
+              if (hasCustomProxy) {
+                return handleProxy(resolvedTargetUrl, event.request);
+              }
+              // Let Vite dev server handle it
+              return fetch(event.request);
+            })());
+            return;
+          }
+
           event.respondWith(handleProxy(resolvedTargetUrl, event.request));
           return;
         }
@@ -149,19 +188,74 @@ async function handleProxy(targetUrl, originalRequest) {
     }
 
     // Determine if we need to route through a CORS proxy (only in production / GitHub Pages)
-    // Production builds route through the third-party CORS proxy corsproxy.io because the sandbox running
+    // Production builds route through a CORS proxy because the sandbox running
     // on GitHub Pages (or any external origin) cannot directly fetch arbitrary URLs due to browser CORS security rules.
-    // NOTE: This introduces a dependency on corsproxy.io. If this public service fails, resolving target URLs in production will fail.
-    // Fallback considerations: set up a self-hosted CORS proxy, support an optional custom proxy URL via settings,
-    // or handle the failure gracefully by displaying a troubleshooting guide to the user.
+    // We use a fallback mechanism starting with allorigins.win (free, no domain restriction) for GET/HEAD,
+    // and fallback to corsproxy.io if needed.
     const isLocal = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
-    const fetchUrl = isLocal ? resolvedUrl : `https://corsproxy.io/?${encodeURIComponent(resolvedUrl)}`;
+    let resp;
+    let proxyUsed = 'none';
+    let useLocalDirect = isLocal;
 
-    const resp = await fetch(fetchUrl, fetchInit);
+    const proxies = [];
+
+    // Check for user-configured custom proxy URL in Cache Storage
+    try {
+      const cache = await caches.open('opticlick-proxy-config');
+      const customResp = await cache.match('/proxy-url');
+      if (customResp) {
+        const customUrl = (await customResp.text()).trim();
+        if (customUrl) {
+          proxies.push({
+            name: 'custom-proxy',
+            getUrl: url => {
+              const separator = customUrl.includes('?') ? '&' : '?';
+              if (!customUrl.includes('url=')) {
+                return `${customUrl}${separator}url=${encodeURIComponent(url)}`;
+              }
+              return customUrl.replace(/url=([^&]*)/, `url=${encodeURIComponent(url)}`);
+            }
+          });
+          useLocalDirect = false; // Disable direct fetch since we have a custom proxy configured
+        }
+      }
+    } catch (e) {
+      console.warn('[SW] Failed to load custom proxy URL:', e);
+    }
+
+    if (useLocalDirect) {
+      resp = await fetch(resolvedUrl, fetchInit);
+    } else {
+      if (proxies.length === 0) {
+        throw new Error('No custom Cloudflare Worker CORS proxy configured. Please enter your worker URL in the CORS Proxy Settings panel.');
+      }
+
+      const proxy = proxies[0];
+      const fetchUrl = proxy.getUrl(resolvedUrl);
+      try {
+        resp = await fetch(fetchUrl, fetchInit);
+        proxyUsed = 'custom-proxy';
+      } catch (err) {
+        console.warn(`[Proxy] Fetch via custom-proxy failed:`, err);
+        throw err;
+      }
+    }
     
     let finalUrl = resp.url || resolvedUrl;
-    if (finalUrl.startsWith('https://corsproxy.io/?')) {
+    if (proxyUsed === 'allorigins' && finalUrl.startsWith('https://api.allorigins.win/raw?url=')) {
+      finalUrl = decodeURIComponent(finalUrl.slice('https://api.allorigins.win/raw?url='.length));
+    } else if (proxyUsed === 'corsproxy.io' && finalUrl.startsWith('https://corsproxy.io/?')) {
       finalUrl = decodeURIComponent(finalUrl.slice('https://corsproxy.io/?'.length));
+    } else if (proxyUsed === 'custom-proxy') {
+      try {
+        const finalUrlObj = new URL(finalUrl);
+        const target = finalUrlObj.searchParams.get('url');
+        if (target) {
+          finalUrl = target;
+        }
+      } catch (e) {
+        // Fallback: not a parseable URL or lacks url parameter
+      }
     }
     resolvedUrl = finalUrl;
 
@@ -206,12 +300,30 @@ async function handleProxy(targetUrl, originalRequest) {
     return new Response(resp.body, { status: resp.status, headers: responseHeaders });
 
   } catch (err) {
+    const isMissingConfig = err.message && err.message.includes('No custom Cloudflare Worker');
+    const htmlContent = isMissingConfig 
+      ? `<!DOCTYPE html><html><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;padding:2rem;background:#0d1117;color:#e2e8f0;display:flex;flex-direction:column;align-items:center;justify-content:center;height:85vh;text-align:center;margin:0;">
+          <div style="font-size:3rem;margin-bottom:1rem;">🌐</div>
+          <h2 style="color:#f87171;margin-bottom:0.5rem;font-weight:600;">CORS Proxy Required</h2>
+          <p style="max-width:400px;line-height:1.6;color:#94a3b8;margin-bottom:1.5rem;font-size:14px;">
+            Opticlick Sandbox requires a self-hosted Cloudflare Worker CORS proxy to safely fetch pages and execute agent tasks.
+          </p>
+          <div style="background:#161b22;padding:12px 20px;border-radius:8px;border:1px solid rgba(255,255,255,0.08);font-size:13px;color:#e2e8f0;box-shadow:0 4px 12px rgba(0,0,0,0.3);">
+            Configure your proxy URL in the <strong>CORS Proxy Settings</strong> panel at the bottom of the screen.
+          </div>
+        </body></html>`
+      : `<!DOCTYPE html><html><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;padding:2rem;background:#0d1117;color:#e2e8f0;display:flex;flex-direction:column;align-items:center;justify-content:center;height:85vh;text-align:center;margin:0;">
+          <div style="font-size:3rem;margin-bottom:1rem;">⚠️</div>
+          <h2 style="color:#f87171;margin-bottom:0.5rem;font-weight:600;">CORS Proxy Error</h2>
+          <p style="color:#94a3b8;margin-bottom:0.5rem;font-size:14px;">Failed to fetch the target URL via the Cloudflare Worker proxy.</p>
+          <p style="font-family:monospace;background:#161b22;padding:8px 12px;border-radius:6px;font-size:12px;border:1px solid rgba(255,255,255,0.08);max-width:90%;word-break:break-all;color:#e2e8f0;">
+            URL: ${escapeHtml(targetUrl)}
+          </p>
+          <p style="font-size:12px;color:#64748b;margin-top:0;">Error: ${escapeHtml(err.message)}</p>
+        </body></html>`;
+
     return new Response(
-      `<!DOCTYPE html><html><body style="font-family:sans-serif;padding:2rem;background:#1a1a2e;color:#e2e8f0;">
-        <h2 style="color:#f87171">⚠️ Proxy Error</h2>
-        <p>URL: <code>${escapeHtml(targetUrl)}</code></p>
-        <p>Error: ${escapeHtml(err.message)}</p>
-      </body></html>`,
+      htmlContent,
       { status: 502, headers: { 'content-type': 'text/html; charset=utf-8', 'access-control-allow-origin': '*' } }
     );
   }

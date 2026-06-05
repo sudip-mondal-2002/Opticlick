@@ -322,6 +322,7 @@ export default defineConfig(() => ({
     'import.meta.env.VITE_LANGSMITH_ENDPOINT': JSON.stringify(process.env.VITE_LANGSMITH_ENDPOINT ?? ''),
     'import.meta.env.VITE_LANGSMITH_API_KEY': JSON.stringify(process.env.VITE_LANGSMITH_API_KEY ?? ''),
     'import.meta.env.VITE_LANGSMITH_PROJECT': JSON.stringify(process.env.VITE_LANGSMITH_PROJECT ?? ''),
+    'import.meta.env.VITE_CORS_PROXY_URL': JSON.stringify(process.env.VITE_CORS_PROXY_URL ?? ''),
   },
   resolve: {
     alias: [
