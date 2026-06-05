@@ -48,4 +48,19 @@ for (const target of targets) {
   }
 }
 
-console.log(`Successfully copied ${copiedCount} icons across destinations.`);
+// Copy logos to sandbox/public/logos
+const srcLogosDir = path.join(rootDir, 'public', 'logos');
+const destLogosDir = path.join(rootDir, 'sandbox', 'public', 'logos');
+if (fs.existsSync(srcLogosDir)) {
+  if (!fs.existsSync(destLogosDir)) {
+    fs.mkdirSync(destLogosDir, { recursive: true });
+  }
+  const logos = fs.readdirSync(srcLogosDir);
+  for (const logo of logos) {
+    fs.copyFileSync(path.join(srcLogosDir, logo), path.join(destLogosDir, logo));
+    copiedCount++;
+  }
+}
+
+console.log(`Successfully copied ${copiedCount} icons and logos across destinations.`);
+

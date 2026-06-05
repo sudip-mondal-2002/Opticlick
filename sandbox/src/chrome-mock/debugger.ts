@@ -106,14 +106,20 @@ export const debuggerShim = {
     switch (method) {
       // ── Screenshot ────────────────────────────────────────────────────────
       case 'Page.captureScreenshot': {
-        if (!doc?.body) throw new Error('Sandbox: iframe not ready for screenshot');
+        if (!doc?.body || !win) throw new Error('Sandbox: iframe not ready for screenshot');
         const h2c = await getHtml2Canvas();
         const canvas = await h2c(doc.body, {
           useCORS: true,
           allowTaint: true,
-          scale: window.devicePixelRatio || 1,
+          scale: 1, // Cap at 1x resolution to keep performance fast and prevent thread freeze
           logging: false,
           foreignObjectRendering: false,
+          width: win.innerWidth,
+          height: win.innerHeight,
+          scrollX: win.scrollX,
+          scrollY: win.scrollY,
+          windowWidth: win.innerWidth,
+          windowHeight: win.innerHeight,
         });
         // Return raw base64 without data-URI prefix (matches real CDP response)
         const dataUrl = canvas.toDataURL('image/png');
