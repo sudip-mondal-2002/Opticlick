@@ -9,6 +9,7 @@ import {
   fetchOllamaModels,
   isOllamaModel,
   getProviderForModel,
+  getModelLabel,
 } from '@/utils/models';
 import type { ModelOption, CustomOpenAIConfig } from '@/utils/models';
 import { ThemeProvider } from './context/ThemeContext';
@@ -396,9 +397,12 @@ function AgentUI() {
 
       {showSessions && (
         <SessionsOverlay
+          key="sessions-overlay"
           sessions={sessions}
           onClose={() => setShowSessions(false)}
-          onResume={(s) => { handleResumeSession(s); setShowSessions(false); }}
+          onResume={handleResumeSession}
+          onRefresh={refreshSessions}
+          modelLabel={(id) => getModelLabel(id, ollamaModels, customConfigs)}
         />
       )}
 
