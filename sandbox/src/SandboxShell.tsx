@@ -1,6 +1,7 @@
 import React, { Suspense } from 'react';
 import { MockBrowser } from './MockBrowser';
 import { LangSmithPanel } from './LangSmithPanel';
+import { ProxySettingsPanel } from './ProxySettingsPanel';
 
 // Lazily import the real sidepanel App — it triggers chrome.* calls on mount,
 // so chrome-mock must be fully installed before this import resolves.
@@ -49,7 +50,10 @@ export function SandboxShell() {
         {/* Right: Mock browser + LangSmith */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
           <MockBrowser initialUrl="https://example.com" />
-          <LangSmithPanel />
+          <div style={{ display: 'flex', flexDirection: 'column', flexShrink: 0 }}>
+            <ProxySettingsPanel />
+            <LangSmithPanel />
+          </div>
         </div>
       </div>
     </div>

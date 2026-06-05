@@ -22,7 +22,8 @@ jobs:
         id: download
         uses: actions/download-artifact@v4
         with:
-          name: coverage-report-pr-*
+          pattern: coverage-report-pr-*
+          merge-multiple: true
           github-token: ${{ secrets.GITHUB_TOKEN }}
           run-id: ${{ github.event.workflow_run.id }}
           path: deploy-coverage/

@@ -38,7 +38,8 @@ An autonomous web agent Chrome extension that uses the **Set-of-Mark** visual pr
 11. [File Handling](#file-handling)
 12. [Safety & Loop Detection](#safety--loop-detection)
 13. [Directory Structure](#directory-structure)
-14. [Development](#development)
+14. [Sandbox Environment](#sandbox-environment)
+15. [Development](#development)
 
 ---
 
@@ -524,6 +525,66 @@ The system prompt includes explicit guidance for these situations:
 - Call `ask_user` if the ambiguity requires human judgment
 
 The agent is also constrained to **one UI action per turn**, which makes each step individually auditable and provides a clear retry boundary.
+
+---
+
+## Sandbox Environment
+
+Opticlick includes a standalone web sandbox (located in the `sandbox/` directory) that allows developers to run, preview, and test the sidepanel UI inside a mock browser environment directly in the browser—perfect for Pull Request previews, CI diagnostics, and local web-based testing.
+
+### Features
+- **Mock Browser Pane**: Simulates chrome tab navigation, history (back/forward), refresh, and tab locking.
+- **Service Worker Proxy**: Intercepts iframe network requests dynamically to bypass CORS limits on standard web pages.
+- **Self-Hosted CORS Proxy**: Routes all network requests through a custom Cloudflare Worker proxy, fully supporting `POST`, `PUT`, and other HTTP methods.
+- **Settings Dashboard**: Configure your self-hosted Cloudflare Worker URL and LangSmith tracing variables directly in the UI.
+
+### Running the Sandbox Locally
+
+To start the sandbox development server:
+
+1. Install root dependencies and run preparation scripts:
+   ```bash
+   npm install
+   npm run copy-icons
+   ```
+
+2. Navigate to the `sandbox/` directory and install its dependencies:
+   ```bash
+   cd sandbox
+   npm install
+   ```
+
+3. Start the dev server:
+   ```bash
+   npm run dev
+   ```
+   This will spin up the Vite development server at `http://localhost:5174`.
+
+4. Build the sandbox:
+   ```bash
+   npm run build
+   ```
+   The static build assets will be generated in `sandbox/dist/`.
+
+### Setting Up the CORS Proxy (Cloudflare Worker)
+
+Since the sandbox runs in a standard HTTPS origin (e.g., GitHub Pages or custom preview domains) and cannot directly access cross-origin resources, it requires a CORS proxy. To prevent exposing secrets in GitHub Actions for forks, you must deploy your own proxy worker.
+
+1. Navigate to the `cors-proxy/` folder:
+   ```bash
+   cd cors-proxy
+   ```
+
+2. Deploy to Cloudflare Workers (Free Tier, 100k requests/day):
+   ```bash
+   npx wrangler deploy
+   ```
+
+3. Log in to your Cloudflare account via the CLI prompt when prompted.
+
+4. Once deployed, copy your worker URL (e.g., `https://opticlick-cors-proxy.<your-subdomain>.workers.dev`).
+
+5. Open the Sandbox in your browser, scroll to the bottom of the sidebar settings, expand **CORS Proxy Settings**, paste the URL, and click **Save**. This will dynamically configure the Service Worker to route all network traffic through your custom proxy.
 
 ---
 
