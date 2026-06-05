@@ -23,30 +23,30 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">2.5% </span>
+                <span class="strong">0% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>1/40</span>
+                <span class='fraction'>0/31</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">100% </span>
+                <span class="strong">0% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>0/0</span>
+                <span class='fraction'>0/5</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
                 <span class="strong">0% </span>
                 <span class="quiet">Functions</span>
-                <span class='fraction'>0/3</span>
+                <span class='fraction'>0/14</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">2.5% </span>
+                <span class="strong">0% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>1/40</span>
+                <span class='fraction'>0/25</span>
             </div>
         
             
@@ -117,7 +117,7 @@
 <a name='L52'></a><a href='#L52'>52</a>
 <a name='L53'></a><a href='#L53'>53</a>
 <a name='L54'></a><a href='#L54'>54</a>
-<a name='L55'></a><a href='#L55'>55</a></td><td class="line-coverage quiet"><span class="cline-any cline-yes">3x</span>
+<a name='L55'></a><a href='#L55'>55</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -130,26 +130,8 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
@@ -160,7 +142,15 @@
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
@@ -169,8 +159,18 @@
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">import { openDB, MEMORY_STORE } from './core';
 &nbsp;
 export interface MemoryEntry {
@@ -184,47 +184,47 @@ export interface MemoryEntry {
 }
 &nbsp;
 /** Insert or merge a memory entry; new values are deduplicated into the existing array. */
-<span class="cstat-no" title="statement not covered" ><span class="fstat-no" title="function not covered" >export async function upsertMemory(</span></span>
-<span class="cstat-no" title="statement not covered" >  key: string, values: string[], category = 'other', sourceUrl?: string,</span>
-<span class="cstat-no" title="statement not covered" >): Promise&lt;MemoryEntry&gt; {</span>
-<span class="cstat-no" title="statement not covered" >  const db = await openDB();</span>
-<span class="cstat-no" title="statement not covered" >  return new Promise((resolve, reject) =&gt; {</span>
-<span class="cstat-no" title="statement not covered" >    const tx = db.transaction(MEMORY_STORE, 'readwrite');</span>
-<span class="cstat-no" title="statement not covered" >    const store = tx.objectStore(MEMORY_STORE);</span>
-<span class="cstat-no" title="statement not covered" >    const getReq = store.get(key);</span>
-<span class="cstat-no" title="statement not covered" >    getReq.onsuccess = (e) =&gt; {</span>
-<span class="cstat-no" title="statement not covered" >      const existing = (e.target as IDBRequest).result as MemoryEntry | undefined;</span>
-<span class="cstat-no" title="statement not covered" >      const now = Date.now();</span>
-<span class="cstat-no" title="statement not covered" >      const entry: MemoryEntry = existing</span>
-<span class="cstat-no" title="statement not covered" >        ? { ...existing, values: [...new Set([...existing.values, ...values])], category, updatedAt: now, ...(sourceUrl !== undefined &amp;&amp; { sourceUrl }) }</span>
-<span class="cstat-no" title="statement not covered" >        : { key, values: [...new Set(values)], category, sourceUrl, createdAt: now, updatedAt: now };</span>
+export async function <span class="fstat-no" title="function not covered" >upsertMemory(</span>
+  key: string, values: string[], category = <span class="branch-0 cbranch-no" title="branch not covered" >'other', s</span>ourceUrl?: string,
+): Promise&lt;MemoryEntry&gt; {
+  const db = <span class="cstat-no" title="statement not covered" >await openDB();</span>
+<span class="cstat-no" title="statement not covered" >  return new Promise(<span class="fstat-no" title="function not covered" >(r</span>esolve, reject) =&gt; {</span>
+    const tx = <span class="cstat-no" title="statement not covered" >db.transaction(MEMORY_STORE, 'readwrite');</span>
+    const store = <span class="cstat-no" title="statement not covered" >tx.objectStore(MEMORY_STORE);</span>
+    const getReq = <span class="cstat-no" title="statement not covered" >store.get(key);</span>
+<span class="cstat-no" title="statement not covered" >    getReq.onsuccess = <span class="fstat-no" title="function not covered" >(e</span>) =&gt; {</span>
+      const existing = (<span class="cstat-no" title="statement not covered" >e.target as IDBRequest).result as MemoryEntry | undefined;</span>
+      const now = <span class="cstat-no" title="statement not covered" >Date.now();</span>
+      const entry: MemoryEntry = <span class="cstat-no" title="statement not covered" >existing</span>
+        ? { ...existing, values: [...new Set([...existing.values, ...values])], category, updatedAt: now, ...(sourceUrl !== undefined &amp;&amp; { sourceUrl }) }
+        : { key, values: [...new Set(values)], category, sourceUrl, createdAt: now, updatedAt: now };
 <span class="cstat-no" title="statement not covered" >      store.put(entry);</span>
-<span class="cstat-no" title="statement not covered" >      tx.oncomplete = () =&gt; resolve(entry);</span>
-<span class="cstat-no" title="statement not covered" >    };</span>
-<span class="cstat-no" title="statement not covered" >    tx.onerror = (e) =&gt; reject((e.target as IDBTransaction).error);</span>
-<span class="cstat-no" title="statement not covered" >  });</span>
-<span class="cstat-no" title="statement not covered" >}</span>
+<span class="cstat-no" title="statement not covered" >      tx.oncomplete = <span class="fstat-no" title="function not covered" >() =&gt; <span class="cstat-no" title="statement not covered" >r</span>esolve(entry);</span></span>
+    };
+<span class="cstat-no" title="statement not covered" >    tx.onerror = <span class="fstat-no" title="function not covered" >(e</span>) =&gt; <span class="cstat-no" title="statement not covered" >reject((e.target as IDBTransaction).error);</span></span>
+  });
+}
 &nbsp;
-<span class="cstat-no" title="statement not covered" ><span class="fstat-no" title="function not covered" >export async function getAllMemories(): Promise&lt;MemoryEntry[]&gt; {</span></span>
-<span class="cstat-no" title="statement not covered" >  const db = await openDB();</span>
-<span class="cstat-no" title="statement not covered" >  return new Promise((resolve, reject) =&gt; {</span>
-<span class="cstat-no" title="statement not covered" >    const tx = db.transaction(MEMORY_STORE, 'readonly');</span>
-<span class="cstat-no" title="statement not covered" >    const req = tx.objectStore(MEMORY_STORE).getAll();</span>
-<span class="cstat-no" title="statement not covered" >    req.onsuccess = (e) =&gt;</span>
-<span class="cstat-no" title="statement not covered" >      resolve(((e.target as IDBRequest).result as MemoryEntry[]).sort((a, b) =&gt; b.updatedAt - a.updatedAt));</span>
-<span class="cstat-no" title="statement not covered" >    req.onerror = (e) =&gt; reject((e.target as IDBRequest).error);</span>
-<span class="cstat-no" title="statement not covered" >  });</span>
-<span class="cstat-no" title="statement not covered" >}</span>
+export async function <span class="fstat-no" title="function not covered" >getAllMemories(): Promise&lt;MemoryEntry[]&gt; {</span>
+  const db = <span class="cstat-no" title="statement not covered" >await openDB();</span>
+<span class="cstat-no" title="statement not covered" >  return new Promise(<span class="fstat-no" title="function not covered" >(r</span>esolve, reject) =&gt; {</span>
+    const tx = <span class="cstat-no" title="statement not covered" >db.transaction(MEMORY_STORE, 'readonly');</span>
+    const req = <span class="cstat-no" title="statement not covered" >tx.objectStore(MEMORY_STORE).getAll();</span>
+<span class="cstat-no" title="statement not covered" >    req.onsuccess = <span class="fstat-no" title="function not covered" >(e</span>) =&gt;</span>
+<span class="cstat-no" title="statement not covered" >      resolve(((e.target as IDBRequest).result as MemoryEntry[]).sort(<span class="fstat-no" title="function not covered" >(a</span>, b) =&gt; <span class="cstat-no" title="statement not covered" >b.updatedAt - a.updatedAt)</span>);</span>
+<span class="cstat-no" title="statement not covered" >    req.onerror = <span class="fstat-no" title="function not covered" >(e</span>) =&gt; <span class="cstat-no" title="statement not covered" >reject((e.target as IDBRequest).error);</span></span>
+  });
+}
 &nbsp;
-<span class="cstat-no" title="statement not covered" ><span class="fstat-no" title="function not covered" >export async function deleteMemory(key: string): Promise&lt;void&gt; {</span></span>
-<span class="cstat-no" title="statement not covered" >  const db = await openDB();</span>
-<span class="cstat-no" title="statement not covered" >  return new Promise((resolve, reject) =&gt; {</span>
-<span class="cstat-no" title="statement not covered" >    const tx = db.transaction(MEMORY_STORE, 'readwrite');</span>
+export async function <span class="fstat-no" title="function not covered" >deleteMemory(k</span>ey: string): Promise&lt;void&gt; {
+  const db = <span class="cstat-no" title="statement not covered" >await openDB();</span>
+<span class="cstat-no" title="statement not covered" >  return new Promise(<span class="fstat-no" title="function not covered" >(r</span>esolve, reject) =&gt; {</span>
+    const tx = <span class="cstat-no" title="statement not covered" >db.transaction(MEMORY_STORE, 'readwrite');</span>
 <span class="cstat-no" title="statement not covered" >    tx.objectStore(MEMORY_STORE).delete(key);</span>
-<span class="cstat-no" title="statement not covered" >    tx.oncomplete = () =&gt; resolve();</span>
-<span class="cstat-no" title="statement not covered" >    tx.onerror = (e) =&gt; reject((e.target as IDBTransaction).error);</span>
-<span class="cstat-no" title="statement not covered" >  });</span>
-<span class="cstat-no" title="statement not covered" >}</span>
+<span class="cstat-no" title="statement not covered" >    tx.oncomplete = <span class="fstat-no" title="function not covered" >() =&gt; <span class="cstat-no" title="statement not covered" >r</span>esolve();</span></span>
+<span class="cstat-no" title="statement not covered" >    tx.onerror = <span class="fstat-no" title="function not covered" >(e</span>) =&gt; <span class="cstat-no" title="statement not covered" >reject((e.target as IDBTransaction).error);</span></span>
+  });
+}
 &nbsp;</pre></td></tr></table></pre>
 
                 <div class='push'></div><!-- for sticky footer -->
@@ -232,7 +232,7 @@ export interface MemoryEntry {
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-06-05T10:55:16.138Z
+                at 2026-06-05T12:13:22.831Z
             </div>
         <script src="../../prettify.js"></script>
         <script>

@@ -23,30 +23,30 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">29.03% </span>
+                <span class="strong">7.69% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>9/31</span>
-            </div>
-        
-            
-            <div class='fl pad1y space-right2'>
-                <span class="strong">100% </span>
-                <span class="quiet">Branches</span>
-                <span class='fraction'>2/2</span>
+                <span class='fraction'>1/13</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
                 <span class="strong">50% </span>
-                <span class="quiet">Functions</span>
-                <span class='fraction'>1/2</span>
+                <span class="quiet">Branches</span>
+                <span class='fraction'>2/4</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">29.03% </span>
+                <span class="strong">28.57% </span>
+                <span class="quiet">Functions</span>
+                <span class='fraction'>2/7</span>
+            </div>
+        
+            
+            <div class='fl pad1y space-right2'>
+                <span class="strong">7.69% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>9/31</span>
+                <span class='fraction'>1/13</span>
             </div>
         
             
@@ -94,64 +94,64 @@
 <a name='L29'></a><a href='#L29'>29</a>
 <a name='L30'></a><a href='#L30'>30</a>
 <a name='L31'></a><a href='#L31'>31</a>
-<a name='L32'></a><a href='#L32'>32</a></td><td class="line-coverage quiet"><span class="cline-any cline-yes">1x</span>
+<a name='L32'></a><a href='#L32'>32</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">6x</span>
-<span class="cline-any cline-yes">6x</span>
-<span class="cline-any cline-yes">6x</span>
-<span class="cline-any cline-yes">6x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-yes">6x</span>
-<span class="cline-any cline-yes">6x</span>
-<span class="cline-any cline-yes">6x</span>
-<span class="cline-any cline-yes">6x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">export function waitForDOMIdle(tabId: number, quietMs = 600, timeoutMs = 5000): Promise&lt;void&gt; {
   return chrome.scripting
     .executeScript({
       target: { tabId },
-      func: <span class="fstat-no" title="function not covered" >(q: number, t: number) =&gt; {</span>
-<span class="cstat-no" title="statement not covered" >        return new Promise&lt;void&gt;((resolve) =&gt; {</span>
-<span class="cstat-no" title="statement not covered" >          let timer: ReturnType&lt;typeof setTimeout&gt;;</span>
-<span class="cstat-no" title="statement not covered" >          const resetTimer = () =&gt; {</span>
+      func: <span class="fstat-no" title="function not covered" >(q</span>: number, t: number) =&gt; {
+<span class="cstat-no" title="statement not covered" >        return new Promise&lt;void&gt;(<span class="fstat-no" title="function not covered" >(r</span>esolve) =&gt; {</span>
+          let timer: ReturnType&lt;typeof setTimeout&gt;;
+          const resetTimer = <span class="cstat-no" title="statement not covered" ><span class="fstat-no" title="function not covered" >() =&gt; {</span></span>
 <span class="cstat-no" title="statement not covered" >            clearTimeout(timer);</span>
-<span class="cstat-no" title="statement not covered" >            timer = setTimeout(() =&gt; {</span>
+<span class="cstat-no" title="statement not covered" >            timer = setTimeout(<span class="fstat-no" title="function not covered" >() =&gt; {</span></span>
 <span class="cstat-no" title="statement not covered" >              observer.disconnect();</span>
 <span class="cstat-no" title="statement not covered" >              resolve();</span>
-<span class="cstat-no" title="statement not covered" >            }, q);</span>
-<span class="cstat-no" title="statement not covered" >          };</span>
-<span class="cstat-no" title="statement not covered" >          const observer = new MutationObserver(resetTimer);</span>
+            }, q);
+          };
+          const observer = <span class="cstat-no" title="statement not covered" >new MutationObserver(resetTimer);</span>
 <span class="cstat-no" title="statement not covered" >          observer.observe(document.body || document.documentElement, {</span>
-<span class="cstat-no" title="statement not covered" >            childList: true,</span>
-<span class="cstat-no" title="statement not covered" >            subtree: true,</span>
-<span class="cstat-no" title="statement not covered" >            attributes: true,</span>
-<span class="cstat-no" title="statement not covered" >          });</span>
+            childList: true,
+            subtree: true,
+            attributes: true,
+          });
 <span class="cstat-no" title="statement not covered" >          resetTimer();</span>
-<span class="cstat-no" title="statement not covered" >          setTimeout(() =&gt; {</span>
+<span class="cstat-no" title="statement not covered" >          setTimeout(<span class="fstat-no" title="function not covered" >() =&gt; {</span></span>
 <span class="cstat-no" title="statement not covered" >            observer.disconnect();</span>
 <span class="cstat-no" title="statement not covered" >            resolve();</span>
-<span class="cstat-no" title="statement not covered" >          }, t);</span>
-<span class="cstat-no" title="statement not covered" >        });</span>
-<span class="cstat-no" title="statement not covered" >      },</span>
+          }, t);
+        });
+      },
       args: [quietMs, timeoutMs],
     })
     .then(() =&gt; {});
@@ -163,7 +163,7 @@
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-06-05T10:55:16.166Z
+                at 2026-06-05T12:13:22.862Z
             </div>
         <script src="../prettify.js"></script>
         <script>
