@@ -220,10 +220,6 @@ describe('tab-helpers', () => {
     it('resolves via the catch path when chrome.tabs.get rejects', async () => {
       // Covers `.catch(done)` in waitForTabLoad when not expecting navigation.
       // If the initial chrome.tabs.get call rejects, `done` is called immediately.
-      let listener: any;
-      vi.mocked(chrome.tabs.onUpdated.addListener).mockImplementation((l) => {
-        listener = l;
-      });
       // Reject the initial get() so the catch branch calls done() and resolves the promise
       vi.mocked(chrome.tabs.get).mockRejectedValueOnce(new Error('Tab gone'));
 
