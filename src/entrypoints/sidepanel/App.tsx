@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { VFSBrowser } from './components/VFSBrowser';
 import type { AgentState, LogEntry, Session, AttachedFile, PromptTemplate } from '@/utils/types';
 import { getSessions, getConversationHistory } from '@/utils/db';
 import {
@@ -9,6 +10,7 @@ import {
   fetchOllamaModels,
   isOllamaModel,
   getProviderForModel,
+  getModelLabel,
 } from '@/utils/models';
 import type { ModelOption, CustomOpenAIConfig } from '@/utils/models';
 import { ThemeProvider } from './context/ThemeContext';
@@ -85,10 +87,18 @@ function AgentUI() {
   const [streamingThinking, setStreamingThinking] = useState('');
 
   const [sessions, setSessions] = useState<Session[]>([]);
-  const [currentSessionId, setCurrentSessionId] = useState<number | null>(null);
+  
+  const [currentSessionId, setCurrentSessionId] =
+    useState<number | null>(null);
+
+  
+
+
   const [historySteps, setHistorySteps] = useState<HistoryStep[]>([]);
   const [showSessions, setShowSessions] = useState(false);
   const [chatInputKey, setChatInputKey] = useState(0);
+  const [activeView, setActiveView] =
+  useState<'chat' | 'files'>('chat');
 
   const [templates, setTemplates] = useState<PromptTemplate[]>([]);
   const [showTemplates, setShowTemplates] = useState(false);
@@ -220,10 +230,20 @@ function AgentUI() {
   };
 
   // ── Agent state / logs ─────────────────────────────────────────────────────
+const refreshSessions = useCallback(async () => {
+  const sessions = await getSessions();
 
-  const refreshSessions = useCallback(async () => {
-    setSessions(await getSessions());
-  }, []);
+  setSessions(sessions);
+
+  if (sessions.length === 0) {
+    setCurrentSessionId(null);
+  } else if (
+    currentSessionId == null ||
+    !sessions.some((session) => session.id === currentSessionId)
+  ) {
+    setCurrentSessionId(sessions[0].id ?? null);
+  }
+}, [currentSessionId]);
 
   const appendLog = useCallback((message: string, level = 'info') => {
     const ts = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -396,9 +416,12 @@ function AgentUI() {
 
       {showSessions && (
         <SessionsOverlay
+          key="sessions-overlay"
           sessions={sessions}
           onClose={() => setShowSessions(false)}
-          onResume={(s) => { handleResumeSession(s); setShowSessions(false); }}
+          onResume={handleResumeSession}
+          onRefresh={refreshSessions}
+          modelLabel={(id) => getModelLabel(id, ollamaModels, customConfigs)}
         />
       )}
 
@@ -434,6 +457,29 @@ function AgentUI() {
         onShowApiKeys={() => setShowApiKeys(true)}
         onShowTemplates={() => setShowTemplates(true)}
       />
+      <div className="flex border-b border-slate-200 dark:border-slate-700">
+        <button
+          onClick={() => setActiveView('chat')}
+          className={`flex-1 py-2 text-sm ${
+            activeView === 'chat'
+              ? 'font-semibold border-b-2 border-sky-500'
+              : ''
+          }`}
+        >
+          💬 Chat
+        </button>
+
+        <button
+          onClick={() => setActiveView('files')}
+          className={`flex-1 py-2 text-sm ${
+            activeView === 'files'
+              ? 'font-semibold border-b-2 border-sky-500'
+              : ''
+          }`}
+        >
+          📁 Files
+        </button>
+      </div>
 
       {/* Session continuation pill */}
       {activeSession && (
@@ -451,13 +497,19 @@ function AgentUI() {
         </div>
       )}
 
-      <ChatFeed
-        feedRef={feedRef}
-        historySteps={historySteps}
-        submittedPrompt={submittedPrompt}
-        logs={logs}
-        streamingThinking={streamingThinking}
-      />
+      {activeView === 'chat' ? (
+        <ChatFeed
+          feedRef={feedRef}
+          historySteps={historySteps}
+          submittedPrompt={submittedPrompt}
+          logs={logs}
+          streamingThinking={streamingThinking}
+        />
+      ) : (
+        <VFSBrowser
+          sessionId={currentSessionId}
+        />
+      )}
 
       {isRunning && step > 0 && <StepFooter step={step} />}
 
@@ -516,6 +568,7 @@ function AgentUI() {
 }
 
 export default function App() {
+ 
   return (
     <ThemeProvider>
       <AgentUI />

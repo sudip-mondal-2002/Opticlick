@@ -150,6 +150,12 @@ export interface Session {
   title: string;
   createdAt: number;
   updatedAt: number;
+  /** Model used when the session was created or last resumed. */
+  modelId?: string;
+  /** Tab URL when the agent loop started. */
+  startUrl?: string;
+  /** Lowercase denormalized text for client-side search (title, URL, conversation snippets). */
+  searchText?: string;
 }
 
 /** A reusable prompt template. */
