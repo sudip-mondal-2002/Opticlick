@@ -234,7 +234,12 @@ const refreshSessions = useCallback(async () => {
 
   setSessions(sessions);
 
-  if (sessions.length > 0 && currentSessionId == null) {
+  if (sessions.length === 0) {
+    setCurrentSessionId(null);
+  } else if (
+    currentSessionId == null ||
+    !sessions.some((session) => session.id === currentSessionId)
+  ) {
     setCurrentSessionId(sessions[0].id ?? null);
   }
 }, [currentSessionId]);
