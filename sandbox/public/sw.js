@@ -522,9 +522,19 @@ function injectContentScript(html) {
 
     const ariaLabelledBy = el.getAttribute('aria-labelledby');
     if (ariaLabelledBy) {
-      const ref = document.getElementById(ariaLabelledBy);
-      if (ref) return (ref.textContent ?? '').trim().slice(0, 40);
+      const ids = ariaLabelledBy.trim().split(/\\s+/);
+
+      const texts = ids
+        .map(id => {
+          const ref = document.getElementById(id);
+          return ref ? (ref.textContent ?? '') : '';
+        })
+        .filter(t => t !== '');
+      if (texts.length > 0) {
+        return texts.join(' ').trim().slice(0, 40);
+      }
     }
+
 
     if (tag === 'input') {
       return (
