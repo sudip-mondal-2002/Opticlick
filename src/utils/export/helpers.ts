@@ -1,4 +1,4 @@
-import type { ConversationTurn } from '../types';
+import type { ConversationTurn } from '../db';
 import type { VFSFile } from '../db';
 import { MAX_EMBED_BYTES, RESERVED_VFS_NAMES, type ExportFileEntry, type ExportStep, type MemoryUpdateRecord } from './types';
 

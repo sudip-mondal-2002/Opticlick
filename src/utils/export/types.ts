@@ -1,4 +1,5 @@
-import type { ConversationTurn, Session, TodoItem } from '../types';
+import type { Session, TodoItem } from '../types';
+import type { ConversationTurn } from '../db';
 import type { VFSFile } from '../db';
 import type { ScratchpadEntry } from '../scratchpad';
 

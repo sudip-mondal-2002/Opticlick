@@ -132,7 +132,7 @@ export function parseToolCall(name: string, args: Record<string, any>): AgentAct
 
     // ── Control ──────────────────────────────────────────────────────────────
     case 'finish':
-      return { type: 'finish', summary: args.summary as string | undefined };
+      return { type: 'finish', summary: (args.summary as string | undefined) ?? '' };
     case 'wait':
       return { type: 'wait', ms: args.ms as number };
     case 'ask_user':
