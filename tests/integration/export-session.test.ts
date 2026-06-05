@@ -57,13 +57,14 @@ describe('EXPORT_SESSION message handler', () => {
     });
   });
 
-  it('triggerDownload creates a blob URL and calls chrome.downloads.download', async () => {
+  it('triggerDownload creates a data URL and calls chrome.downloads.download', async () => {
     const { triggerDownload } = await import('@/utils/export/download');
     await triggerDownload('{"ok":true}', 'test.json', 'application/json');
     expect(chrome.downloads.download).toHaveBeenCalledWith(
       expect.objectContaining({
         filename: 'test.json',
         saveAs: false,
+        url: expect.stringMatching(/^data:application\/json;base64,/),
       }),
     );
   });
