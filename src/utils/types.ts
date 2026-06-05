@@ -153,11 +153,14 @@ export interface Session {
   title: string;
   createdAt: number;
   updatedAt: number;
+  /** Model used when the session was created or last resumed. */
+  modelId?: string;
   /** Tab URL when the agent loop started. */
   startUrl?: string;
-  /** LLM model ID used for this session (e.g. gemini-3.1-flash-lite). */
-  modelId?: string;
+  /** Session lifecycle status persisted for export and history. */
   status?: SessionStatus;
+  /** Lowercase denormalized text for client-side search (title, URL, conversation snippets). */
+  searchText?: string;
 }
 
 /** A reusable prompt template. */

@@ -15,14 +15,14 @@
 import {
   createSession,
   getSessionById,
+  updateSessionMetadata,
   saveVFSFile,
-  clearVFSFiles,
   getAllMemories,
   updateSession,
 } from '@/utils/db';
 import { createAnyModel } from '@/utils/llm';
 import type { ApiKeys } from '@/utils/llm';
-import { loadTodoFromVFS, TODO_VFS_FILENAME } from '@/utils/todo';
+import { loadTodoFromVFS } from '@/utils/todo';
 import { loadScratchpadFromVFS } from '@/utils/scratchpad';
 import { getProviderForModel, isOllamaAvailable, DEFAULT_MODEL, customOpenAIConfigId } from '@/utils/models';
 import type { CustomOpenAIConfig } from '@/utils/models';
@@ -48,7 +48,26 @@ export async function runAgentLoop(
   attachments?: AttachedFile[],
   modelId?: string,
 ): Promise<void> {
-  const sessionId = existingSessionId ?? (await createSession(userPrompt));
+  const effectiveModelId = modelId ?? DEFAULT_MODEL;
+
+  // Capture the starting URL for context anchoring and session metadata
+  let startingUrl = '';
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    startingUrl = tab.url ?? '';
+  } catch { /* tab may not be accessible yet */ }
+
+  let sessionId: number;
+  if (existingSessionId != null) {
+    sessionId = existingSessionId;
+    await updateSessionMetadata(sessionId, { modelId: effectiveModelId });
+  } else {
+    sessionId = await createSession(userPrompt, {
+      modelId: effectiveModelId,
+      startUrl: startingUrl || undefined,
+    });
+  }
+
   await setAgentState({ status: 'running', tabId, step: 0, prompt: userPrompt, sessionId });
 
   // Seed VFS with any user-attached files
@@ -75,13 +94,6 @@ export async function runAgentLoop(
     await log(`Resumed scratchpad: ${currentScratchpad.length} note(s) loaded from VFS`, 'observe');
   }
 
-  // Capture the starting URL for context anchoring
-  let startingUrl = '';
-  try {
-    const tab = await chrome.tabs.get(tabId);
-    startingUrl = tab.url ?? '';
-  } catch { /* tab may not be accessible yet */ }
-
   const anchoredPrompt = startingUrl
     ? `${userPrompt}\n\n[CONTEXT: The task started on ${startingUrl}. If you are on an unrelated page, navigate back.]`
     : userPrompt;
@@ -89,8 +101,6 @@ export async function runAgentLoop(
   try {
     const { geminiApiKey, anthropicApiKey, openaiApiKey, customOpenaiConfigs } =
       await chrome.storage.local.get(['geminiApiKey', 'anthropicApiKey', 'openaiApiKey', 'customOpenaiConfigs']);
-
-    const effectiveModelId = modelId ?? DEFAULT_MODEL;
     const provider = getProviderForModel(effectiveModelId);
 
     if (provider === 'ollama') {
@@ -262,7 +272,6 @@ export async function runAgentLoop(
         );
       } catch { /* */ }
       await detachDebugger(finalTabId);
-      try { await clearVFSFiles(sessionId, [TODO_VFS_FILENAME]); } catch { /* */ }
       chrome.runtime.sendMessage({ type: 'AGENT_STATE_CHANGE' }).catch(() => {});
     }
   } catch (err) {

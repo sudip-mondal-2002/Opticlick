@@ -1,4 +1,8 @@
-import { appendConversationTurn, writeVFSFile, deleteVFSFile } from '@/utils/db';
+import {
+  appendConversationTurn,
+  writeVFSFile,
+  deleteVFSFile,
+} from '@/utils/db';
 import { arrayBufferToBase64 } from '@/utils/base64';
 import { log } from '@/utils/agent-log';
 import type { AgentAction } from '@/utils/types';
@@ -30,9 +34,21 @@ export async function handleVfsSaveScreenshot(
 ): Promise<void> {
   const { sessionId, base64Image, step, toolCallId, toolName } = ctx;
   const fname = action.name.trim() || `step_${step}.png`;
-  const saved = await writeVFSFile(sessionId, fname, base64Image, 'image/png');
+  
+  const saved = await writeVFSFile(
+    sessionId,
+    fname,
+    base64Image,
+    'image/png'
+  );
+
+  
+  
   const result = `Saved screenshot as "${saved.name}" (id: ${saved.id})`;
-  await log(`VFS: saved screenshot → "${saved.name}"`, 'info');
+  await log(
+    `VFS: saved screenshot → "${saved.name}" session=${sessionId}`,
+    'info'
+  );
   await appendConversationTurn(sessionId, 'tool', result, { toolCallId, toolName });
 }
 

@@ -147,5 +147,10 @@ export function exportSessionAsMarkdown(bundle: SessionExportBundle): string {
 }
 
 function escapeYaml(value: string): string {
-  return value.replace(/"/g, '\\"');
+  return value
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
+    .replace(/\n/g, '\\n')
+    .replace(/\r/g, '\\r')
+    .replace(/\t/g, '\\t');
 }

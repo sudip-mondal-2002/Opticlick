@@ -1,5 +1,5 @@
 import {
-  getSessionById,
+  getSession,
   getConversationHistory,
   listVFSFiles,
 } from '../db';
@@ -9,7 +9,7 @@ import type { SessionExportBundle } from './types';
 import { extractMemoryUpdates, extractSummary, inferStartUrl } from './helpers';
 
 export async function loadSessionExportBundle(sessionId: number): Promise<SessionExportBundle> {
-  const session = await getSessionById(sessionId);
+  const session = await getSession(sessionId);
   if (!session) {
     throw new Error(`Session ${sessionId} not found`);
   }

@@ -1,4 +1,14 @@
-export { createSession, getSessionById, getSessions, touchSession, updateSession } from './sessions';
+export {
+  createSession,
+  getSession,
+  getSession as getSessionById,
+  getSessions,
+  touchSession,
+  updateSession,
+  updateSessionMetadata,
+  appendToSessionSearchText,
+} from './sessions';
+export type { CreateSessionOptions, SessionMetadataPatch } from './sessions';
 export { appendConversationTurn, getConversationHistory } from './conversations';
 export type { ConversationTurn } from './conversations';
 export { saveVFSFile, getVFSFile, listVFSFiles, deleteVFSFile, writeVFSFile, clearVFSFiles } from './vfs';

@@ -7,7 +7,14 @@
  *                     resulting user/model turns in IndexedDB.
  */
 
-import { appendConversationTurn, getConversationHistory, touchSession, saveVFSFile, listVFSFiles } from '@/utils/db';
+import {
+  appendConversationTurn,
+  appendToSessionSearchText,
+  getConversationHistory,
+  touchSession,
+  saveVFSFile,
+  listVFSFiles,
+} from '@/utils/db';
 import { callModel } from '@/utils/llm';
 import type { InlineImage } from '@/utils/llm';
 import type { RunnableConfig } from '@langchain/core/runnables';
@@ -101,8 +108,10 @@ export async function reasonNode(state: AgentState, config: RunnableConfig): Pro
   if (reasoning) await log(reasoning, 'info');
 
   // Gemini requires a user turn immediately before a function-call turn
-  await appendConversationTurn(state.sessionId, 'user', `[Step ${state.step}] Task: ${state.userPrompt}`);
+  const userTurn = `[Step ${state.step}] Task: ${state.userPrompt}`;
+  await appendConversationTurn(state.sessionId, 'user', userTurn);
   await appendConversationTurn(state.sessionId, 'model', reasoning || '', { toolCalls: rawToolCalls });
+  await appendToSessionSearchText(state.sessionId, `${state.userPrompt} ${reasoning ?? ''}`);
   await touchSession(state.sessionId);
 
   return { actions, rawToolCalls, reasoning: reasoning || '', thinking: thinking || '', done, llmFailed: false };
