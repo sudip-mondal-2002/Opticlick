@@ -217,14 +217,23 @@ export const debuggerShim = {
       case 'Runtime.evaluate': {
         if (!win) return { result: { type: 'undefined', value: undefined } };
         try {
-          // Use indirect eval in the iframe's context
-          const fn = new win.Function(params?.expression as string);
-          const value = fn();
+          const expr = params?.expression as string;
+          let value;
+          try {
+            // Attempt to treat it as a returnable expression first
+            const fn = new win.Function(`return (${expr});`);
+            value = fn();
+          } catch {
+            // Fall back to statement block execution
+            const fn = new win.Function(expr);
+            value = fn();
+          }
           return { result: { type: typeof value, value } };
         } catch (e) {
           return { result: { type: 'undefined' }, exceptionDetails: { text: (e as Error).message } };
         }
       }
+
 
       // ── No-ops ────────────────────────────────────────────────────────────
       case 'Page.setInterceptFileChooserDialog':
