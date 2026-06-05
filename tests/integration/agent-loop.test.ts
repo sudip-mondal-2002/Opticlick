@@ -59,7 +59,7 @@ describe('runAgentLoop logic-based E2E flow tests', () => {
 
     // Configure debugger mock for captureScreenshot
     const dbg = getMockDebugger();
-    dbg.sendCommand.mockImplementation(async (targetInfo, method, params) => {
+    dbg.sendCommand.mockImplementation(async (_targetInfo, method) => {
       if (method === 'Page.captureScreenshot') {
         return { data: 'a'.repeat(6000) };
       }

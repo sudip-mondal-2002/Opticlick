@@ -25,9 +25,9 @@ describe('IndexedDB Memory CRUD', () => {
     let now = 1000;
     const nowSpy = vi.spyOn(Date, 'now').mockImplementation(() => now);
 
-    const entry1 = await upsertMemory('key1', ['val1']);
+    await upsertMemory('key1', ['val1']);
     now = 2000;
-    const entry2 = await upsertMemory('key2', ['val2']);
+    await upsertMemory('key2', ['val2']);
 
     const all = await getAllMemories();
     nowSpy.mockRestore();

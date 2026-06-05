@@ -18,7 +18,7 @@ describe('waitForDOMIdle inner MutationObserver', () => {
   });
 
   it('resolves after quiet timeout when no mutations occur', async () => {
-    let injectedFunc: Function = () => {};
+    let injectedFunc: (...args: any[]) => any = () => {};
     let args: any[] = [];
 
     (globalThis.chrome.scripting as any).executeScript = vi.fn(async (config: any) => {

@@ -16,7 +16,6 @@ vi.mock('@langchain/core/tracers/tracer_langchain', () => ({
 }));
 
 describe('langsmith-config', () => {
-  const originalEnv = { ...import.meta.env };
 
   beforeEach(() => {
     vi.clearAllMocks();

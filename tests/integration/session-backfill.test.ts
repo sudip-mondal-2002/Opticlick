@@ -38,7 +38,7 @@ describe('backfillSessionMetadata', () => {
   });
 
   it('returns 0 when session needs backfill but history is empty', async () => {
-    const id = await createSession('Legacy empty');
+    await createSession('Legacy empty');
     const sessions = await getSessions();
     const updated = await backfillSessionMetadata(sessions);
     expect(updated).toBe(0);
