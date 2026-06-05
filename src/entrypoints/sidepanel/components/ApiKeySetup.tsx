@@ -64,7 +64,7 @@ export function ApiKeySetup({ onSave, onSaveCustom }: Props) {
       </div>
 
       {/* Title */}
-      <h2 className="text-[15px] font-bold text-slate-800 dark:text-slate-100 mb-1">
+      <h2 className="text-[15px] font-bold text-slate-800 dark:text-slate-100 mb-2">
         Opticlick Engine
       </h2>
 
