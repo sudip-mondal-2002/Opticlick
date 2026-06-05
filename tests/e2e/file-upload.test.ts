@@ -2,18 +2,18 @@
  * E2E tests for file upload via Chrome DevTools Protocol.
  *
  * Each test case mirrors a real-world upload pattern the agent must handle:
- *   1. Plain visible input (baseline)
- *   2. Hidden input triggered by a styled button
- *   3. Dynamically created input (React-style recreate-on-click)
- *   4. Multiple inputs on one page
- *   5. Input inside a Shadow DOM web component
- *   6. Drag-and-drop zone with hidden input fallback
- *   7. Input inside a modal dialog (appears after interaction)
- *   8. Multi-file input + change-event counter
- *   9. Auto-reset pattern (value cleared after each change)
+ * 1. Plain visible input (baseline)
+ * 2. Hidden input triggered by a styled button
+ * 3. Dynamically created input (React-style recreate-on-click)
+ * 4. Multiple inputs on one page
+ * 5. Input inside a Shadow DOM web component
+ * 6. Drag-and-drop zone with hidden input fallback
+ * 7. Input inside a modal dialog (appears after interaction)
+ * 8. Multi-file input + change-event counter
+ * 9. Auto-reset pattern (value cleared after each change)
  *
  * Run after `npm run build`:
- *   npm run build && npm run test:e2e
+ * npm run build && npm run test:e2e
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { chromium, type BrowserContext, type Page } from '@playwright/test';
@@ -136,7 +136,7 @@ beforeAll(async () => {
       `--load-extension=${EXTENSION_PATH}`,
     ],
   });
-});
+}, 60000); // 60s timeout protects the runner from dropping context instantiation parameters
 
 afterAll(async () => {
   await context?.close();
@@ -420,16 +420,6 @@ describe('Case 9 — auto-reset pattern (value cleared after each upload)', () =
 });
 
 // ── Agent upload flow — drag API (primary upload mechanism) ──────────────────
-//
-// The agent uses HTML5 DragEvent to deliver files to upload targets.
-// This is the ONLY mechanism that works for ALL upload patterns without EVER
-// opening an OS file dialog:
-//   • Drop zones: the drop handler reads e.dataTransfer.files directly
-//   • <input type="file">: Chrome's native drop handler sets input.files
-//   • Labels / buttons: we also dispatch on the associated file input directly
-//
-// No click events are dispatched — no dialog can open, period.
-// CRITICAL assertion: dialogEvents.length === 0 after every upload.
 
 /** Inject the same file dialog block the agent loop installs every step. */
 async function installFileDialogBlock(page: Page): Promise<void> {
@@ -477,10 +467,6 @@ async function installFileDialogBlock(page: Page): Promise<void> {
 
 /**
  * Simulate the agent's drag-drop upload.
- *
- * Dispatches dragenter → dragover → drop on BOTH the visible trigger element
- * (handles drop zones) AND the actual file input (handles input-based patterns).
- * No clicks, no OS file dialog possible.
  */
 async function dragDropFile(
   page: Page,
@@ -502,7 +488,6 @@ async function dragDropFile(
       }
       drag(document.querySelector(tSel));
       const inp = document.querySelector(iSel);
-      // Dispatch on file input separately if it differs from the trigger
       if (inp && inp !== document.querySelector(tSel)) drag(inp);
     },
     { tSel: triggerSelector, iSel: inputSelector, name: fileName, content },
@@ -512,15 +497,6 @@ async function dragDropFile(
 
 /**
  * Full agent upload flow — drag API first, CDP fallback for file inputs.
- *
- * Phase 1: Dispatch drag events on both the trigger element (handles explicit
- *   JS drop zones like CloudConvert that read e.dataTransfer.files) and on the
- *   file input directly.
- * Phase 2: If input.files is still empty after the drag (Chrome does not set
- *   files on <input type="file"> from untrusted DragEvents), use CDP
- *   DOM.setFileInputFiles as a no-dialog fallback.
- *
- * No OS file picker can open from either path. dialogEvents must stay empty.
  */
 async function agentUploadFlow(
   page: Page,
@@ -530,10 +506,8 @@ async function agentUploadFlow(
   fileName: string,
   content = 'opticlick e2e test content',
 ): Promise<void> {
-  // Phase 1: drag-drop (works for explicit drop zones)
   await dragDropFile(page, triggerSelector, inputSelector, fileName, content);
 
-  // Phase 2: CDP fallback (for <input type="file"> that ignore synthetic drops)
   const tmp = makeTempFile(fileName, content);
   try {
     const hasFiles = await page.evaluate((sel) => {
@@ -570,13 +544,11 @@ describe('Agent upload flow — drag API, no dialog', () => {
   it('dynamic input (CloudConvert pattern): drag-drop after input is created, no dialog', async () => {
     const { page, cdp, dialogEvents } = await openFixturePage();
     await installFileDialogBlock(page);
-    // JS click (untrusted) to trigger input creation — monkey-patch prevents any dialog
     await page.evaluate(() => {
       (window as any).__opticlick_fileInput = null;
       document.getElementById('dynamic-btn')!.click();
     });
     await page.waitForSelector('#dynamic-input');
-    // Drag-drop first, CDP fallback if input.files still empty
     await agentUploadFlow(page, '#dynamic-input', '#dynamic-input', '#dynamic-status', 'agent-dynamic.svg');
     expect(dialogEvents).toHaveLength(0);
     await cdp.detach();
@@ -601,7 +573,6 @@ describe('Agent upload flow — drag API, no dialog', () => {
 
   it('drag-and-drop zone: drag-drop onto drop zone, no dialog', async () => {
     const { page, cdp, dialogEvents } = await openFixturePage();
-    // For the drop zone, drag directly onto the zone element — its JS handler reads dataTransfer.files
     await dragDropFile(page, '#drop-zone', '#dropzone-input', 'agent-drop.zip');
     expect(await getText(page, '#dropzone-status')).toBe('agent-drop.zip');
     expect(dialogEvents).toHaveLength(0);
@@ -613,7 +584,6 @@ describe('Agent upload flow — drag API, no dialog', () => {
     const { page, cdp, dialogEvents } = await openFixturePage();
     await page.click('#open-modal-btn');
     await page.waitForTimeout(100);
-    // #modal-status shows "dialog open — file: <name>", so check with toContain
     await dragDropFile(page, '#modal-input', '#modal-input', 'agent-modal.pdf');
     const hasFiles = await page.evaluate(() => {
       const el = document.querySelector('#modal-input') as HTMLInputElement | null;
@@ -629,7 +599,6 @@ describe('Agent upload flow — drag API, no dialog', () => {
   it('showOpenFilePicker: blocked with AbortError by monkey-patch, no dialog', async () => {
     const { page, cdp, dialogEvents } = await openFixturePage();
     await installFileDialogBlock(page);
-    // JS click (untrusted, no user gesture) — showOpenFilePicker is monkey-patched to abort
     await page.evaluate(() => document.getElementById('picker-btn')!.click());
     await page.waitForTimeout(500);
     expect(await getText(page, '#picker-status')).toBe('error: AbortError');
@@ -641,11 +610,9 @@ describe('Agent upload flow — drag API, no dialog', () => {
   it('all upload patterns: drag-drop + CDP fallback, zero dialogs', async () => {
     const { page, cdp, dialogEvents } = await openFixturePage();
 
-    // File inputs: drag-drop fires (drop zones benefit), CDP fallback delivers for inputs
     await agentUploadFlow(page, '#plain-input', '#plain-input', '#plain-status', 'all-plain.txt');
     await agentUploadFlow(page, '#attach-btn', '#hidden-input', '#hidden-status', 'all-hidden.pdf');
 
-    // Dynamic: JS click (untrusted) creates the input, then agentUploadFlow
     await installFileDialogBlock(page);
     await page.evaluate(() => document.getElementById('dynamic-btn')!.click());
     await page.waitForSelector('#dynamic-input');
@@ -654,33 +621,20 @@ describe('Agent upload flow — drag API, no dialog', () => {
     await agentUploadFlow(page, '#label-for-btn', '#label-for-input', '#label-for-status', 'all-label.pdf');
     await agentUploadFlow(page, '#wrapping-label', '#wrapped-input', '#wrapped-status', 'all-wrapped.doc');
 
-    // Drop zone: drag-drop handles it natively (no CDP fallback needed)
     await dragDropFile(page, '#drop-zone', '#dropzone-input', 'all-drop.zip');
     expect(await getText(page, '#dropzone-status')).toBe('all-drop.zip');
 
-    // showOpenFilePicker: blocked, no dialog
     await page.evaluate(() => document.getElementById('picker-btn')!.click());
     await page.waitForTimeout(300);
     expect(await getText(page, '#picker-status')).toBe('error: AbortError');
 
-    // THE assertion: not a single file dialog was triggered
     expect(dialogEvents).toHaveLength(0);
-
     await cdp.detach();
     await page.close();
   });
 });
 
 // ── Hardware click on upload elements — guard must prevent any dialog ─────────
-//
-// These tests use Input.dispatchMouseEvent (real hardware-level clicks, same as
-// the agent loop uses for ALL non-upload clicks). They verify that the
-// __opticlick_clickGuard (capture-phase listener) and the HTMLInputElement
-// monkey-patch prevent ANY file chooser dialog from opening, even when hardware
-// clicks land directly on labels or file-input-triggering buttons.
-//
-// If Page.fileChooserOpened fires here, dialogEvents.length > 0 and the test
-// FAILS — which is exactly the bug the user reported. The test catches it.
 
 async function hardwareClick(page: Page, selector: string): Promise<void> {
   const el = page.locator(selector);
@@ -689,10 +643,6 @@ async function hardwareClick(page: Page, selector: string): Promise<void> {
   if (!bbox) throw new Error(`${selector} bounding box not found`);
   const x = bbox.x + bbox.width / 2;
   const y = bbox.y + bbox.height / 2;
-  // Disable all file inputs before the hardware click.
-  // Disabled inputs cannot be activated through any path (label, button, direct click),
-  // so the OS file picker cannot open. This is the same guard the agent loop applies.
-  // CDP DOM.setFileInputFiles bypasses the disabled check, so uploads still work.
   await page.evaluate(() => {
     document.querySelectorAll<HTMLInputElement>('input[type="file"]').forEach(i => {
       i.dataset.ocfd = i.disabled ? '1' : '0';
@@ -707,7 +657,6 @@ async function hardwareClick(page: Page, selector: string): Promise<void> {
   } finally {
     await session.detach();
   }
-  // Re-enable file inputs after the click
   await page.evaluate(() => {
     document.querySelectorAll<HTMLInputElement>('[data-ocfd]').forEach(i => {
       i.disabled = i.dataset.ocfd === '1';

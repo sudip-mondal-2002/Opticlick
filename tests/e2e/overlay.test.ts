@@ -1,9 +1,6 @@
-/**
- * E2E tests for the overlay (Set-of-Mark canvas).
- *
- * Run after `npm run build`.
- * Usage: npm run build && npm run test:e2e
- */
+/* global chrome */
+declare const chrome: any;
+
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { chromium, type BrowserContext } from '@playwright/test';
 import * as path from 'path';
@@ -38,7 +35,7 @@ beforeAll(async () => {
   if (!context.serviceWorkers().length) {
     await context.waitForEvent('serviceworker');
   }
-});
+}, 60000); // 60s timeout protects the runner from clipping on heavy browser instantiations
 
 afterAll(async () => {
   await context?.close();
@@ -50,13 +47,11 @@ describe('Overlay draw and destroy', () => {
     await page.goto(`file://${FIXTURE_PATH}`);
 
     // Inject the content script manually and trigger DRAW_MARKS
-    // The extension injects it automatically on real navigation, but file:// pages
-    // may need manual injection in some Chromium versions.
     await page.evaluate(async () => {
-      // Simulate what the background sends to the content script
+      // Safe to evaluate inside the browser window context now
       const result = await chrome.runtime.sendMessage({ type: 'DRAW_MARKS' }).catch(() => null);
       return result;
-    }).catch(() => null); // May fail if extension hasn't loaded content script yet
+    }).catch(() => null); 
 
     // Alternatively, directly invoke the overlay module
     await page.evaluate(() => {
