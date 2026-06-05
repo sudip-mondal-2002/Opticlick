@@ -86,20 +86,6 @@ flowchart TB
     BG -->|"CDP Hardware Events"| WT
     BG <-->|"IndexedDB Reads/Writes"| DB
     BG -->|"Secure Requests"| Models
-```                                                              │
-│  ┌────────────────────────────────────────────────────────────┐ │
-│  │                     IndexedDB                              │ │
-│  │  sessions | conversations | VFS | memory                   │ │
-│  └────────────────────────────────────────────────────────────┘ │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              │ HTTPS
-                              ▼
-                   ┌─────────────────────┐
-                   │  LLM APIs           │
-                   │  Gemini (Google AI) │
-                   │  Ollama (localhost) │
-                   └─────────────────────┘
 ```
 
 ---
