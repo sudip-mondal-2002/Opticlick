@@ -535,8 +535,9 @@ function injectContentScript(html) {
       ).slice(0, 40);
     }
 
-    const text = (el.textContent ?? '').trim().replace(/\s+/g, ' ');
+    const text = (el.textContent ?? '').trim().replace(/\\s+/g, ' ');
     if (text) return text.slice(0, 40);
+
 
     return tag;
   }
