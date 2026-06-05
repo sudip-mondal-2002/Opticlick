@@ -1,11 +1,12 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import React from 'react';
-import { createRoot } from 'react-dom/client';
+import { createRoot, type Root } from 'react-dom/client';
 import { act } from 'react';
 import App from '@/entrypoints/sidepanel/App';
+import type { Session } from '@/utils/types';
 
 // Mock DB helper functions
-const mockSessions = [
+const mockSessions: Session[] = [
   { id: 100, title: 'Session 100', createdAt: 1000, updatedAt: 1000 },
   { id: 200, title: 'Session 200', createdAt: 2000, updatedAt: 2000 },
 ];
@@ -59,7 +60,7 @@ vi.mock('@/entrypoints/sidepanel/components/ChatFeed', () => ({
   ChatFeed: () => <div data-testid="chat-feed" />
 }));
 vi.mock('@/entrypoints/sidepanel/components/SessionsOverlay', () => ({
-  SessionsOverlay: ({ onResume, sessions }: { onResume: (s: any) => void; sessions: any[] }) => (
+  SessionsOverlay: ({ onResume, sessions }: { onResume: (s: Session) => void; sessions: Session[] }) => (
     <div data-testid="sessions-overlay">
       {sessions.map((s) => (
         <button key={s.id} data-testid={`resume-session-${s.id}`} onClick={() => onResume(s)}>
@@ -75,30 +76,30 @@ vi.mock('@/entrypoints/sidepanel/components/TemplatesOverlay', () => ({
 
 describe('Sidepanel App Sessions', () => {
   let container: HTMLDivElement;
-  let root: any;
+  let root: Root | null = null;
 
   beforeEach(() => {
-    (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
+    (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
     // Stub Chrome API
-    const storageLocal: Record<string, any> = {
+    const storageLocal: Record<string, unknown> = {
       geminiApiKey: 'mock-gemini-key',
       selectedModel: 'gemini-3.1-flash',
     };
-    const storageSession: Record<string, any> = {
+    const storageSession: Record<string, unknown> = {
       agentState: { status: 'stopped', sessionId: null, step: 0 },
       agentLog: [],
     };
-    const listeners = new Set<Function>();
+    const listeners = new Set<Parameters<typeof chrome.runtime.onMessage.addListener>[0]>();
 
-    (globalThis as any).chrome = {
+    (globalThis as unknown as { chrome: unknown }).chrome = {
       storage: {
         local: {
           get: vi.fn(async (keys: string[]) => {
-            const res: Record<string, any> = {};
+            const res: Record<string, unknown> = {};
             keys.forEach((k) => { res[k] = storageLocal[k]; });
             return res;
           }),
-          set: vi.fn(async (data: any) => {
+          set: vi.fn(async (data: Record<string, unknown>) => {
             Object.assign(storageLocal, data);
           }),
         },
@@ -107,19 +108,23 @@ describe('Sidepanel App Sessions', () => {
             if (typeof key === 'string') {
               return { [key]: storageSession[key] };
             }
-            const res: Record<string, any> = {};
+            const res: Record<string, unknown> = {};
             key.forEach((k) => { res[k] = storageSession[k]; });
             return res;
           }),
-          set: vi.fn(async (data: any) => {
+          set: vi.fn(async (data: Record<string, unknown>) => {
             Object.assign(storageSession, data);
           }),
         },
       },
       runtime: {
         onMessage: {
-          addListener: vi.fn((cb) => listeners.add(cb)),
-          removeListener: vi.fn((cb) => listeners.delete(cb)),
+          addListener: vi.fn((cb: Parameters<typeof chrome.runtime.onMessage.addListener>[0]) => {
+            listeners.add(cb);
+          }),
+          removeListener: vi.fn((cb: Parameters<typeof chrome.runtime.onMessage.addListener>[0]) => {
+            listeners.delete(cb);
+          }),
         },
       },
     };
