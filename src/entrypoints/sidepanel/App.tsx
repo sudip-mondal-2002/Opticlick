@@ -230,33 +230,19 @@ function AgentUI() {
   };
 
   // ── Agent state / logs ─────────────────────────────────────────────────────
-const refreshSessions = useCallback(async () => {
-  const sessions = await getSessions();
+  const refreshSessions = useCallback(async () => {
+    const sessions = await getSessions();
 
-  setSessions(sessions);
+    setSessions(sessions);
 
-<<<<<<< HEAD
-  if (sessions.length === 0) {
-    setCurrentSessionId(null);
-  } else if (currentSessionId === undefined) {
-    setCurrentSessionId(sessions[0].id ?? null);
-  } else if (
-    currentSessionId !== null &&
-    !sessions.some((session) => session.id === currentSessionId)
-  ) {
-    setCurrentSessionId(null);
-  }
-}, [currentSessionId]);
-=======
-  // Only update currentSessionId if the currently selected one was deleted.
-  setCurrentSessionId((prev) => {
-    if (prev != null && !sessions.some((s) => s.id === prev)) {
-      return null;
-    }
-    return prev;
-  });
-}, []);
->>>>>>> 1c74cbb (Add session export functionality)
+    // Only update currentSessionId if the currently selected one was deleted.
+    setCurrentSessionId((prev) => {
+      if (prev != null && !sessions.some((s) => s.id === prev)) {
+        return null;
+      }
+      return prev;
+    });
+  }, []);
 
   const appendLog = useCallback((message: string, level = 'info') => {
     const ts = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
