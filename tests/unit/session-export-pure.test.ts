@@ -76,6 +76,14 @@ describe('session-export', () => {
       expect(data.session.status).toBe('in_progress');
     });
 
+    it('detects stopped status when agent state belongs to a different session', async () => {
+      // Agent is active, but for a *different* session — so this session is stopped/inactive
+      vi.mocked(getAgentState).mockResolvedValue({ sessionId: 999, status: 'running', step: 5 } as any);
+      const data = await getSessionExportData(1);
+      expect(data.session.status).toBe('stopped');
+      expect(data.session.outcomeSummary).toBe('Session stopped or inactive');
+    });
+
     it('handles large files by omitting their data', async () => {
       vi.mocked(listVFSFiles).mockResolvedValue([
         { id: '2', name: 'big.mp4', mimeType: 'video/mp4', size: 2 * 1024 * 1024, createdAt: 1000, data: 'dummy_b64' }
