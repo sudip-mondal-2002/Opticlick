@@ -235,6 +235,7 @@ const refreshSessions = useCallback(async () => {
 
   setSessions(sessions);
 
+<<<<<<< HEAD
   if (sessions.length === 0) {
     setCurrentSessionId(null);
   } else if (currentSessionId === undefined) {
@@ -246,6 +247,16 @@ const refreshSessions = useCallback(async () => {
     setCurrentSessionId(null);
   }
 }, [currentSessionId]);
+=======
+  // Only update currentSessionId if the currently selected one was deleted.
+  setCurrentSessionId((prev) => {
+    if (prev != null && !sessions.some((s) => s.id === prev)) {
+      return null;
+    }
+    return prev;
+  });
+}, []);
+>>>>>>> 1c74cbb (Add session export functionality)
 
   const appendLog = useCallback((message: string, level = 'info') => {
     const ts = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -362,6 +373,7 @@ const refreshSessions = useCallback(async () => {
     setStreamingThinking('');
     setChatInputKey((k) => k + 1);
     textareaRef.current?.focus();
+    chrome.storage.session.remove(['agentState', 'agentLog']);
   };
 
   const handleResumeSession = async (session: Session) => {

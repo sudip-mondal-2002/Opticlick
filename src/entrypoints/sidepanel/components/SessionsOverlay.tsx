@@ -10,6 +10,7 @@ import {
 import { HighlightedText } from '@/utils/highlight-match';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { backfillSessionMetadata } from '@/utils/session-backfill';
+import { exportSessionAsJson, exportSessionAsMarkdown } from '@/utils/session-export';
 
 function formatSessionDate(ts: number): string {
   return new Date(ts).toLocaleDateString(undefined, {
@@ -63,35 +64,95 @@ function SessionCard({
   query,
   modelLabel,
   onOpen,
+  onExport,
 }: {
   session: Session;
   query: string;
   modelLabel: (id: string) => string;
   onOpen: (s: Session) => void;
+  onExport: (s: Session, format: 'json' | 'markdown') => void;
 }) {
+  const [dropdownOpen, setDropdownOpen] = useState(false);
   const metaParts = [formatSessionDate(session.updatedAt)];
   if (session.modelId) metaParts.push(modelLabel(session.modelId));
 
   return (
-    <button
-      onClick={() => onOpen(session)}
-      className="w-full text-left px-4 py-3 flex items-start gap-3 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors border-b border-slate-100 dark:border-slate-800/60 last:border-b-0 group"
+    <div
+      className="w-full text-left px-4 py-3 flex items-center justify-between gap-3 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors border-b border-slate-100 dark:border-slate-800/60 last:border-b-0 group relative"
     >
-      <div className="mt-0.5 shrink-0 w-6 h-6 rounded-full bg-sky-100 dark:bg-sky-950/60 border border-sky-200 dark:border-sky-800/60 flex items-center justify-center text-sky-500">
-        <HistoryIcon />
+      <div
+        onClick={() => onOpen(session)}
+        className="flex items-start gap-3 flex-1 min-w-0 cursor-pointer"
+      >
+        <div className="mt-0.5 shrink-0 w-6 h-6 rounded-full bg-sky-100 dark:bg-sky-950/60 border border-sky-200 dark:border-sky-800/60 flex items-center justify-center text-sky-500">
+          <HistoryIcon />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-[12px] font-medium text-slate-700 dark:text-slate-200 leading-snug line-clamp-2">
+            <HighlightedText text={session.title} query={query} />
+          </p>
+          <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">
+            {metaParts.join(' · ')}
+          </p>
+        </div>
       </div>
-      <div className="flex-1 min-w-0">
-        <p className="text-[12px] font-medium text-slate-700 dark:text-slate-200 leading-snug line-clamp-2">
-          <HighlightedText text={session.title} query={query} />
-        </p>
-        <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">
-          {metaParts.join(' · ')}
-        </p>
+
+      <div className="relative shrink-0 flex items-center gap-1.5">
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            setDropdownOpen(!dropdownOpen);
+          }}
+          className="p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
+          title="Export Session"
+          aria-label="Export menu"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="7 10 12 15 17 10" />
+            <line x1="12" y1="15" x2="12" y2="3" />
+          </svg>
+        </button>
+
+        {dropdownOpen && (
+          <>
+            <div
+              className="fixed inset-0 z-40"
+              onClick={(e) => {
+                e.stopPropagation();
+                setDropdownOpen(false);
+              }}
+            />
+            <div className="absolute right-7 top-7 w-28 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-md shadow-lg py-1 z-50 text-[11px]">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setDropdownOpen(false);
+                  onExport(session, 'json');
+                }}
+                className="w-full text-left px-3 py-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200"
+              >
+                Export JSON
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setDropdownOpen(false);
+                  onExport(session, 'markdown');
+                }}
+                className="w-full text-left px-3 py-1.5 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200"
+              >
+                Export MD
+              </button>
+            </div>
+          </>
+        )}
+
+        <span className="text-slate-300 dark:text-slate-600 group-hover:text-slate-400 dark:group-hover:text-slate-400 transition-colors pointer-events-none">
+          <ChevronIcon />
+        </span>
       </div>
-      <span className="shrink-0 text-slate-300 dark:text-slate-600 group-hover:text-slate-400 dark:group-hover:text-slate-400 mt-1 transition-colors">
-        <ChevronIcon />
-      </span>
-    </button>
+    </div>
   );
 }
 
@@ -139,6 +200,40 @@ export function SessionsOverlay({ sessions, onClose, onResume, onRefresh, modelL
   }, [sessions, debouncedQuery, datePreset, modelFilter, sort]);
 
   const hasActiveFilters = query.trim() !== '' || datePreset !== 'all' || modelFilter !== '';
+
+  const handleExport = async (session: Session, format: 'json' | 'markdown') => {
+    if (session.id == null) return;
+    try {
+      const content = format === 'json' 
+        ? await exportSessionAsJson(session.id) 
+        : await exportSessionAsMarkdown(session.id);
+        
+      const slug = session.title
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/(^-|-$)/g, '')
+        .slice(0, 30);
+      const ext = format === 'markdown' ? 'md' : 'json';
+      const filename = `opticlick-session-${session.id}-${slug || 'untitled'}.${ext}`;
+
+      const blob = new Blob([content], { 
+        type: format === 'json' ? 'application/json' : 'text/markdown' 
+      });
+      const url = URL.createObjectURL(blob);
+      
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+    } catch (err) {
+      console.error('Export failed:', err);
+      alert(`Export failed: ${(err as Error).message}`);
+    }
+  };
 
   return (
     <div className="absolute inset-0 z-30 flex flex-col bg-white dark:bg-slate-950">
@@ -238,6 +333,7 @@ export function SessionsOverlay({ sessions, onClose, onResume, onRefresh, modelL
               query={debouncedQuery}
               modelLabel={modelLabel}
               onOpen={(s) => { onResume(s); onClose(); }}
+              onExport={handleExport}
             />
           ))}
         </div>
