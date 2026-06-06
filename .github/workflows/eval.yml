@@ -1,0 +1,79 @@
+name: LLM Eval — LangSmith (Gemma 4)
+
+on:
+  workflow_dispatch:
+    inputs:
+      filter:
+        description: 'Which cases to run: non-auth | all | easy | medium | hard'
+        required: false
+        default: 'non-auth'
+      threshold:
+        description: 'Minimum pass rate 0-100'
+        required: false
+        default: '70'
+
+jobs:
+  eval:
+    name: Run LangSmith Evals
+    runs-on: ubuntu-latest
+    # Hard cap — prevents a hung test from blocking the runner indefinitely
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install ffmpeg + ffprobe
+        run: sudo apt-get install -y ffmpeg
+
+      - name: Install Playwright Chromium
+        run: npx playwright install chromium --with-deps
+
+      - name: Copy icons (required before build)
+        run: npm run copy-icons
+
+      - name: Build extension
+        run: npm run build
+
+      - name: Run eval suite
+        env:
+          # ── Phase 1: required ──────────────────────────────────────────────
+          LANGSMITH_API_KEY: ${{ secrets.LANGSMITH_API_KEY }}
+          LANGSMITH_PROJECT: opticlick-evals
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          EVAL_FILTER: ${{ inputs.filter }}
+          EVAL_THRESHOLD: ${{ inputs.threshold }}
+          # ── Phase 2: auth secrets (leave empty until accounts are ready) ───
+          GITHUB_EVAL_TOKEN: ${{ secrets.GITHUB_EVAL_TOKEN }}
+          GOOGLE_EVAL_EMAIL: ${{ secrets.GOOGLE_EVAL_EMAIL }}
+          GOOGLE_EVAL_PASSWORD: ${{ secrets.GOOGLE_EVAL_PASSWORD }}
+          TWITTER_EVAL_EMAIL: ${{ secrets.TWITTER_EVAL_EMAIL }}
+          TWITTER_EVAL_PASSWORD: ${{ secrets.TWITTER_EVAL_PASSWORD }}
+          LINKEDIN_EVAL_EMAIL: ${{ secrets.LINKEDIN_EVAL_EMAIL }}
+          LINKEDIN_EVAL_PASSWORD: ${{ secrets.LINKEDIN_EVAL_PASSWORD }}
+          REDDIT_EVAL_EMAIL: ${{ secrets.REDDIT_EVAL_EMAIL }}
+          REDDIT_EVAL_PASSWORD: ${{ secrets.REDDIT_EVAL_PASSWORD }}
+          NOTION_EVAL_EMAIL: ${{ secrets.NOTION_EVAL_EMAIL }}
+          NOTION_EVAL_PASSWORD: ${{ secrets.NOTION_EVAL_PASSWORD }}
+          DISCORD_EVAL_TOKEN: ${{ secrets.DISCORD_EVAL_TOKEN }}
+        # xvfb-run provides a virtual display — required since extensions need headless:false
+        run: xvfb-run --auto-servernum -- npm run eval
+
+      - name: Upload eval artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-results-${{ github.run_id }}
+          path: evals/results/
+          retention-days: 14
