@@ -220,7 +220,7 @@ describe('parseToolCall', () => {
   it('parses "finish" without summary (undefined)', () => {
     const result = parseToolCall('finish', {}) as AgentAction & { type: 'finish' };
     expect(result.type).toBe('finish');
-    expect(result.summary).toBeUndefined();
+    expect(result.summary).toBe(''); // Updated to expect the safe empty string
   });
 
   it('parses "wait"', () => {

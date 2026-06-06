@@ -14,7 +14,7 @@ const CANVAS_ID = '__opticlick_overlay__';
 
 // Minimal canvas 2D context stub — jsdom throws on getContext('2d')
 function stubCanvasContext(canvas: HTMLCanvasElement) {
-  const ctx: Partial<CanvasRenderingContext2D> & { roundRect?: unknown } = {
+  const ctx: Partial<CanvasRenderingContext2D> = {
     scale: vi.fn(),
     strokeRect: vi.fn(),
     fillRect: vi.fn(),
@@ -26,19 +26,26 @@ function stubCanvasContext(canvas: HTMLCanvasElement) {
     fillStyle: '',
     lineWidth: 0,
     font: '',
-    textBaseline: 'middle' as CanvasTextBaseline,
+    textBaseline: 'middle',
+    roundRect: vi.fn(), // Stubbed in case overlay uses modern rounded rectangles
   };
   vi.spyOn(canvas, 'getContext').mockReturnValue(ctx as unknown as CanvasRenderingContext2D);
 }
 
-// Intercept createElement('canvas') to inject our stub
+// Intercept createElement('canvas') to inject our stub safely
 function interceptCanvasCreation() {
-  const original = document.createElement.bind(document);
-  vi.spyOn(document, 'createElement').mockImplementation((tag: string, ...rest) => {
-    const el = original(tag, ...(rest as []));
-    if (tag === 'canvas') stubCanvasContext(el as HTMLCanvasElement);
+  const originalCreateElement = document.createElement.bind(document);
+  vi.spyOn(document, 'createElement').mockImplementation(function (
+    this: Document,
+    tagName: string,
+    options?: ElementCreationOptions
+  ) {
+    const el = originalCreateElement(tagName, options);
+    if (tagName.toLowerCase() === 'canvas') {
+      stubCanvasContext(el as HTMLCanvasElement);
+    }
     return el;
-  });
+  } as any);
 }
 
 // Give every element a non-zero rect so getVisibleRect passes
@@ -76,11 +83,11 @@ describe('destroyOverlay', () => {
 describe('drawOverlay', () => {
   beforeEach(() => {
     interceptCanvasCreation();
-    // jsdom doesn't implement elementFromPoint, assign directly
+    // jsdom doesn't implement elementFromPoint, mock and cast as any to satisfy TS
     document.elementFromPoint = vi.fn(() => {
       // Return the first button in body so the element "passes" the top-element check
       return document.querySelector('button') ?? document.body;
-    });
+    }) as any;
   });
 
   it('appends a canvas element to document.body', async () => {
@@ -107,16 +114,17 @@ describe('drawOverlay', () => {
 
   it('returns a CoordinateEntry for each visible interactable', async () => {
     const btn = makeVisibleElement('button', 'Submit');
-    document.elementFromPoint = vi.fn(() => btn);
+    document.elementFromPoint = vi.fn(() => btn) as any;
     const result = await drawOverlay();
     expect(result.length).toBeGreaterThan(0);
   });
 
   it('CoordinateEntry has id, tag, text, rect', async () => {
     const btn = makeVisibleElement('button', 'OK');
-    document.elementFromPoint = vi.fn(() => btn);
+    document.elementFromPoint = vi.fn(() => btn) as any;
     const result = await drawOverlay();
-    const entry = result.find((e) => e.tag === 'button');
+    const entry = result.find((e: any) => e.tag === 'button');
+    
     expect(entry).toBeDefined();
     expect(entry!.id).toBeGreaterThan(0);
     expect(entry!.tag).toBe('button');
@@ -139,17 +147,19 @@ describe('drawOverlay', () => {
       width: 200, height: 30, toJSON: () => ({}),
     } as DOMRect);
     document.body.appendChild(input);
-    document.elementFromPoint = vi.fn(() => input);
+    document.elementFromPoint = vi.fn(() => input) as any;
+    
     const result = await drawOverlay();
-    const entry = result.find((e) => e.tag === 'input');
+    const entry = result.find((e: any) => e.tag === 'input');
     expect(entry?.inputType).toBe('file');
   });
 
   it('does not add inputType for non-input elements', async () => {
     const btn = makeVisibleElement('button', 'Click');
-    document.elementFromPoint = vi.fn(() => btn);
+    document.elementFromPoint = vi.fn(() => btn) as any;
+    
     const result = await drawOverlay();
-    const entry = result.find((e) => e.tag === 'button');
+    const entry = result.find((e: any) => e.tag === 'button');
     expect(entry?.inputType).toBeUndefined();
   });
 
@@ -168,9 +178,11 @@ describe('drawOverlay', () => {
       x: 10.4, y: 20.7, left: 10.4, top: 20.7, right: 110.4, bottom: 50.7,
       width: 100, height: 30, toJSON: () => ({}),
     } as DOMRect);
-    document.elementFromPoint = vi.fn(() => btn);
+    document.elementFromPoint = vi.fn(() => btn) as any;
+    
     const result = await drawOverlay();
-    const entry = result.find((e) => e.tag === 'button');
+    const entry = result.find((e: any) => e.tag === 'button');
+    
     expect(entry).toBeDefined();
     expect(Number.isInteger(entry!.rect.x)).toBe(true);
     expect(Number.isInteger(entry!.rect.y)).toBe(true);
