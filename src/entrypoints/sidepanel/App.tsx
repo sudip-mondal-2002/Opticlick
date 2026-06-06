@@ -235,9 +235,13 @@ function AgentUI() {
 
     setSessions(sessions);
 
-    // Only update currentSessionId if the currently selected one was deleted.
     setCurrentSessionId((prev) => {
-      if (prev != null && !sessions.some((s) => s.id === prev)) {
+      // On first load (prev === undefined), auto-select the most recent session.
+      if (prev === undefined) {
+        return sessions.length > 0 ? (sessions[0].id ?? null) : null;
+      }
+      // If the previously selected session was deleted, clear the selection.
+      if (prev !== null && !sessions.some((s) => s.id === prev)) {
         return null;
       }
       return prev;
