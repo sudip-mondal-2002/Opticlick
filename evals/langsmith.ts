@@ -10,7 +10,6 @@
  */
 
 import { Client } from 'langsmith';
-import * as path from 'node:path';
 import * as crypto from 'node:crypto';
 import type { EvalCase, EvalResult } from './types.js';
 import type { ProgrammaticMetrics } from './metrics.js';
@@ -38,7 +37,7 @@ export async function loadCases(): Promise<EvalCase[]> {
     for await (const example of client.listExamples({ datasetName: LANGSMITH_DATASET_NAME })) {
       const inputs = example.inputs || {};
       const outputs = example.outputs || {};
-      
+
       all.push({
         id: (inputs.id as string) || example.id,
         title: (inputs.title as string) || 'Untitled Case',
