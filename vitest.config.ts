@@ -28,6 +28,17 @@ export default defineConfig({
           globals: true,
         },
       },
+      // ── Sandbox: mock Chrome APIs and proxy environments ─────────────────
+      {
+        resolve: { alias: srcAlias },
+        test: {
+          name: 'sandbox',
+          include: ['tests/sandbox/**/*.test.ts'],
+          environment: 'node',
+          globals: true,
+        },
+      },
+
       // ── Integration: IndexedDB + Chrome API mocks ────────────────────────
       {
         resolve: { alias: srcAlias },
@@ -48,7 +59,7 @@ export default defineConfig({
         resolve: { alias: srcAlias },
         test: {
           name: 'dom',
-          include: ['tests/dom/**/*.test.ts'],
+          include: ['tests/dom/**/*.test.{ts,tsx}'],
           environment: 'jsdom',
           setupFiles: ['tests/setup/dom-setup.ts'],
           globals: true,
@@ -72,9 +83,9 @@ export default defineConfig({
       provider: 'v8',
       include: ['src/utils/**', 'src/entrypoints/content/**'],
       exclude: [
-        'src/utils/llm.ts',
-        'src/utils/screenshot.ts',
-        'src/utils/tab-helpers.ts',
+        'src/utils/types.ts',
+        'src/utils/cdp/index.ts',
+        'src/utils/db/index.ts',
       ],
       reporter: ['text', 'html', 'lcov', 'json', 'json-summary'],
       reportOnFailure: true,

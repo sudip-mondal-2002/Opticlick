@@ -1,4 +1,4 @@
-import { openDB, CONV_STORE } from './core';
+import { openDB, CONV_STORE, CONV_BY_SESSION_INDEX } from './core';
 
 export interface ConversationTurn {
   id?: number;
@@ -40,7 +40,16 @@ export async function getConversationHistory(sessionId: number): Promise<Convers
   const db = await openDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(CONV_STORE, 'readonly');
-    const req = tx.objectStore(CONV_STORE).getAll();
+    const store = tx.objectStore(CONV_STORE);
+
+    if (store.indexNames.contains(CONV_BY_SESSION_INDEX)) {
+      const req = store.index(CONV_BY_SESSION_INDEX).getAll(sessionId);
+      req.onsuccess = (e) => resolve((e.target as IDBRequest).result as ConversationTurn[]);
+      req.onerror = (e) => reject((e.target as IDBRequest).error);
+      return;
+    }
+
+    const req = store.getAll();
     req.onsuccess = (e) =>
       resolve(((e.target as IDBRequest).result as ConversationTurn[]).filter((r) => r.sessionId === sessionId));
     req.onerror = (e) => reject((e.target as IDBRequest).error);

@@ -1,5 +1,13 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { createSession, getSessions, touchSession } from '@/utils/db';
+import {
+  createSession,
+  getSession,
+  getSessions,
+  touchSession,
+  updateSessionMetadata,
+  appendToSessionSearchText,
+} from '@/utils/db';
+import { openDB, CONV_STORE, CONV_BY_SESSION_INDEX } from '@/utils/db/core';
 
 afterEach(() => {
   vi.useRealTimers();
@@ -85,5 +93,60 @@ describe('touchSession', () => {
 
   it('is a no-op for non-existent sessionId', async () => {
     await expect(touchSession(99999)).resolves.toBeUndefined();
+  });
+});
+
+describe('createSession metadata', () => {
+  it('stores modelId, startUrl, and searchText', async () => {
+    const id = await createSession('Research task', {
+      modelId: 'gemini-3.1-flash-lite-preview',
+      startUrl: 'https://example.com',
+    });
+    const session = await getSession(id);
+    expect(session?.modelId).toBe('gemini-3.1-flash-lite-preview');
+    expect(session?.startUrl).toBe('https://example.com');
+    expect(session?.searchText).toContain('research task');
+    expect(session?.searchText).toContain('https://example.com');
+  });
+});
+
+describe('updateSessionMetadata', () => {
+  it('patches modelId and updates updatedAt', async () => {
+    const id = await createSession('Patch me');
+    const [before] = await getSessions();
+
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(before.updatedAt + 5000);
+    await updateSessionMetadata(id, { modelId: 'openai:gpt-4.1' });
+
+    const session = await getSession(id);
+    expect(session?.modelId).toBe('openai:gpt-4.1');
+    expect(session?.updatedAt).toBeGreaterThan(before.updatedAt);
+  });
+});
+
+describe('appendToSessionSearchText', () => {
+  it('appends conversation snippets to searchText', async () => {
+    const id = await createSession('Initial');
+    await appendToSessionSearchText(id, 'competitor pricing data');
+    const session = await getSession(id);
+    expect(session?.searchText).toContain('competitor pricing data');
+  });
+
+  it('does not duplicate existing snippet', async () => {
+    const id = await createSession('Initial');
+    await appendToSessionSearchText(id, 'same phrase');
+    await appendToSessionSearchText(id, 'same phrase');
+    const session = await getSession(id);
+    expect(session?.searchText?.match(/same phrase/g)?.length).toBe(1);
+  });
+});
+
+describe('DB v5 conversations index', () => {
+  it('creates by-session index on conversations store', async () => {
+    const db = await openDB();
+    const tx = db.transaction(CONV_STORE, 'readonly');
+    const store = tx.objectStore(CONV_STORE);
+    expect(store.indexNames.contains(CONV_BY_SESSION_INDEX)).toBe(true);
   });
 });

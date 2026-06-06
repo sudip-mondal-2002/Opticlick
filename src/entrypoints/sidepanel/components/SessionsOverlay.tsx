@@ -1,13 +1,31 @@
+import { useEffect, useMemo, useState } from 'react';
 import type { Session } from '@/utils/types';
+import {
+  searchSessions,
+  dateRangeToBounds,
+  uniqueSessionModelIds,
+  type DateRangePreset,
+  type SessionSort,
+} from '@/utils/session-search';
+import { HighlightedText } from '@/utils/highlight-match';
+import { useDebouncedValue } from '../hooks/useDebouncedValue';
+import { backfillSessionMetadata } from '@/utils/session-backfill';
 
-function formatRelativeDate(ts: number): string {
-  const diff = Date.now() - ts;
-  const mins = Math.floor(diff / 60_000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return `${Math.floor(hours / 24)}d ago`;
+function formatSessionDate(ts: number): string {
+  return new Date(ts).toLocaleDateString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+}
+
+function SearchIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-400">
+      <circle cx="11" cy="11" r="8" />
+      <line x1="21" y1="21" x2="16.65" y2="16.65" />
+    </svg>
+  );
 }
 
 function HistoryIcon() {
@@ -27,7 +45,33 @@ function ChevronIcon() {
   );
 }
 
-function SessionCard({ session, onOpen }: { session: Session; onOpen: (s: Session) => void }) {
+const DATE_PRESETS: { id: DateRangePreset; label: string }[] = [
+  { id: 'today', label: 'Today' },
+  { id: 'week', label: 'This week' },
+  { id: 'month', label: 'This month' },
+  { id: 'all', label: 'All time' },
+];
+
+const SORT_OPTIONS: { id: SessionSort; label: string }[] = [
+  { id: 'relevance', label: 'Relevance' },
+  { id: 'newest', label: 'Newest' },
+  { id: 'oldest', label: 'Oldest' },
+];
+
+function SessionCard({
+  session,
+  query,
+  modelLabel,
+  onOpen,
+}: {
+  session: Session;
+  query: string;
+  modelLabel: (id: string) => string;
+  onOpen: (s: Session) => void;
+}) {
+  const metaParts = [formatSessionDate(session.updatedAt)];
+  if (session.modelId) metaParts.push(modelLabel(session.modelId));
+
   return (
     <button
       onClick={() => onOpen(session)}
@@ -38,10 +82,10 @@ function SessionCard({ session, onOpen }: { session: Session; onOpen: (s: Sessio
       </div>
       <div className="flex-1 min-w-0">
         <p className="text-[12px] font-medium text-slate-700 dark:text-slate-200 leading-snug line-clamp-2">
-          {session.title}
+          <HighlightedText text={session.title} query={query} />
         </p>
         <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5">
-          {formatRelativeDate(session.updatedAt)}
+          {metaParts.join(' · ')}
         </p>
       </div>
       <span className="shrink-0 text-slate-300 dark:text-slate-600 group-hover:text-slate-400 dark:group-hover:text-slate-400 mt-1 transition-colors">
@@ -55,15 +99,56 @@ interface Props {
   sessions: Session[];
   onClose: () => void;
   onResume: (session: Session) => void;
+  onRefresh: () => Promise<void>;
+  modelLabel: (modelId: string) => string;
 }
 
-export function SessionsOverlay({ sessions, onClose, onResume }: Props) {
+export function SessionsOverlay({ sessions, onClose, onResume, onRefresh, modelLabel }: Props) {
+  const [query, setQuery] = useState('');
+  const [datePreset, setDatePreset] = useState<DateRangePreset>('all');
+  const [modelFilter, setModelFilter] = useState('');
+  const [sort, setSort] = useState<SessionSort>('newest');
+  const [backfilling, setBackfilling] = useState(false);
+
+  const debouncedQuery = useDebouncedValue(query, 200);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      setBackfilling(true);
+      try {
+        const updated = await backfillSessionMetadata(sessions);
+        if (!cancelled && updated > 0) await onRefresh();
+      } finally {
+        if (!cancelled) setBackfilling(false);
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on overlay mount
+  }, []);
+
+  const modelIds = useMemo(() => uniqueSessionModelIds(sessions), [sessions]);
+
+  const filtered = useMemo(() => {
+    const dateBounds = dateRangeToBounds(datePreset);
+    return searchSessions(sessions, debouncedQuery, {
+      ...dateBounds,
+      modelId: modelFilter || undefined,
+      sort: debouncedQuery.trim() ? sort : sort === 'relevance' ? 'newest' : sort,
+    });
+  }, [sessions, debouncedQuery, datePreset, modelFilter, sort]);
+
+  const hasActiveFilters = query.trim() !== '' || datePreset !== 'all' || modelFilter !== '';
+
   return (
     <div className="absolute inset-0 z-30 flex flex-col bg-white dark:bg-slate-950">
       <div className="shrink-0 flex items-center gap-2 px-3 py-2.5 bg-slate-50 dark:bg-slate-900/60 border-b border-slate-200 dark:border-slate-800">
         <span className="flex-1 text-[12px] font-semibold text-slate-700 dark:text-slate-200">
           Past Sessions
         </span>
+        {backfilling && (
+          <span className="text-[10px] text-slate-400 dark:text-slate-500">Indexing…</span>
+        )}
         <button
           onClick={onClose}
           className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 text-[11px] font-medium transition-colors"
@@ -72,17 +157,86 @@ export function SessionsOverlay({ sessions, onClose, onResume }: Props) {
         </button>
       </div>
 
+      {sessions.length > 0 && (
+        <div className="shrink-0 px-3 py-2 space-y-2 border-b border-slate-100 dark:border-slate-800">
+          <div className="relative">
+            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none">
+              <SearchIcon />
+            </span>
+            <input
+              autoFocus
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search sessions…"
+              className="w-full pl-8 pr-2.5 py-1.5 text-[12px] border border-slate-200 dark:border-slate-700 rounded-[6px] bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-200 placeholder:text-slate-400 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20"
+            />
+          </div>
+          <div className="flex gap-2">
+            <select
+              value={datePreset}
+              onChange={(e) => setDatePreset(e.target.value as DateRangePreset)}
+              className="flex-1 min-w-0 px-2 py-1 text-[11px] border border-slate-200 dark:border-slate-700 rounded-[6px] bg-slate-50 dark:bg-slate-900 text-slate-700 dark:text-slate-200 outline-none focus:border-sky-500"
+              aria-label="Date range"
+            >
+              {DATE_PRESETS.map((p) => (
+                <option key={p.id} value={p.id}>{p.label}</option>
+              ))}
+            </select>
+            <select
+              value={modelFilter}
+              onChange={(e) => setModelFilter(e.target.value)}
+              className="flex-1 min-w-0 px-2 py-1 text-[11px] border border-slate-200 dark:border-slate-700 rounded-[6px] bg-slate-50 dark:bg-slate-900 text-slate-700 dark:text-slate-200 outline-none focus:border-sky-500"
+              aria-label="Model filter"
+            >
+              <option value="">All models</option>
+              {modelIds.map((id) => (
+                <option key={id} value={id}>{modelLabel(id)}</option>
+              ))}
+            </select>
+          </div>
+          <select
+            value={sort}
+            onChange={(e) => setSort(e.target.value as SessionSort)}
+            className="w-full px-2 py-1 text-[11px] border border-slate-200 dark:border-slate-700 rounded-[6px] bg-slate-50 dark:bg-slate-900 text-slate-700 dark:text-slate-200 outline-none focus:border-sky-500"
+            aria-label="Sort order"
+          >
+            {SORT_OPTIONS.map((o) => (
+              <option key={o.id} value={o.id}>{o.label}</option>
+            ))}
+          </select>
+        </div>
+      )}
+
       {sessions.length === 0 ? (
         <div className="flex flex-col items-center justify-center flex-1 gap-3 text-slate-400 dark:text-slate-600 px-8 text-center">
           <HistoryIcon />
           <p className="text-[12px]">No past sessions yet.</p>
         </div>
+      ) : filtered.length === 0 ? (
+        <div className="flex flex-col items-center justify-center flex-1 gap-3 text-slate-400 dark:text-slate-600 px-8 text-center">
+          <SearchIcon />
+          <p className="text-[12px]">
+            {hasActiveFilters ? 'No sessions match your search.' : 'No past sessions yet.'}
+          </p>
+          {hasActiveFilters && (
+            <button
+              type="button"
+              onClick={() => { setQuery(''); setDatePreset('all'); setModelFilter(''); }}
+              className="text-[11px] text-sky-600 dark:text-sky-400 hover:underline"
+            >
+              Clear filters
+            </button>
+          )}
+        </div>
       ) : (
         <div className="flex-1 overflow-y-auto log-scroll">
-          {sessions.map((session) => (
+          {filtered.map((session) => (
             <SessionCard
               key={session.id}
               session={session}
+              query={debouncedQuery}
+              modelLabel={modelLabel}
               onOpen={(s) => { onResume(s); onClose(); }}
             />
           ))}

@@ -1,0 +1,6 @@
+name = "opticlick-cors-proxy"
+main = "index.js"
+compatibility_date = "2024-03-01"
+
+# Cloudflare Workers configuration
+# No custom routes or bindings needed for this simple CORS proxy.

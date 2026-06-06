@@ -159,6 +159,11 @@ describe('formatTodoForPrompt', () => {
     expect(out.trimStart().startsWith(icon)).toBe(true);
   });
 
+  it('uses default icon ⭕ for an invalid/unexpected status', () => {
+    const out = formatTodoForPrompt([{ id: 't', title: 'T', status: 'invalid-status' as any }]);
+    expect(out.trimStart().startsWith('⭕')).toBe(true);
+  });
+
   it('includes notes when present and omits them when absent', () => {
     const withNotes = formatTodoForPrompt([{ id: 't', title: 'T', status: 'done', notes: 'note' }]);
     const noNotes  = formatTodoForPrompt([{ id: 't', title: 'T', status: 'done' }]);

@@ -2,21 +2,29 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { createAnyModel } from '@/utils/llm';
 import type { ApiKeys } from '@/utils/llm';
 
-// Mock all LLM constructors
+// Mock all LLM constructors using constructible functions (avoid arrow functions)
 vi.mock('@langchain/google-genai', () => ({
-  ChatGoogleGenerativeAI: vi.fn((config) => ({ _type: 'gemini', _config: config })),
+  ChatGoogleGenerativeAI: vi.fn(function (config) {
+    return { _type: 'gemini', _config: config };
+  }),
 }));
 
 vi.mock('@langchain/anthropic', () => ({
-  ChatAnthropic: vi.fn((config) => ({ _type: 'anthropic', _config: config })),
+  ChatAnthropic: vi.fn(function (config) {
+    return { _type: 'anthropic', _config: config };
+  }),
 }));
 
 vi.mock('@langchain/openai', () => ({
-  ChatOpenAI: vi.fn((config) => ({ _type: 'openai', _config: config })),
+  ChatOpenAI: vi.fn(function (config) {
+    return { _type: 'openai', _config: config };
+  }),
 }));
 
 vi.mock('@langchain/ollama', () => ({
-  ChatOllama: vi.fn((config) => ({ _type: 'ollama', _config: config })),
+  ChatOllama: vi.fn(function (config) {
+    return { _type: 'ollama', _config: config };
+  }),
 }));
 
 describe('createAnyModel dispatch', () => {

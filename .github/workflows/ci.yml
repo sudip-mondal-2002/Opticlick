@@ -63,8 +63,6 @@ jobs:
       # virtual display for the E2E tests. xvfb-run --auto-servernum picks a
       # free display number so parallel runners never collide.
       - name: Test all projects with coverage
-        env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: xvfb-run --auto-servernum -- npm run test:coverage
 
       # Post inline annotations on non-fork PRs (read-write token).
