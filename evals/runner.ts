@@ -122,7 +122,7 @@ async function main(): Promise<void> {
 
   fs.mkdirSync(RESULTS_DIR, { recursive: true });
 
-  const cases = loadCases();
+  const cases = await loadCases();
   if (cases.length === 0) {
     console.error('❌ No eval cases found. Check EVAL_FILTER / EVAL_IDS env vars.');
     process.exit(1);
@@ -151,6 +151,7 @@ async function main(): Promise<void> {
         caseId: evalCase.id,
         rawVideoPath: '',
         compressedVideoPath: '',
+        agentOutput: '',
         finishReason: 'error',
         durationSeconds: 0,
         numSteps: 0,

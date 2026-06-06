@@ -27,13 +27,35 @@ function getClient(): Client {
 }
 
 /**
- * Load eval cases from the local dataset.json.
+ * Load eval cases directly from LangSmith SDK instead of local dataset.json.
  * Filtered by:
  *   EVAL_IDS      = comma-separated case IDs  (e.g. "eval-001,eval-003")
  *   EVAL_FILTER   = difficulty level or "non-auth" | "all" | "easy" | "medium" | "hard"
  */
-export function loadCases(): EvalCase[] {
-  const all: EvalCase[] = JSON.parse(fs.readFileSync(DATASET_PATH, 'utf8'));
+export async function loadCases(): Promise<EvalCase[]> {
+  const client = getClient();
+  const all: EvalCase[] = [];
+
+  try {
+    for await (const example of client.listExamples({ datasetName: LANGSMITH_DATASET_NAME })) {
+      const inputs = example.inputs || {};
+      const outputs = example.outputs || {};
+      
+      all.push({
+        id: (inputs.id as string) || example.id,
+        title: (inputs.title as string) || 'Untitled Case',
+        difficulty: (inputs.difficulty as 'easy' | 'medium' | 'hard') || 'medium',
+        requiresAuth: (inputs.requiresAuth as boolean) || false,
+        timeoutMs: (inputs.timeoutMs as number) || 300000,
+        prompt: (inputs.prompt as string) || (inputs.input as string) || '',
+        expectedOutput: (outputs?.expectedOutput as string) || (outputs?.output as string) || '',
+      });
+    }
+  } catch (err) {
+    console.error(`❌ Failed to fetch dataset '${LANGSMITH_DATASET_NAME}' from LangSmith: ${(err as Error).message}`);
+    console.error('Make sure LANGSMITH_API_KEY is set and the dataset exists.');
+    process.exit(1);
+  }
 
   const ids = process.env.EVAL_IDS;
   if (ids) {
@@ -141,7 +163,7 @@ export async function logResult(
   for (const [key, score] of qualitativeScores) {
     await client.createFeedback(runId, key, {
       score: score as number,
-      source_info: { model: 'gemma-4-31b-it', type: 'llm_judge' },
+      sourceInfo: { model: 'gemma-4-31b-it', type: 'llm_judge' },
     });
   }
 
@@ -157,7 +179,7 @@ export async function logResult(
   for (const [key, score] of programmaticScores) {
     await client.createFeedback(runId, key, {
       score,
-      source_info: { type: 'programmatic' },
+      sourceInfo: { type: 'programmatic' },
     });
   }
 }
