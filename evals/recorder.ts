@@ -10,7 +10,6 @@
 import { spawnSync } from 'node:child_process';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
-import * as os from 'node:os';
 
 const FRAMES_DIR = path.resolve(process.cwd(), 'evals/results/frames');
 
