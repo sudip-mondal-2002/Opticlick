@@ -29,8 +29,12 @@ function makeArea(area: StorageArea): chrome.storage.LocalStorageArea {
         // Return all
         if (isLocal) {
           for (let i = 0; i < localStorage.length; i++) {
-            const k = localStorage.key(i)!;
-            try { result[k] = JSON.parse(localStorage.getItem(k)!); } catch { result[k] = localStorage.getItem(k); }
+            const k = localStorage.key(i);
+            if (k === null) continue;
+            const raw = localStorage.getItem(k);
+            if (raw !== null) {
+              try { result[k] = JSON.parse(raw); } catch { result[k] = raw; }
+            }
           }
         } else {
           sessionStore.forEach((v, k) => { result[k] = v; });

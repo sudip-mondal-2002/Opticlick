@@ -64,4 +64,14 @@ describe('onDetach listener (module-level)', () => {
     await attachDebugger(30);
     expect(getMockDebugger().attach).toHaveBeenCalledTimes(2);
   });
+
+  it('does not remove any tabId when the onDetach event has a null/undefined tabId', async () => {
+    // Covers the `if (tabId != null)` false branch in the module-level onDetach listener.
+    await attachDebugger(40);
+    // Fire onDetach with tabId: undefined — should be a no-op
+    getMockDebugger().onDetach._fire({ tabId: undefined });
+    // tabId=40 should still be in the Set, so re-attaching should be skipped
+    await attachDebugger(40);
+    expect(getMockDebugger().attach).toHaveBeenCalledTimes(1); // only the first attach
+  });
 });

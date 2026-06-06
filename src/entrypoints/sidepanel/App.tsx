@@ -89,7 +89,7 @@ function AgentUI() {
   const [sessions, setSessions] = useState<Session[]>([]);
   
   const [currentSessionId, setCurrentSessionId] =
-    useState<number | null>(null);
+    useState<number | null | undefined>(undefined);
 
   
 
@@ -237,11 +237,13 @@ const refreshSessions = useCallback(async () => {
 
   if (sessions.length === 0) {
     setCurrentSessionId(null);
+  } else if (currentSessionId === undefined) {
+    setCurrentSessionId(sessions[0].id ?? null);
   } else if (
-    currentSessionId == null ||
+    currentSessionId !== null &&
     !sessions.some((session) => session.id === currentSessionId)
   ) {
-    setCurrentSessionId(sessions[0].id ?? null);
+    setCurrentSessionId(null);
   }
 }, [currentSessionId]);
 
@@ -507,7 +509,7 @@ const refreshSessions = useCallback(async () => {
         />
       ) : (
         <VFSBrowser
-          sessionId={currentSessionId}
+          sessionId={currentSessionId ?? null}
         />
       )}
 

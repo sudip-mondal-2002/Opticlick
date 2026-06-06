@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+<body>
+
+<h2>Drag and Drop Test</h2>
+
+<div id="dragItem"
+     draggable="true"
+     style="width:150px;padding:10px;background:lightgray;border:1px solid black;">
+  Drag Me
+</div>
+
+<br><br>
+
+<div id="dropZone"
+     style="width:300px;height:150px;border:2px dashed blue;">
+  Drop Here
+</div>
+
+<script>
+const dragItem = document.getElementById("dragItem");
+const dropZone = document.getElementById("dropZone");
+
+dragItem.addEventListener("dragstart", (e) => {
+  e.dataTransfer.setData("text/plain", "dragged");
+});
+
+dropZone.addEventListener("dragover", (e) => {
+  e.preventDefault();
+});
+
+dropZone.addEventListener("drop", (e) => {
+  e.preventDefault();
+  dropZone.textContent = "Dropped Successfully!";
+});
+</script>
+
+</body>
+</html>
