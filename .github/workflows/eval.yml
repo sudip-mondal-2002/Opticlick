@@ -37,7 +37,7 @@ jobs:
         run: npm ci
 
       - name: Install ffmpeg + ffprobe
-        run: sudo apt-get install -y ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
 
       - name: Install Playwright Chromium
         run: npx playwright install chromium --with-deps
