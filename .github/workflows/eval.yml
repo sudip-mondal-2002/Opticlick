@@ -1,6 +1,8 @@
 name: LLM Eval — LangSmith (Gemma 4)
 
 on:
+  push:
+    branches: ['feature/langsmith-eval-pipeline']
   pull_request:
     branches: [main]
   workflow_dispatch:
