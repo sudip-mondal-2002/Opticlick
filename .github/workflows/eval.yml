@@ -72,7 +72,9 @@ jobs:
           NOTION_EVAL_PASSWORD: ${{ secrets.NOTION_EVAL_PASSWORD }}
           DISCORD_EVAL_TOKEN: ${{ secrets.DISCORD_EVAL_TOKEN }}
         # xvfb-run provides a virtual display — required since extensions need headless:false
-        run: xvfb-run --auto-servernum -- npm run eval
+        run: |
+          xvfb-run --auto-servernum -- npm run eval:auth-setup
+          xvfb-run --auto-servernum -- npm run eval
 
       - name: Upload eval artifacts
         if: always()

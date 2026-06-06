@@ -74,6 +74,21 @@ export async function launchWithExtension() {
   await context.addInitScript(() => {
     Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
   });
+
+  // Inject pre-authenticated cookies if state.json exists
+  const authStatePath = path.resolve(process.cwd(), 'evals/auth/state.json');
+  if (fs.existsSync(authStatePath)) {
+    try {
+      const stateData = JSON.parse(fs.readFileSync(authStatePath, 'utf8'));
+      if (stateData.cookies && stateData.cookies.length > 0) {
+        await context.addCookies(stateData.cookies);
+        console.log(`     🍪 Injected ${stateData.cookies.length} auth cookies into browser context`);
+      }
+    } catch (err) {
+      console.warn(`     ⚠ Failed to inject auth state: ${(err as Error).message}`);
+    }
+  }
+
   return { context, userDataDir };
 }
 

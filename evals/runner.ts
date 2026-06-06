@@ -18,7 +18,7 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import type { EvalCase, EvalResult, EvalSummary } from './types.js';
+import type { EvalCase, EvalResult, EvalSummary, JudgeResult } from './types.js';
 import { runEvalCase } from './harness.js';
 import { compressVideo, extractFrames, cleanupFrames } from './recorder.js';
 import { judgeRun } from './judge.js';
@@ -37,6 +37,14 @@ function sleep(ms: number): Promise<void> {
 
 function banner(msg: string): void {
   console.log(`\n${'─'.repeat(60)}\n  ${msg}\n${'─'.repeat(60)}`);
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number, timeoutMsg: string): Promise<T> {
+  let timer: NodeJS.Timeout;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error(timeoutMsg)), ms);
+  });
+  return Promise.race([promise, timeoutPromise]).finally(() => clearTimeout(timer));
 }
 
 async function runOne(
@@ -69,7 +77,26 @@ async function runOne(
   console.log(`     Extracted ${frames.length} frames for judge`);
 
   // ── Step 4: Judge with Gemma 4 ────────────────────────────────────────────
-  const judgeResult = await judgeRun(evalCase, runResult, frames);
+  let judgeResult: JudgeResult;
+  try {
+    // 3-minute hard timeout for the Judge LLM
+    judgeResult = await withTimeout(
+      judgeRun(evalCase, runResult, frames),
+      180_000,
+      'Judge LLM timed out after 3 minutes'
+    );
+  } catch (err) {
+    console.warn(`     ⚠ Judge failed or timed out: ${(err as Error).message}`);
+    judgeResult = {
+      task_completed: false,
+      navigation_accuracy: 0,
+      output_correctness: 0,
+      unnecessary_actions: false,
+      efficiency_score: 0,
+      reasoning: `Judge error: ${(err as Error).message}`,
+    };
+  }
+
   console.log(`     Judge: task_completed=${judgeResult.task_completed} | nav=${judgeResult.navigation_accuracy} | output=${judgeResult.output_correctness}`);
   console.log(`     Reasoning: ${judgeResult.reasoning}`);
 
