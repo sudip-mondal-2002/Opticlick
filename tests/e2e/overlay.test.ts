@@ -1,12 +1,8 @@
-/* global chrome */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-// Keep the rest of your clean imports below...
 import { chromium, type BrowserContext } from '@playwright/test';
 import * as path from 'path';
 import * as os from 'os';
 import * as fs from 'fs';
-
-declare const chrome: any;
 
 const EXTENSION_PATH = path.resolve(__dirname, '../../.output/chrome-mv3');
 const FIXTURE_PATH = path.resolve(__dirname, 'fixtures/upload-target.html');
@@ -49,7 +45,9 @@ describe('Overlay draw and destroy', () => {
 
     // Inject the content script manually and trigger DRAW_MARKS
     await page.evaluate(async () => {
-      // Safe to evaluate inside the browser window context now
+      // Safe to evaluate inside the browser window context now.
+      // Note: If TypeScript complains here about 'chrome', ensure you have 
+      // '@types/chrome' installed and included in your tsconfig compilerOptions.types
       const result = await chrome.runtime.sendMessage({ type: 'DRAW_MARKS' }).catch(() => null);
       return result;
     }).catch(() => null); 

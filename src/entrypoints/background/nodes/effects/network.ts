@@ -38,7 +38,7 @@ function isSafeUrl(url: string): boolean {
  */
 export async function handleFetchUrl(
   action: Omit<FetchUrlAction, 'type'>,
-  ctx?: any
+  _ctx: any
 ): Promise<string> {
   // Enforces centralized SSRF protection rules
   if (!isSafeUrl(action.url)) {
