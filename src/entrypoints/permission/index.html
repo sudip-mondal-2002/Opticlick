@@ -4,9 +4,6 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Microphone Access Required</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
   <style>
     :root {
       --bg: #fafafa;
@@ -108,7 +105,7 @@
     }
     .status {
       margin-top: 1rem;
-      font-family: 'JetBrains Mono', monospace;
+      font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
       font-size: 0.8rem;
       color: var(--accent);
       min-height: 1.25rem;
@@ -127,7 +124,7 @@
     <h1>Microphone Access Required</h1>
     <p>Opticlick needs microphone access to transcribe your voice dictation. Please click the button below and select <strong>Allow</strong> when prompted by your browser.</p>
     <button id="request-btn" class="button">Enable Microphone</button>
-    <div id="status-text" class="status"></div>
+    <div id="status-text" class="status" aria-live="polite" role="status" aria-atomic="true"></div>
   </div>
   <script type="module" src="./main.ts"></script>
 </body>

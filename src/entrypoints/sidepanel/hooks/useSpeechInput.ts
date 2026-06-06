@@ -107,7 +107,7 @@ export function useSpeechInput({ onTranscript, lang = '' }: UseSpeechInputProps)
         // Open a full extension tab that CAN trigger the browser prompt.
         console.log('Side panel cannot prompt for mic. Opening permission page...');
         try {
-          chrome.tabs.create({
+          await chrome.tabs.create({
             url: chrome.runtime.getURL('permission.html'),
             active: true,
           });
@@ -133,8 +133,13 @@ export function useSpeechInput({ onTranscript, lang = '' }: UseSpeechInputProps)
 
   // ─── Listen for permission-granted message from the permission tab ────────
   useEffect(() => {
-    const handler = (msg: any) => {
-      if (msg.type === 'MIC_PERMISSION_GRANTED') {
+    const handler = (msg: any, sender: chrome.runtime.MessageSender) => {
+      if (
+        msg &&
+        typeof msg === 'object' &&
+        msg.type === 'MIC_PERMISSION_GRANTED' &&
+        sender.id === chrome.runtime.id
+      ) {
         console.log('Mic permission granted via permission tab. Starting dictation...');
         // Permission is now persisted for the chrome-extension:// origin.
         // getUserMedia will succeed this time without prompting.

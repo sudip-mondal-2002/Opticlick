@@ -35,12 +35,14 @@ async function requestPermission() {
     }
 
     // Notify the side panel that permission is now granted
-    chrome.runtime.sendMessage({ type: 'MIC_PERMISSION_GRANTED' });
-
-    // Close this tab after a brief moment so the user sees the success message
-    setTimeout(() => {
-      window.close();
-    }, 600);
+    try {
+      await chrome.runtime.sendMessage({ type: 'MIC_PERMISSION_GRANTED' });
+    } catch (sendErr) {
+      console.warn('Failed to notify side panel of permission grant:', sendErr);
+    }
+    
+    // Close this tab after the message resolves
+    window.close();
   } catch (err) {
     console.error('Microphone permission request failed:', err);
     if (status) {
