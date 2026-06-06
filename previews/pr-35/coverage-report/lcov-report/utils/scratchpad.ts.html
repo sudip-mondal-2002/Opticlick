@@ -23,30 +23,30 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">57.14% </span>
+                <span class="strong">100% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>16/28</span>
+                <span class='fraction'>28/28</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">66.66% </span>
+                <span class="strong">100% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>4/6</span>
+                <span class='fraction'>6/6</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">66.66% </span>
+                <span class="strong">100% </span>
                 <span class="quiet">Functions</span>
-                <span class='fraction'>6/9</span>
+                <span class='fraction'>9/9</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">56.52% </span>
+                <span class="strong">100% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>13/23</span>
+                <span class='fraction'>23/23</span>
             </div>
         
             
@@ -61,7 +61,7 @@
             </div>
         </template>
     </div>
-    <div class='status-line medium'></div>
+    <div class='status-line high'></div>
     <pre><table class="coverage">
 <tr><td class="line-count quiet"><a name='L1'></a><a href='#L1'>1</a>
 <a name='L2'></a><a href='#L2'>2</a>
@@ -183,7 +183,7 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">5x</span>
+<span class="cline-any cline-yes">8x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -199,25 +199,25 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">7x</span>
+<span class="cline-any cline-yes">7x</span>
+<span class="cline-any cline-yes">7x</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">4x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">4x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -263,11 +263,11 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">16x</span>
-<span class="cline-any cline-yes">15x</span>
+<span class="cline-any cline-yes">31x</span>
+<span class="cline-any cline-yes">29x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">3x</span>
 <span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">/**
  * Pure-logic helpers for the in-session scratchpad system.
@@ -301,26 +301,26 @@ export interface ScratchpadEntry {
 // ─────────────────────────────────────────────────────────────────────────────
 &nbsp;
 /** Load the scratchpad for a session from VFS. Returns [] if none exists yet. */
-export async function <span class="fstat-no" title="function not covered" >loadScratchpadFromVFS(s</span>essionId: number): Promise&lt;ScratchpadEntry[]&gt; {
-  const files = <span class="cstat-no" title="statement not covered" >await listVFSFiles(sessionId);</span>
-  const file = <span class="cstat-no" title="statement not covered" >files.find(<span class="fstat-no" title="function not covered" >(f</span>) =&gt; <span class="cstat-no" title="statement not covered" >f.name === SCRATCHPAD_VFS_FILENAME)</span>;</span>
-<span class="cstat-no" title="statement not covered" >  if (!file) <span class="cstat-no" title="statement not covered" >return [];</span></span>
-<span class="cstat-no" title="statement not covered" >  try {</span>
-    const json = <span class="cstat-no" title="statement not covered" >decodeURIComponent(escape(atob(file.data)));</span>
-<span class="cstat-no" title="statement not covered" >    return JSON.parse(json) as ScratchpadEntry[];</span>
+export async function loadScratchpadFromVFS(sessionId: number): Promise&lt;ScratchpadEntry[]&gt; {
+  const files = await listVFSFiles(sessionId);
+  const file = files.find((f) =&gt; f.name === SCRATCHPAD_VFS_FILENAME);
+  if (!file) return [];
+  try {
+    const json = decodeURIComponent(escape(atob(file.data)));
+    return JSON.parse(json) as ScratchpadEntry[];
   } catch {
-<span class="cstat-no" title="statement not covered" >    return [];</span>
+    return [];
   }
 }
 &nbsp;
 /** Persist the scratchpad for a session to VFS (upsert by filename). */
-export async function <span class="fstat-no" title="function not covered" >saveScratchpadToVFS(</span>
+export async function saveScratchpadToVFS(
   sessionId: number,
   entries: ScratchpadEntry[],
 ): Promise&lt;void&gt; {
-  const json = <span class="cstat-no" title="statement not covered" >JSON.stringify(entries, null, 2);</span>
-  const base64 = <span class="cstat-no" title="statement not covered" >btoa(unescape(encodeURIComponent(json)));</span>
-<span class="cstat-no" title="statement not covered" >  await writeVFSFile(sessionId, SCRATCHPAD_VFS_FILENAME, base64, 'application/json');</span>
+  const json = JSON.stringify(entries, null, 2);
+  const base64 = btoa(unescape(encodeURIComponent(json)));
+  await writeVFSFile(sessionId, SCRATCHPAD_VFS_FILENAME, base64, 'application/json');
 }
 &nbsp;
 // ─────────────────────────────────────────────────────────────────────────────
@@ -379,7 +379,7 @@ export function formatScratchpadForPrompt(entries: ScratchpadEntry[]): string {
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-06-05T18:46:37.904Z
+                at 2026-06-06T07:10:23.611Z
             </div>
         <script src="../prettify.js"></script>
         <script>
