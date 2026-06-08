@@ -22,7 +22,8 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "eval": "tsx evals/runner.ts",
-    "eval:auth-setup": "tsx evals/auth/setup-auth.ts"
+    "eval:auth-setup": "tsx evals/auth/setup-auth.ts",
+    "eval:smoke-test": "tsx evals/auth/smoke-test.ts"
   },
   "dependencies": {
     "@langchain/anthropic": "^1.3.26",

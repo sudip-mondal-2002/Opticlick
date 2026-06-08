@@ -1,10 +1,6 @@
 name: LLM Eval — LangSmith (Gemma 4)
 
 on:
-  push:
-    branches: ['feature/langsmith-eval-pipeline']
-  pull_request:
-    branches: [main]
   workflow_dispatch:
     inputs:
       filter:
@@ -74,6 +70,7 @@ jobs:
         # xvfb-run provides a virtual display — required since extensions need headless:false
         run: |
           xvfb-run --auto-servernum -- npm run eval:auth-setup
+          xvfb-run --auto-servernum -- npm run eval:smoke-test
           xvfb-run --auto-servernum -- npm run eval
 
       - name: Upload eval artifacts
