@@ -54,5 +54,13 @@
     "typescript-eslint": "^8.58.0",
     "vitest": "^4.1.8",
     "wxt": "^0.20.20"
+  },
+  "overrides": {
+    "web-ext-run": {
+      "tmp": "^0.2.7"
+    },
+    "node-notifier": {
+      "uuid": "^11.1.1"
+    }
   }
 }

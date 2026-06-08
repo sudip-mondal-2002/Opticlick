@@ -50,11 +50,14 @@ This project is a Manifest V3 (MV3) Chrome Extension that functions as an autono
 - **Image Capture:** Use `chrome.tabs.captureVisibleTab` to generate base64 screenshots. Also auto-save each step's annotated screenshot to VFS as `step_N.png`.
 - **Conversation History:** Each turn is stored in IndexedDB with role (`user`/`model`/`tool`) and metadata. Model turns include `toolCalls: { id, name, args }[]` for function-call history reconstruction. Tool result turns include `toolCallId` and `toolName` to form valid Gemini/LangChain function-response pairs. This ensures the LLM can properly track which tool call produced which result.
 - **URL Anchoring:** On loop start, the active tab's URL is captured and injected into every LLM prompt as `[CONTEXT: The task started on <url>. If you are on an unrelated page, navigate back.]` to help the agent stay task-focused and recover from navigation errors.
+- **SOLID Action Registries:** To follow SRP, OCP, and ISP, all action parsing and executions are decoupled from switch-cases and if-else flows. Parsers are registered in a lookup map in `src/utils/tools/index.ts`. Execution handlers are registered in specialized registries (`uiActionRegistry` and `sideEffectRegistry`) in `src/entrypoints/background/action-registry.ts`. Graph orchestration nodes (`uiActionNode`, `sideEffectsNode`) dynamically query their respective registries to execute actions using segregated `UIActionContext` and `SideEffectContext` payloads.
+
 
 ### 4. Execution Engine (Hardware-Level Simulation)
 - **No Synthetic Events:** NEVER use standard `.click()` DOM events, as they will fail on modern SPAs (React/Vue/Angular).
 - **Chrome Debugger API:** Use `chrome.debugger` to send `Input.dispatchMouseEvent` sequences (`mouseMoved`, `mousePressed`, `mouseReleased`) to simulate true hardware interrupts.
 - **Coordinate Scaling:** **CRITICAL:** You must mathematically scale the LMM's target coordinates down by dividing them by `window.devicePixelRatio` before dispatching the CDP commands, otherwise clicks will miss on high-DPI/Retina displays.
+- **SOLID CDP Router:** To adhere to OCP and SRP, the sandbox debugger mock (`sandbox/src/chrome-mock/debugger.ts`) delegates CDP sendCommand calls to a `CDPCommandRegistry` containing dedicated handler classes for each method (e.g. screenshot, inputs, etc.) registered in `sandbox/src/chrome-mock/cdp-handlers.ts`.
 
 ### 5. Agent Tools
 Tools are categorized into UI actions, DOM inspection, VFS mutations, memory, scratchpad, todo, and control.
@@ -141,7 +144,7 @@ Tools are categorized into UI actions, DOM inspection, VFS mutations, memory, sc
 - Validate DOM stability (e.g., using `MutationObserver` to wait for network/DOM idle) before commanding the annotation engine to draw marks.
 
 ## Testing Requirements
-- **Always run lint and tests after making changes.** After completing any code modification, run the relevant test suite before considering the task done.
+- **Always run lint and tests after making changes.** Always run the linter with `npm run lint` before running tests. After completing any code modification, run the relevant test suite before considering the task done.
 - Run unit tests with `npm test` and E2E tests with `npm run test:e2e` (or the equivalent commands in the project).
 - If tests fail, fix the failures before finishing — do not leave the codebase in a broken state.
 - **Write tests for every feature or bug fix.** New tools, actions, or pure utility functions must have corresponding unit tests. Integration or DOM tests are required when the change touches Chrome API wiring, content scripts, or the agent loop.

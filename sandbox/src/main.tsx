@@ -17,8 +17,11 @@ import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { SandboxShell } from './SandboxShell';
 
-ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode>
-    <SandboxShell />
-  </React.StrictMode>,
-);
+const container = document.getElementById('root');
+if (container) {
+  ReactDOM.createRoot(container).render(
+    <React.StrictMode>
+      <SandboxShell />
+    </React.StrictMode>,
+  );
+}

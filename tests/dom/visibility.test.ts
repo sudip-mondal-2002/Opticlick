@@ -137,6 +137,14 @@ describe('getVisibleRect', () => {
     mockRect(el, { left: 0, top: 0, width: 100, height: 30 });
     expect(getVisibleRect(el)).toBeNull();
   });
+
+  it('returns null when getBoundingClientRect throws', () => {
+    const el = makeEl();
+    vi.spyOn(el, 'getBoundingClientRect').mockImplementation(() => {
+      throw new Error('Detached or invalid element');
+    });
+    expect(getVisibleRect(el)).toBeNull();
+  });
 });
 
 // ── isTopElementAt ────────────────────────────────────────────────────────────
