@@ -1,7 +1,27 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { getSessionExportData, exportSessionAsJson, exportSessionAsMarkdown } from '@/utils/session-export';
+import { getSessionExportData, exportSessionAsJson, exportSessionAsMarkdown, importSession } from '@/utils/session-export';
 import { getSession, getConversationHistory, listVFSFiles } from '@/utils/db';
 import { getAgentState } from '@/utils/agent-state';
+
+const { mockAdd, mockTx, mockDb } = vi.hoisted(() => {
+  const mockAdd = vi.fn();
+  const mockTx = {
+    objectStore: vi.fn().mockReturnValue({ add: mockAdd }),
+    onerror: null as any,
+    oncomplete: null as any,
+  };
+  const mockDb = {
+    transaction: vi.fn().mockReturnValue(mockTx),
+  };
+  return { mockAdd, mockTx, mockDb };
+});
+
+vi.mock('@/utils/db/core', () => ({
+  openDB: vi.fn().mockResolvedValue(mockDb),
+  SESSIONS_STORE: 'sessions',
+  CONV_STORE: 'conversations',
+  VFS_STORE: 'vfs_files',
+}));
 
 vi.mock('@/utils/db', () => ({
   getSession: vi.fn(),
@@ -152,4 +172,87 @@ describe('session-export', () => {
       expect(mdStr).toContain('![Screenshot step_1.png]');
     });
   });
+
+  describe('importSession', () => {
+    it('successfully imports a valid session export payload', async () => {
+      mockAdd.mockImplementation(() => {
+        const req = {
+          result: 42,
+          set onsuccess(cb: any) {
+            setTimeout(() => cb({ target: { result: 42 } }), 0);
+          }
+        };
+        return req;
+      });
+
+      // Simulate transaction complete
+      vi.spyOn(mockTx, 'oncomplete', 'set').mockImplementation((cb: any) => {
+        setTimeout(cb, 5);
+      });
+
+      const exportPayload = {
+        session: {
+          title: 'Imported Test Session',
+          createdAt: 1000,
+          updatedAt: 2000,
+          modelId: 'test-model',
+          startUrl: 'http://example.com',
+          searchText: 'Imported Test Session',
+          status: 'completed',
+          outcomeSummary: '',
+        },
+        conversation: [
+          { role: 'user', content: 'hello', ts: 1000 },
+          { role: 'model', content: 'world', ts: 1001, toolCalls: [] }
+        ],
+        files: [
+          { id: '1', name: 'test.txt', mimeType: 'text/plain', size: 100, createdAt: 1002, isEmbedded: true, data: btoa('hello world') }
+        ],
+        memoryUpdates: []
+      };
+
+      const newId = await importSession(exportPayload as any);
+      expect(newId).toBe(42);
+
+      // Verify that SESSIONS_STORE was called with correct session info (Omit 'id')
+      expect(mockTx.objectStore).toHaveBeenCalledWith('sessions');
+      expect(mockAdd).toHaveBeenCalledWith({
+        title: 'Imported Test Session',
+        createdAt: 1000,
+        updatedAt: 2000,
+        modelId: 'test-model',
+        startUrl: 'http://example.com',
+        searchText: 'Imported Test Session',
+      });
+
+      // Verify CONV_STORE insertions
+      expect(mockTx.objectStore).toHaveBeenCalledWith('conversations');
+      expect(mockAdd).toHaveBeenCalledWith({
+        sessionId: 42,
+        role: 'user',
+        content: 'hello',
+        ts: 1000,
+        toolCalls: undefined,
+        toolCallId: undefined,
+        toolName: undefined,
+      });
+
+      // Verify VFS_STORE insertions
+      expect(mockTx.objectStore).toHaveBeenCalledWith('vfs_files');
+      expect(mockAdd).toHaveBeenCalledWith({
+        id: '1',
+        sessionId: 42,
+        name: 'test.txt',
+        mimeType: 'text/plain',
+        size: 100,
+        createdAt: 1002,
+        data: btoa('hello world'),
+      });
+    });
+
+    it('throws error for invalid payload', async () => {
+      await expect(importSession({} as any)).rejects.toThrow('Invalid export data');
+    });
+  });
 });
+

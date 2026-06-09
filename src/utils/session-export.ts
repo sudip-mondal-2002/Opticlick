@@ -1,6 +1,8 @@
 import { getSession, getConversationHistory, listVFSFiles } from '@/utils/db';
 import { getAgentState } from '@/utils/agent-state';
-import type { Session, ConversationTurn } from '@/utils/types';
+import type { Session } from '@/utils/types';
+import type { ConversationTurn, VFSFile } from '@/utils/db';
+import { openDB, SESSIONS_STORE, CONV_STORE, VFS_STORE } from '@/utils/db/core';
 
 export interface MemoryUpdate {
   key: string;
@@ -287,3 +289,80 @@ export async function exportSessionAsMarkdown(sessionId: number): Promise<string
 
   return lines.join('\n');
 }
+
+export async function importSession(data: SessionExportData): Promise<number> {
+  if (!data || typeof data !== 'object') {
+    throw new Error('Invalid export data: not an object');
+  }
+  if (!data.session || typeof data.session.title !== 'string') {
+    throw new Error('Invalid export data: missing session title');
+  }
+  if (!Array.isArray(data.conversation)) {
+    throw new Error('Invalid export data: conversation must be an array');
+  }
+  if (data.files && !Array.isArray(data.files)) {
+    throw new Error('Invalid export data: files must be an array');
+  }
+
+  const db = await openDB();
+  const tx = db.transaction([SESSIONS_STORE, CONV_STORE, VFS_STORE], 'readwrite');
+
+  return new Promise<number>((resolve, reject) => {
+    const sessionStore = tx.objectStore(SESSIONS_STORE);
+
+    const sessionToInsert: Omit<Session, 'id'> = {
+      title: data.session.title.slice(0, 80),
+      createdAt: data.session.createdAt || Date.now(),
+      updatedAt: data.session.updatedAt || Date.now(),
+      modelId: data.session.modelId,
+      startUrl: data.session.startUrl,
+      searchText: data.session.searchText || data.session.title || '',
+    };
+
+    const sessionReq = sessionStore.add(sessionToInsert);
+
+    sessionReq.onsuccess = (e) => {
+      const newSessionId = (e.target as IDBRequest).result as number;
+
+      const convStore = tx.objectStore(CONV_STORE);
+      for (const turn of data.conversation) {
+        const turnToInsert: Omit<ConversationTurn, 'id'> = {
+          sessionId: newSessionId,
+          role: turn.role,
+          content: turn.content,
+          ts: turn.ts || Date.now(),
+          toolCalls: turn.toolCalls,
+          toolCallId: turn.toolCallId,
+          toolName: turn.toolName,
+        };
+        convStore.add(turnToInsert);
+      }
+
+      if (data.files) {
+        const vfsStore = tx.objectStore(VFS_STORE);
+        for (const file of data.files) {
+          const fileToInsert: VFSFile = {
+            id: file.id || crypto.randomUUID(),
+            sessionId: newSessionId,
+            name: file.name,
+            mimeType: file.mimeType,
+            data: file.data || btoa('[Large file omitted from export]'),
+            size: file.size || 0,
+            createdAt: file.createdAt || Date.now(),
+          };
+          vfsStore.add(fileToInsert);
+        }
+      }
+    };
+
+    tx.oncomplete = () => {
+      const resultId = sessionReq.result as number;
+      resolve(resultId);
+    };
+
+    tx.onerror = (e) => {
+      reject((e.target as IDBTransaction).error);
+    };
+  });
+}
+

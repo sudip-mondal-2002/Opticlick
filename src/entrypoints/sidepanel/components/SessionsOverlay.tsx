@@ -10,7 +10,8 @@ import {
 import { HighlightedText } from '@/utils/highlight-match';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { backfillSessionMetadata } from '@/utils/session-backfill';
-import { exportSessionAsJson, exportSessionAsMarkdown } from '@/utils/session-export';
+import { exportSessionAsJson, exportSessionAsMarkdown, importSession } from '@/utils/session-export';
+import type { SessionExportData } from '@/utils/session-export';
 
 function formatSessionDate(ts: number): string {
   return new Date(ts).toLocaleDateString(undefined, {
@@ -170,6 +171,8 @@ export function SessionsOverlay({ sessions, onClose, onResume, onRefresh, modelL
   const [modelFilter, setModelFilter] = useState('');
   const [sort, setSort] = useState<SessionSort>('newest');
   const [backfilling, setBackfilling] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
 
   const debouncedQuery = useDebouncedValue(query, 200);
 
@@ -200,6 +203,37 @@ export function SessionsOverlay({ sessions, onClose, onResume, onRefresh, modelL
   }, [sessions, debouncedQuery, datePreset, modelFilter, sort]);
 
   const hasActiveFilters = query.trim() !== '' || datePreset !== 'all' || modelFilter !== '';
+
+  const handleImport = () => {
+    setImportError(null);
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'application/json,.json';
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+      setImporting(true);
+      try {
+        const text = await file.text();
+        const data: SessionExportData = JSON.parse(text);
+        const newSessionId = await importSession(data);
+        await onRefresh();
+        // Find the freshly imported session and resume it
+        const { getSessions } = await import('@/utils/db');
+        const all = await getSessions();
+        const imported = all.find((s) => s.id === newSessionId);
+        if (imported) {
+          onResume(imported);
+          onClose();
+        }
+      } catch (err) {
+        setImportError(`Import failed: ${(err as Error).message}`);
+      } finally {
+        setImporting(false);
+      }
+    };
+    input.click();
+  };
 
   const handleExport = async (session: Session, format: 'json' | 'markdown') => {
     if (session.id == null) return;
@@ -245,12 +279,36 @@ export function SessionsOverlay({ sessions, onClose, onResume, onRefresh, modelL
           <span className="text-[10px] text-slate-400 dark:text-slate-500">Indexing…</span>
         )}
         <button
+          onClick={handleImport}
+          disabled={importing}
+          className="flex items-center gap-1 px-2 py-1 rounded text-[11px] font-medium bg-sky-50 dark:bg-sky-950/40 text-sky-600 dark:text-sky-400 border border-sky-200 dark:border-sky-800/60 hover:bg-sky-100 dark:hover:bg-sky-900/50 disabled:opacity-50 transition-colors"
+          title="Load session from JSON file"
+          aria-label="Load session"
+        >
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+            <polyline points="17 8 12 3 7 8" />
+            <line x1="12" y1="3" x2="12" y2="15" />
+          </svg>
+          {importing ? 'Loading…' : 'Load'}
+        </button>
+        <button
           onClick={onClose}
           className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 text-[11px] font-medium transition-colors"
         >
           Close
         </button>
       </div>
+      {importError && (
+        <div className="shrink-0 px-3 py-2 bg-red-50 dark:bg-red-950/30 border-b border-red-200 dark:border-red-800/60 text-[11px] text-red-600 dark:text-red-400 flex items-center justify-between gap-2">
+          <span>{importError}</span>
+          <button
+            onClick={() => setImportError(null)}
+            className="shrink-0 text-red-400 hover:text-red-600 dark:hover:text-red-300 font-bold leading-none"
+            aria-label="Dismiss error"
+          >×</button>
+        </div>
+      )}
 
       {sessions.length > 0 && (
         <div className="shrink-0 px-3 py-2 space-y-2 border-b border-slate-100 dark:border-slate-800">
