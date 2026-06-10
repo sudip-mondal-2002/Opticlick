@@ -49,7 +49,7 @@ async function main() {
       // Short timeout because if we are logged in, the UI element should render quickly
       await page.waitForSelector(check.selector, { timeout: 10_000 });
       console.log(`  ✅ ${check.name} auth verified!`);
-    } catch (_err) {
+    } catch {
       console.error(`  ❌ ${check.name} auth failed! Could not find selector '${check.selector}'. Cookies may be expired or invalid.`);
       failed = true;
     }
