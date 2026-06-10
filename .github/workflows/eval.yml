@@ -55,18 +55,21 @@ jobs:
           EVAL_FILTER: ${{ inputs.filter }}
           EVAL_THRESHOLD: ${{ inputs.threshold }}
           # ── Phase 2: auth secrets (leave empty until accounts are ready) ───
-          GITHUB_EVAL_TOKEN: ${{ secrets.GITHUB_EVAL_TOKEN }}
+          GITHUB_EVAL_USERNAME: ${{ secrets.GITHUB_EVAL_USERNAME }}
+          GITHUB_EVAL_PASSWORD: ${{ secrets.GITHUB_EVAL_PASSWORD }}
           GOOGLE_EVAL_EMAIL: ${{ secrets.GOOGLE_EVAL_EMAIL }}
           GOOGLE_EVAL_PASSWORD: ${{ secrets.GOOGLE_EVAL_PASSWORD }}
           TWITTER_EVAL_EMAIL: ${{ secrets.TWITTER_EVAL_EMAIL }}
           TWITTER_EVAL_PASSWORD: ${{ secrets.TWITTER_EVAL_PASSWORD }}
           LINKEDIN_EVAL_EMAIL: ${{ secrets.LINKEDIN_EVAL_EMAIL }}
           LINKEDIN_EVAL_PASSWORD: ${{ secrets.LINKEDIN_EVAL_PASSWORD }}
-          REDDIT_EVAL_EMAIL: ${{ secrets.REDDIT_EVAL_EMAIL }}
+          REDDIT_EVAL_USERNAME: ${{ secrets.REDDIT_EVAL_USERNAME }}
           REDDIT_EVAL_PASSWORD: ${{ secrets.REDDIT_EVAL_PASSWORD }}
           NOTION_EVAL_EMAIL: ${{ secrets.NOTION_EVAL_EMAIL }}
           NOTION_EVAL_PASSWORD: ${{ secrets.NOTION_EVAL_PASSWORD }}
           DISCORD_EVAL_TOKEN: ${{ secrets.DISCORD_EVAL_TOKEN }}
+          # ── Fallback: base64-encoded storageState (bypasses UI logins) ─────
+          STORAGE_STATE_BASE64: ${{ secrets.STORAGE_STATE_BASE64 }}
         # xvfb-run provides a virtual display — required since extensions need headless:false
         run: |
           xvfb-run --auto-servernum -- npm run eval:auth-setup
