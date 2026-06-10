@@ -37,7 +37,7 @@ async function main() {
 
   for (const check of DOMAIN_CHECKS) {
     // Only verify domains we actually have cookies for
-    const hasCookies = cookies.some((c: any) => c.domain.includes(check.domain));
+    const hasCookies = cookies.some((c: { domain: string }) => c.domain.includes(check.domain));
     if (!hasCookies) {
       console.log(`  ⚪ Skipping ${check.name} (no cookies present)`);
       continue;
@@ -49,7 +49,7 @@ async function main() {
       // Short timeout because if we are logged in, the UI element should render quickly
       await page.waitForSelector(check.selector, { timeout: 10_000 });
       console.log(`  ✅ ${check.name} auth verified!`);
-    } catch (err) {
+    } catch (_err) {
       console.error(`  ❌ ${check.name} auth failed! Could not find selector '${check.selector}'. Cookies may be expired or invalid.`);
       failed = true;
     }

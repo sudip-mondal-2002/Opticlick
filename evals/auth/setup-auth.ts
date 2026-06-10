@@ -50,8 +50,11 @@ async function loginReddit(page: Page) {
   await page.fill('#loginUsername', username);
   await page.fill('#loginPassword', password);
   await page.click('button[type="submit"]');
-  // Wait for avatar indicating successful login
-  await page.waitForSelector('#email-collection-tooltip-id', { timeout: 15_000 }).catch(() => { });
+  // Wait for avatar — null if selector not found within timeout
+  const found = await page.waitForSelector('#email-collection-tooltip-id', { timeout: 15_000 }).catch(() => null);
+  if (!found) {
+    throw new Error('Reddit login failed: avatar selector not found after submit — session may have been blocked');
+  }
   console.log('✅ Reddit login successful');
 }
 

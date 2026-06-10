@@ -24,6 +24,10 @@ graphify-out/
 npm-debug.log*
 coverage/
 
+# Eval artifacts (generated at runtime — never commit)
+evals/results/
+evals/auth/state.json
+
 # Generated icons
 /public/icon-16.png
 /public/icon-32.png

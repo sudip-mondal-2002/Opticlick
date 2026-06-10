@@ -11,6 +11,10 @@ on:
         description: 'Minimum pass rate 0-100'
         required: false
         default: '70'
+      langsmith_project:
+        description: 'LangSmith project name to log results into'
+        required: false
+        default: 'opticlick-evals'
 
 jobs:
   eval:
@@ -23,7 +27,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
-          fetch-depth: 0
+          fetch-depth: 1
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -50,7 +55,7 @@ jobs:
         env:
           # ── Phase 1: required ──────────────────────────────────────────────
           LANGSMITH_API_KEY: ${{ secrets.LANGSMITH_API_KEY }}
-          LANGSMITH_PROJECT: opticlick-evals
+          LANGSMITH_PROJECT: ${{ inputs.langsmith_project }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           EVAL_FILTER: ${{ inputs.filter }}
           EVAL_THRESHOLD: ${{ inputs.threshold }}

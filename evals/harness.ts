@@ -4,7 +4,7 @@
  * Run strategy:
  *  1. launchPersistentContext with extension + recordVideo
  *  2. Seed Gemini API key via Service Worker → chrome.storage.local
- *  3. Navigate main tab to google.com
+ *  3. Navigate main tab to a benign site (example.com) to avoid CAPTCHA triggers
  *  4. Navigate a SECOND page directly to chrome-extension://<id>/sidepanel/index.html
  *     ↳ Avoids chrome.sidePanel.open() user-gesture requirement
  *     ↳ Avoids chrome.tabs.getCurrent() which is undefined on web pages

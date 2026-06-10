@@ -144,7 +144,8 @@ async function main(): Promise<void> {
     process.exit(1);
   }
   if (!process.env.LANGSMITH_API_KEY) {
-    console.warn('⚠ LANGSMITH_API_KEY is not set — results will not be logged to LangSmith');
+    console.error('❌ LANGSMITH_API_KEY is not set — required by loadCases() and getClient() to fetch the dataset and log results');
+    process.exit(1);
   }
 
   fs.mkdirSync(RESULTS_DIR, { recursive: true });

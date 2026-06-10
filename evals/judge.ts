@@ -190,8 +190,10 @@ export async function judgeRun(
   }
 
   const expectedSteps = EXPECTED_STEPS[evalCase.difficulty];
-  const actualSteps = Math.max(1, runResult.numSteps);
-  const efficiency_score = Math.min(1, expectedSteps / actualSteps);
+  const efficiency_score =
+    runResult.numSteps === 0
+      ? 0
+      : Math.min(1, expectedSteps / runResult.numSteps);
 
   return { ...scores, efficiency_score };
 }
