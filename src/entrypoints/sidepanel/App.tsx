@@ -230,22 +230,23 @@ function AgentUI() {
   };
 
   // ── Agent state / logs ─────────────────────────────────────────────────────
-const refreshSessions = useCallback(async () => {
-  const sessions = await getSessions();
+  const refreshSessions = useCallback(async () => {
+    const sessions = await getSessions();
 
-  setSessions(sessions);
+    setSessions(sessions);
 
-  if (sessions.length === 0) {
-    setCurrentSessionId(null);
-  } else if (currentSessionId === undefined) {
-    setCurrentSessionId(sessions[0].id ?? null);
-  } else if (
-    currentSessionId !== null &&
-    !sessions.some((session) => session.id === currentSessionId)
-  ) {
-    setCurrentSessionId(null);
-  }
-}, [currentSessionId]);
+    setCurrentSessionId((prev) => {
+      // On first load (prev === undefined), auto-select the most recent session.
+      if (prev === undefined) {
+        return sessions.length > 0 ? (sessions[0].id ?? null) : null;
+      }
+      // If the previously selected session was deleted, clear the selection.
+      if (prev !== null && !sessions.some((s) => s.id === prev)) {
+        return null;
+      }
+      return prev;
+    });
+  }, []);
 
   const appendLog = useCallback((message: string, level = 'info') => {
     const ts = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -362,6 +363,7 @@ const refreshSessions = useCallback(async () => {
     setStreamingThinking('');
     setChatInputKey((k) => k + 1);
     textareaRef.current?.focus();
+    chrome.storage.session.remove(['agentState', 'agentLog']);
   };
 
   const handleResumeSession = async (session: Session) => {
