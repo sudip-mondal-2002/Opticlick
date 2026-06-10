@@ -31,7 +31,8 @@ jobs:
           persist-credentials: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        # actions/setup-node v4.3.0 — pinned to immutable commit SHA
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: 22
           cache: npm
@@ -83,7 +84,8 @@ jobs:
 
       - name: Upload eval artifacts
         if: always()
-        uses: actions/upload-artifact@v4
+        # actions/upload-artifact v4.6.2 — pinned to immutable commit SHA
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: eval-results-${{ github.run_id }}
           path: evals/results/
