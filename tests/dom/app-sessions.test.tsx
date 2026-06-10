@@ -115,6 +115,10 @@ describe('Sidepanel App Sessions', () => {
           set: vi.fn(async (data: Record<string, unknown>) => {
             Object.assign(storageSession, data);
           }),
+          remove: vi.fn(async (keys: string | string[]) => {
+            const toRemove = Array.isArray(keys) ? keys : [keys];
+            toRemove.forEach((k) => { delete storageSession[k]; });
+          }),
         },
       },
       runtime: {

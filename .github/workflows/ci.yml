@@ -74,6 +74,11 @@ jobs:
         with:
           file-coverage-mode: changes
 
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+
       # ── Upload coverage + metadata so ci-report.yml can deploy them ──────────
       - name: Prepare coverage artifact
         id: prep-coverage
@@ -86,6 +91,7 @@ jobs:
             echo "coverage_pct=$pct" >> $GITHUB_OUTPUT
             echo "coverage_exists=true" >> $GITHUB_OUTPUT
           else
+            pct="N/A"
             echo "coverage_exists=false" >> $GITHUB_OUTPUT
             echo "coverage_pct=N/A" >> $GITHUB_OUTPUT
           fi
@@ -93,7 +99,7 @@ jobs:
           echo "${{ github.event.number }}" > deploy-coverage/PR_NUMBER
           echo "${{ github.head_ref }}" > deploy-coverage/HEAD_REF
           echo "${{ github.sha }}" > deploy-coverage/SHA
-          echo "${{ steps.prep-coverage.outputs.coverage_pct || 'N/A' }}" > deploy-coverage/COVERAGE_PCT
+          echo "$pct" > deploy-coverage/COVERAGE_PCT
 
       - name: Upload coverage artifact
         if: github.event_name == 'pull_request' && always()
