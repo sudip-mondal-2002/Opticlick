@@ -23,6 +23,7 @@ import { ChatInput } from './components/ChatInput';
 import { ChatFeed } from './components/ChatFeed';
 import { SessionsOverlay } from './components/SessionsOverlay';
 import { TemplatesOverlay } from './components/TemplatesOverlay';
+import { CustomInstructionsOverlay } from './components/CustomInstructionsOverlay';
 import type { LogItem, HistoryStep } from './components/ChatFeed';
 
 // ── Parse model turn from IndexedDB ──────────────────────────────────────────
@@ -102,6 +103,7 @@ function AgentUI() {
 
   const [templates, setTemplates] = useState<PromptTemplate[]>([]);
   const [showTemplates, setShowTemplates] = useState(false);
+  const [showCustomInstructions, setShowCustomInstructions] = useState(false);
   const [injectedPrompt, setInjectedPrompt] = useState<string | null>(null);
 
   const feedRef = useRef<HTMLDivElement>(null);
@@ -230,22 +232,23 @@ function AgentUI() {
   };
 
   // ── Agent state / logs ─────────────────────────────────────────────────────
-const refreshSessions = useCallback(async () => {
-  const sessions = await getSessions();
+  const refreshSessions = useCallback(async () => {
+    const sessions = await getSessions();
 
-  setSessions(sessions);
+    setSessions(sessions);
 
-  if (sessions.length === 0) {
-    setCurrentSessionId(null);
-  } else if (currentSessionId === undefined) {
-    setCurrentSessionId(sessions[0].id ?? null);
-  } else if (
-    currentSessionId !== null &&
-    !sessions.some((session) => session.id === currentSessionId)
-  ) {
-    setCurrentSessionId(null);
-  }
-}, [currentSessionId]);
+    setCurrentSessionId((prev) => {
+      // On first load (prev === undefined), auto-select the most recent session.
+      if (prev === undefined) {
+        return sessions.length > 0 ? (sessions[0].id ?? null) : null;
+      }
+      // If the previously selected session was deleted, clear the selection.
+      if (prev !== null && !sessions.some((s) => s.id === prev)) {
+        return null;
+      }
+      return prev;
+    });
+  }, []);
 
   const appendLog = useCallback((message: string, level = 'info') => {
     const ts = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -362,6 +365,7 @@ const refreshSessions = useCallback(async () => {
     setStreamingThinking('');
     setChatInputKey((k) => k + 1);
     textareaRef.current?.focus();
+    chrome.storage.session.remove(['agentState', 'agentLog']);
   };
 
   const handleResumeSession = async (session: Session) => {
@@ -451,6 +455,12 @@ const refreshSessions = useCallback(async () => {
         />
       )}
 
+      {showCustomInstructions && (
+        <CustomInstructionsOverlay
+          onClose={() => setShowCustomInstructions(false)}
+        />
+      )}
+
       <Header
         isRunning={isRunning}
         isError={isError}
@@ -458,6 +468,7 @@ const refreshSessions = useCallback(async () => {
         onShowSessions={() => setShowSessions(true)}
         onShowApiKeys={() => setShowApiKeys(true)}
         onShowTemplates={() => setShowTemplates(true)}
+        onShowCustomInstructions={() => setShowCustomInstructions(true)}
       />
       <div className="flex border-b border-slate-200 dark:border-slate-700">
         <button
