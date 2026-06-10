@@ -25,6 +25,18 @@ describe('mergeSearchText', () => {
   it('skips duplicate snippet', () => {
     expect(mergeSearchText('hello world', 'world')).toBe('hello world');
   });
+
+  it('returns existing search text if snippet is empty or whitespace', () => {
+    expect(mergeSearchText('hello', '')).toBe('hello');
+    expect(mergeSearchText('hello', '   ')).toBe('hello');
+    expect(mergeSearchText(undefined, '   ')).toBe('');
+  });
+
+  it('appends snippet to undefined existing text', () => {
+    // Covers the `const base = existing ?? ''` branch when existing is undefined
+    // AND the snippet is a non-empty, non-duplicate value.
+    expect(mergeSearchText(undefined, 'world')).toBe('world');
+  });
 });
 
 describe('parseStartUrlFromContent', () => {

@@ -60,41 +60,32 @@ The agent supports **Gemini** cloud models (including extended thinking) and loc
 
 ## High-Level Architecture
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                        Chrome Extension                         │
-│                                                                 │
-│  ┌──────────────┐     messages      ┌──────────────────────────┐│
-│  │  Side Panel  │ ◄──────────────── │  Background Service      ││
-│  │  (React UI)  │ ─────────────── ► │  Worker (Orchestrator)   ││
-│  └──────────────┘                   └──────────┬───────────────┘│
-│                                                │                │
-│                         ┌──────────────────────┤                │
-│                         │  chrome.tabs.sendMessage              │
-│                         ▼                      │                │
-│                ┌─────────────────┐             │                │
-│                │ Content Script  │             │ CDP            │
-│                │ (All Frames)    │             │ Input.dispatch │
-│                │                 │             │ MouseEvent     │
-│                │ - Annotate DOM  │             │                │
-│                │ - Block input   │             ▼                │
-│                │ - Shadow DOM    │   ┌──────────────────┐       │
-│                └─────────────────┘   │  Active Web Tab  │       │
-│                                      └──────────────────┘       │
-│                                                                 │
-│  ┌────────────────────────────────────────────────────────────┐ │
-│  │                     IndexedDB                              │ │
-│  │  sessions | conversations | VFS | memory                   │ │
-│  └────────────────────────────────────────────────────────────┘ │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              │ HTTPS
-                              ▼
-                   ┌─────────────────────┐
-                   │  LLM APIs           │
-                   │  Gemini (Google AI) │
-                   │  Ollama (localhost) │
-                   └─────────────────────┘
+```mermaid
+flowchart TB
+    subgraph Extension ["Chrome Extension"]
+        direction TB
+        SP["Side Panel (React UI)"]
+        BG["Background Service Worker (Orchestrator)"]
+        CS["Content Script (All Frames)"]
+        DB[("IndexedDB (VFS, Memory, Chats)")]
+    end
+
+    subgraph WebTab ["Active Web Tab"]
+        WT["Active Page (DOM)"]
+    end
+
+    subgraph Models ["LLM Provider APIs"]
+        direction LR
+        Gemini["Gemini Cloud Models"]
+        Ollama["Ollama Local Daemon"]
+    end
+
+    SP <-->|"Bidirectional Messages"| BG
+    BG -->|"Tab Injection / Messaging"| CS
+    CS -->|"Set-of-Mark Overlay"| WT
+    BG -->|"CDP Hardware Events"| WT
+    BG <-->|"IndexedDB Reads/Writes"| DB
+    BG -->|"Secure Requests"| Models
 ```
 
 ---
@@ -129,6 +120,53 @@ runAgentLoop(tabId, userPrompt, sessionId?, attachments?, modelId?)
 ```
 
 State that must survive service-worker restarts (MV3 workers are ephemeral) is persisted either in `chrome.storage.session` (transient agent status, log entries) or IndexedDB (conversation history, VFS, memory).
+
+#### SOLID Action Registries & Context Segregation
+To adhere to the Single Responsibility (SRP), Open/Closed (OCP), and Interface Segregation (ISP) principles, the background orchestrator has been redesigned using segregated Action Registries and specialized contexts:
+
+1. **Segregated Contexts & Registries:** Instead of a monolithic context and registry, the orchestrator divides actions into UI Actions and Side Effects, using `uiActionRegistry` (handling `UIActionContext`) and `sideEffectRegistry` (handling `SideEffectContext`). This ensures that actions only depend on the specific context fields they require.
+2. **Parser Map:** In [src/utils/tools/index.ts](src/utils/tools/index.ts), the large `switch-case` in `parseToolCall` is replaced by a lookup map of dedicated parser functions.
+3. **Registry Execution:** Graph nodes `uiAction` and `sideEffects` dynamically query their respective registries (`uiActionRegistry` and `sideEffectRegistry`) to execute handlers, decoupling orchestration flow from concrete action implementation details.
+
+```mermaid
+classDiagram
+    class UIActionContext {
+        +number tabId
+        +number sessionId
+        +number step
+        +string userPrompt
+        +string toolCallId
+        +string toolName
+        +CoordinateEntry[] coordinateMap
+        +ActionRecord[] actionHistory
+        +tabIdRef
+    }
+    class SideEffectContext {
+        +number sessionId
+        +number tabId
+        +string base64Image
+        +number step
+        +CoordinateEntry[] coordinateMap
+        +string userPrompt
+        +string toolCallId
+        +string toolName
+        +AgentState state
+    }
+    class UIActionRegistry {
+        -Map handlers
+        +register(handler)
+        +get(type)
+    }
+    class SideEffectRegistry {
+        -Map handlers
+        +register(handler)
+        +get(type)
+    }
+    uiActionRegistry ..|> UIActionRegistry
+    sideEffectRegistry ..|> SideEffectRegistry
+    uiActionNode --> uiActionRegistry : queries
+    sideEffectsNode --> sideEffectRegistry : queries
+```
 
 ---
 
@@ -180,34 +218,33 @@ The agent loop is implemented as a **LangGraph state machine** defined in [src/e
 
 ### Graph Nodes
 
-```
-                    ┌──────────┐
-                    │ stepSetup│ ◄─────────────────────────────┐
-                    └────┬─────┘                               │
-                         │                                     │
-                    ┌────▼──────────────┐                      │
-                    │ drawAnnotations   │                      │
-                    └────┬──────────────┘                      │
-                         │                                     │
-                    ┌────▼──────────────┐                      │
-                    │ captureAndDestroy │                      │
-                    └────┬──────────────┘                      │
-                         │                                     │
-                    ┌────▼──────┐                              │
-                    │  reason   │ (LLM call)                   │
-                    └────┬──────┘                              │
-                         │                                     │
-                    ┌────▼──────────┐                          │
-                    │  sideEffects  │ (non-UI actions)         │
-                    └────┬──────────┘                          │
-                         │                                     │
-           ┌─────────────┼──────────────┐                      │
-           │             │              │                      │
-    ┌──────▼────┐  ┌─────▼───-─┐  ┌──-──▼─────┐                │
-    │ uiAction  │  │ awaitUser │  │ complete  │                │
-    └──────┬────┘  └──────┬────┘  └───────────┘                │
-           │              │                                    │
-           └──────────────┴────────────────────────────────────┘
+```mermaid
+flowchart TD
+    START([Start]) --> stepSetup
+    stepSetup["stepSetup"] -->|Stopped| END([END])
+    stepSetup -->|Normal| drawAnnotations["drawAnnotations"]
+    
+    drawAnnotations -->|Retry| stepSetup
+    drawAnnotations -->|Normal| captureAndDestroy["captureAndDestroy"]
+    
+    captureAndDestroy -->|Retry| stepSetup
+    captureAndDestroy -->|Normal| reason["reason (LLM Call)"]
+    
+    reason -->|LLM Fail| stepSetup
+    reason -->|Normal| sideEffects["sideEffects (Registry Dispatch)"]
+    
+    sideEffects -->|ask_user| awaitUser["awaitUser"]
+    sideEffects -->|finish & no UI action| complete["complete"]
+    sideEffects -->|UI action present| uiAction["uiAction (Registry Dispatch)"]
+    sideEffects -->|No action / Side-effects only| stepSetup
+    
+    uiAction -->|Done / Stopped| complete
+    uiAction -->|Continue| stepSetup
+    
+    awaitUser -->|Stopped| END
+    awaitUser -->|Continue| stepSetup
+    
+    complete --> END
 ```
 
 ### Graph Nodes
@@ -218,8 +255,8 @@ The agent loop is implemented as a **LangGraph state machine** defined in [src/e
 | `drawAnnotations` | [nodes/setup.ts](src/entrypoints/background/nodes/setup.ts) | Send `DRAW_MARKS` to content script, retry with backoff if zero elements found, return coordinate map |
 | `captureAndDestroy` | [nodes/observe.ts](src/entrypoints/background/nodes/observe.ts) | Capture annotated screenshot via CDP, save to VFS as `step_N.png`, destroy overlay |
 | `reason` | [nodes/observe.ts](src/entrypoints/background/nodes/observe.ts) | Assemble LLM context (system prompt + history + screenshot), call model, persist turns to IndexedDB |
-| `sideEffects` | [nodes/side-effects.ts](src/entrypoints/background/nodes/side-effects.ts) | Execute all non-UI actions in order: VFS ops, todo updates, memory, scratchpad, DOM inspection, wait, ask_user setup, finish acknowledgement |
-| `uiAction` | [nodes/ui-action.ts](src/entrypoints/background/nodes/ui-action.ts) | Dispatch the single UI action (click / type / navigate / scroll / press_key); update `tabIdRef` if a new tab opened |
+| `sideEffects` | [nodes/side-effects.ts](src/entrypoints/background/nodes/side-effects.ts) | Execute all non-UI actions in order via the `actionRegistry` polymorphic dispatcher (VFS ops, todo updates, memory, scratchpad, DOM inspection, wait, ask_user, finish) |
+| `uiAction` | [nodes/ui-action.ts](src/entrypoints/background/nodes/ui-action.ts) | Dispatch the single UI action via the `actionRegistry` polymorphic dispatcher (click / type / navigate / scroll / press_key / drag_and_drop); update `tabIdRef` if a new tab opened |
 | `awaitUser` | [nodes/control.ts](src/entrypoints/background/nodes/control.ts) | Suspend execution; the loop resumes when the user replies |
 | `complete` | [nodes/control.ts](src/entrypoints/background/nodes/control.ts) | Log completion, clear session VFS (preserving todo/scratchpad), broadcast finish to side panel |
 
@@ -537,6 +574,42 @@ Opticlick includes a standalone web sandbox (located in the `sandbox/` directory
 - **Service Worker Proxy**: Intercepts iframe network requests dynamically to bypass CORS limits on standard web pages.
 - **Self-Hosted CORS Proxy**: Routes all network requests through a custom Cloudflare Worker proxy, fully supporting `POST`, `PUT`, and other HTTP methods.
 - **Settings Dashboard**: Configure your self-hosted Cloudflare Worker URL and LangSmith tracing variables directly in the UI.
+
+### SOLID CDP Command Router
+To adhere to OCP and SRP, the sandbox debugger mock (`sandbox/src/chrome-mock/debugger.ts`) delegates all simulated CDP calls to a `CDPCommandRegistry` (defined in `sandbox/src/chrome-mock/cdp-handlers.ts`). Individual CDP commands are implemented as discrete handler classes (e.g. `CaptureScreenshotHandler`, `DispatchMouseEventHandler`), ensuring command routing is decoupled from implementation details and open for extension.
+
+```mermaid
+classDiagram
+    class CDPContext {
+        +Window win
+        +Document doc
+        +Map objectIdMap
+        +Map virtualFiles
+        +getHtml2Canvas()
+    }
+    class CDPCommandHandler {
+        <<interface>>
+        +string method
+        +execute(params, ctx)
+    }
+    class CDPCommandRegistry {
+        -Map handlers
+        +register(handler)
+        +get(method)
+    }
+    class CaptureScreenshotHandler {
+        +string method
+        +execute(params, ctx)
+    }
+    class DispatchMouseEventHandler {
+        +string method
+        +execute(params, ctx)
+    }
+    CDPCommandHandler <|.. CaptureScreenshotHandler
+    CDPCommandHandler <|.. DispatchMouseEventHandler
+    CDPCommandRegistry o--> CDPCommandHandler
+    debuggerShim --> CDPCommandRegistry : delegates sendCommand
+```
 
 ### Running the Sandbox Locally
 

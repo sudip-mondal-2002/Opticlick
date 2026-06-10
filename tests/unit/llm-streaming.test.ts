@@ -11,6 +11,10 @@ import { AIMessageChunk } from '@langchain/core/messages';
 import { thinkingFlushPoint, thinkingDeltaOf } from '@/utils/llm-stream';
 import { createModel, callModel } from '@/utils/llm';
 
+vi.mock('@/utils/sleep', () => ({
+  sleep: vi.fn().mockResolvedValue(undefined),
+}));
+
 // ── thinkingFlushPoint ────────────────────────────────────────────────────────
 
 describe('thinkingFlushPoint', () => {
@@ -105,6 +109,16 @@ describe('thinkingDeltaOf', () => {
   it('ignores content blocks that are not type "thinking"', () => {
     const chunk = makeChunk({ contentText: 'plain text', contentThinking: undefined });
     expect(thinkingDeltaOf(chunk)).toBe('');
+  });
+
+  it('falls back to the text property when a "thinking" type part has no thinking field', () => {
+    // Covers `part.thinking ?? part.text ?? ''` — the `?? part.text` branch.
+    // Some providers emit { type: 'thinking', text: '...' } instead of { type: 'thinking', thinking: '...' }.
+    const chunk = new AIMessageChunk({
+      content: [{ type: 'thinking', text: 'fallback text' }] as any,
+      additional_kwargs: {},
+    });
+    expect(thinkingDeltaOf(chunk)).toBe('fallback text');
   });
 });
 
@@ -302,5 +316,142 @@ describe('callModel — streaming integration', () => {
 
     expect(boundModel.stream).toHaveBeenCalledTimes(2);
     expect(result.actions[0].type).toBe('click');
+  });
+
+  it('parses array content consisting of text parts correctly', async () => {
+    const textPart1 = { type: 'text', text: 'Reasoning part 1. ' };
+    const textPart2 = { type: 'text', text: 'Reasoning part 2.' };
+    const chunk = new AIMessageChunk({
+      content: [textPart1, textPart2] as any,
+      tool_calls: [{ name: 'click', args: { targetId: 3 }, id: 'call_click', type: 'tool_call' }],
+    });
+    const { model } = makeModel([chunk]);
+
+    const result = await callModel(
+      model as ReturnType<typeof createModel>,
+      'base64img',
+      'Click element 3',
+    );
+
+    expect(result.reasoning).toBe('Reasoning part 1. Reasoning part 2.');
+  });
+
+  it('retries on rate limit (429) error using rate limit delay', async () => {
+    let calls = 0;
+    const boundModel = {
+      stream: vi.fn(async function* () {
+        calls++;
+        if (calls === 1) throw new Error('API Rate Limit Exceeded (429)');
+        yield toolChunk('click', { targetId: 1 });
+      }) as Mock,
+    };
+    const model = { bindTools: vi.fn(() => boundModel) };
+
+    const logged: string[] = [];
+    const logFn = async (msg: string) => { logged.push(msg); };
+
+    const result = await callModel(
+      model as ReturnType<typeof createModel>,
+      'base64img',
+      'Click something',
+      [],
+      logFn,
+    );
+
+    expect(boundModel.stream).toHaveBeenCalledTimes(2);
+    expect(logged.some(msg => msg.includes('Rate limited'))).toBe(true);
+    expect(result.actions[0].type).toBe('click');
+  });
+
+  it('throws the last error if all retries are exhausted', async () => {
+    const boundModel = {
+      stream: vi.fn(async () => {
+        throw new Error('Persistent error');
+      }) as Mock,
+    };
+    const model = { bindTools: vi.fn(() => boundModel) };
+
+    await expect(
+      callModel(
+        model as ReturnType<typeof createModel>,
+        'base64img',
+        'Click something',
+      )
+    ).rejects.toThrow('Persistent error');
+
+    expect(boundModel.stream).toHaveBeenCalledTimes(5); // MAX_API_RETRIES = 5
+  });
+
+  it('throws an error if stream returns no tool calls', async () => {
+    const chunk = new AIMessageChunk({ content: 'just plain text, no tool call' });
+    const { model } = makeModel([chunk]);
+
+    await expect(
+      callModel(
+        model as ReturnType<typeof createModel>,
+        'base64img',
+        'Click something',
+      )
+    ).rejects.toThrow('Model returned no tool calls');
+  });
+
+  it('throws "Empty stream response" when the model stream yields zero chunks', async () => {
+    // Covers `if (chunks.length === 0) throw new Error('Empty stream response')`.
+    // The model's generator immediately completes without yielding anything.
+    const boundModel = {
+      stream: vi.fn(async function* () {
+        // yield nothing
+      }) as Mock,
+    };
+    const model = { bindTools: vi.fn(() => boundModel) };
+
+    await expect(
+      callModel(
+        model as ReturnType<typeof createModel>,
+        'base64img',
+        'Click something',
+      )
+    ).rejects.toThrow('Empty stream response');
+
+    // Each attempt makes one stream call; MAX_API_RETRIES = 5
+    expect(boundModel.stream).toHaveBeenCalledTimes(5);
+  });
+
+  it('attaches the LangSmith tracer as a callback when no LangGraph config is provided', async () => {
+    // Covers `streamConfig = tracer ? { callbacks: [tracer] } : {}` — the tracer-active branch.
+    // vi.resetModules() clears the module cache so the subsequent dynamic import re-executes
+    // llm-stream.ts with the freshly-mocked langsmith-config module.
+    const mockTracer = { name: 'mock-tracer' };
+    vi.resetModules();
+    vi.doMock('@/utils/langsmith-config', () => ({
+      getLangSmithTracer: () => mockTracer,
+    }));
+    // Also re-mock sleep so the fresh llm-stream module doesn't use real timers
+    vi.doMock('@/utils/sleep', () => ({ sleep: vi.fn().mockResolvedValue(undefined) }));
+
+    const { streamWithRetry } = await import('@/utils/llm-stream');
+    const { AIMessageChunk: FreshChunk } = await import('@langchain/core/messages');
+
+    const toolChunkLocal = new FreshChunk({
+      content: '',
+      tool_calls: [{ name: 'click', args: { targetId: 1 }, id: 'call_1', type: 'tool_call' }],
+    });
+
+    let capturedConfig: unknown;
+    const boundModel = {
+      stream: vi.fn(async function* (msgs: unknown, cfg: unknown) {
+        capturedConfig = cfg;
+        yield toolChunkLocal;
+      }) as Mock,
+    };
+
+    await streamWithRetry(boundModel, [], async () => {}, undefined /* no config */);
+
+    // The tracer must have been attached via the callbacks array
+    expect(capturedConfig).toEqual({ callbacks: [mockTracer] });
+
+    vi.doUnmock('@/utils/langsmith-config');
+    vi.doUnmock('@/utils/sleep');
+    vi.resetModules();
   });
 });

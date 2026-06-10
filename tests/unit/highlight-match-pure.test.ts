@@ -24,4 +24,11 @@ describe('splitByMatch', () => {
   it('returns no matches when query not found', () => {
     expect(splitByMatch('Hello', 'xyz')).toEqual([{ text: 'Hello', match: false }]);
   });
+
+  it('returns single non-match segment for empty text with non-empty query', () => {
+    // text is '', query is 'foo' — the while loop body never executes (cursor >= text.length),
+    // segments stays empty, so the ternary `segments.length ? segments : [{ text, match: false }]`
+    // returns the fallback array.
+    expect(splitByMatch('', 'foo')).toEqual([{ text: '', match: false }]);
+  });
 });

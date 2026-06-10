@@ -22,6 +22,8 @@ export function isInteractable(el: Element): boolean {
 
   if (INTERACTIVE_ROLES.has(role)) return true;
 
+  if (el.getAttribute('draggable')?.toLowerCase() === 'true') return true;
+
   if (el.hasAttribute('tabindex') && parseInt(el.getAttribute('tabindex') ?? '0', 10) >= 0)
     return true;
 
