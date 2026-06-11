@@ -23,30 +23,30 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0% </span>
+                <span class="strong">95.65% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>0/23</span>
+                <span class='fraction'>22/23</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0% </span>
+                <span class="strong">91.66% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>0/12</span>
+                <span class='fraction'>11/12</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0% </span>
+                <span class="strong">100% </span>
                 <span class="quiet">Functions</span>
-                <span class='fraction'>0/1</span>
+                <span class='fraction'>1/1</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0% </span>
+                <span class="strong">100% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>0/21</span>
+                <span class='fraction'>21/21</span>
             </div>
         
             
@@ -61,7 +61,7 @@
             </div>
         </template>
     </div>
-    <div class='status-line low'></div>
+    <div class='status-line high'></div>
     <pre><table class="coverage">
 <tr><td class="line-count quiet"><a name='L1'></a><a href='#L1'>1</a>
 <a name='L2'></a><a href='#L2'>2</a>
@@ -117,36 +117,36 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">4x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">17x</span>
+<span class="cline-any cline-yes">17x</span>
+<span class="cline-any cline-yes">17x</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-yes">3x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-yes">3x</span>
+<span class="cline-any cline-yes">3x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -158,40 +158,40 @@
  * closest to the provided (x, y) coordinates.
  */
 &nbsp;
-export function <span class="fstat-no" title="function not covered" >handleGetElementDom(</span>
+export function handleGetElementDom(
   msg: { x: number; y: number },
   sendResponse: (response: unknown) =&gt; void,
 ): void {
-  const { x, y } = <span class="cstat-no" title="statement not covered" >msg;</span>
+  const { x, y } = msg;
 &nbsp;
   // Collect all interactables and find the one closest to (x, y).
   // We deliberately avoid elementFromPoint because the blocker overlay
   // sits on top and would return the wrong element.
-  const candidates = <span class="cstat-no" title="statement not covered" >Array.from(document.querySelectorAll('*')) as HTMLElement[];</span>
-  let closest: HTMLElement | null = <span class="cstat-no" title="statement not covered" >null;</span>
-  let minDist = <span class="cstat-no" title="statement not covered" >Infinity;</span>
-<span class="cstat-no" title="statement not covered" >  for (const el of candidates) {</span>
-<span class="cstat-no" title="statement not covered" >    if (!(el instanceof HTMLElement)) <span class="cstat-no" title="statement not covered" >continue;</span></span>
-    const r = <span class="cstat-no" title="statement not covered" >el.getBoundingClientRect();</span>
-<span class="cstat-no" title="statement not covered" >    if (r.width === 0 &amp;&amp; r.height === 0) <span class="cstat-no" title="statement not covered" >continue;</span></span>
-    const cx = <span class="cstat-no" title="statement not covered" >r.left + r.width / 2;</span>
-    const cy = <span class="cstat-no" title="statement not covered" >r.top + r.height / 2;</span>
-    const dist = <span class="cstat-no" title="statement not covered" >Math.hypot(cx - x, cy - y);</span>
-<span class="cstat-no" title="statement not covered" >    if (dist &lt; minDist) {</span>
-<span class="cstat-no" title="statement not covered" >      minDist = dist;</span>
-<span class="cstat-no" title="statement not covered" >      closest = el;</span>
+  const candidates = Array.from(document.querySelectorAll('*')) as HTMLElement[];
+  let closest: HTMLElement | null = null;
+  let minDist = Infinity;
+  for (const el of candidates) {
+    <span class="missing-if-branch" title="if path not taken" >I</span>if (!(el instanceof HTMLElement)) <span class="cstat-no" title="statement not covered" >continue;</span>
+    const r = el.getBoundingClientRect();
+    if (r.width === 0 &amp;&amp; r.height === 0) continue;
+    const cx = r.left + r.width / 2;
+    const cy = r.top + r.height / 2;
+    const dist = Math.hypot(cx - x, cy - y);
+    if (dist &lt; minDist) {
+      minDist = dist;
+      closest = el;
     }
   }
 &nbsp;
-<span class="cstat-no" title="statement not covered" >  if (!closest) {</span>
-<span class="cstat-no" title="statement not covered" >    sendResponse({ success: false, error: 'No element found near coordinates' });</span>
-<span class="cstat-no" title="statement not covered" >    return;</span>
+  if (!closest) {
+    sendResponse({ success: false, error: 'No element found near coordinates' });
+    return;
   }
 &nbsp;
-  const MAX_CHARS = <span class="cstat-no" title="statement not covered" >40_000;</span>
-  const full = <span class="cstat-no" title="statement not covered" >closest.outerHTML;</span>
-  const truncated = <span class="cstat-no" title="statement not covered" >full.length &gt; MAX_CHARS;</span>
-<span class="cstat-no" title="statement not covered" >  sendResponse({</span>
+  const MAX_CHARS = 40_000;
+  const full = closest.outerHTML;
+  const truncated = full.length &gt; MAX_CHARS;
+  sendResponse({
     success: true,
     outerHTML: truncated ? full.slice(0, MAX_CHARS) + '\n&lt;!-- [truncated] --&gt;' : full,
     tag: closest.tagName.toLowerCase(),
@@ -205,7 +205,7 @@ export function <span class="fstat-no" title="function not covered" >handleGetEl
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-06-05T20:23:55.610Z
+                at 2026-06-11T06:57:25.711Z
             </div>
         <script src="../../../prettify.js"></script>
         <script>
