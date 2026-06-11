@@ -10,13 +10,6 @@
 import { log } from '@/utils/agent-log';
 import type { AgentState } from '../agent-state';
 import { UI_ACTION_TYPES, UI_ACTION_TYPES_NO_CLICK } from '../agent-state';
-import { handleNavigate } from './actions/navigate';
-import { handleScroll } from './actions/scroll';
-import { handleType } from './actions/type';
-import { handlePressKey } from './actions/press-key';
-import { handleClick } from './actions/click';
-import { handleDragAndDrop } from './actions/drag-and-drop';
-import type { ActionCtx } from './actions/ctx';
 import { uiActionRegistry, type UIActionContext } from '../action-registry';
 
 export async function uiActionNode(

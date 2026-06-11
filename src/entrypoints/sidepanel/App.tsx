@@ -90,11 +90,7 @@ function AgentUI() {
   const [sessions, setSessions] = useState<Session[]>([]);
   
   const [currentSessionId, setCurrentSessionId] =
-<<<<<<< HEAD
-    useState<number | null>(null);
-=======
     useState<number | null | undefined>(undefined);
->>>>>>> upstream/main
 
   
 
@@ -236,22 +232,6 @@ function AgentUI() {
   };
 
   // ── Agent state / logs ─────────────────────────────────────────────────────
-<<<<<<< HEAD
-const refreshSessions = useCallback(async () => {
-  const sessions = await getSessions();
-
-  setSessions(sessions);
-
-  if (sessions.length === 0) {
-    setCurrentSessionId(null);
-  } else if (
-    currentSessionId == null ||
-    !sessions.some((session) => session.id === currentSessionId)
-  ) {
-    setCurrentSessionId(sessions[0].id ?? null);
-  }
-}, [currentSessionId]);
-=======
   const refreshSessions = useCallback(async () => {
     const sessions = await getSessions();
 
@@ -269,7 +249,6 @@ const refreshSessions = useCallback(async () => {
       return prev;
     });
   }, []);
->>>>>>> upstream/main
 
   const appendLog = useCallback((message: string, level = 'info') => {
     const ts = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -541,11 +520,7 @@ const refreshSessions = useCallback(async () => {
         />
       ) : (
         <VFSBrowser
-<<<<<<< HEAD
-          sessionId={currentSessionId}
-=======
           sessionId={currentSessionId ?? null}
->>>>>>> upstream/main
         />
       )}
 
