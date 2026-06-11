@@ -81,6 +81,24 @@ describe('installBlocker', () => {
     // The blocker's capturing listener calls preventDefault before our non-capturing handler
     expect(handler).not.toHaveBeenCalled();
   });
+
+  it('appends to document.documentElement if document.body is null', async () => {
+    const originalBody = document.body;
+    Object.defineProperty(document, 'body', {
+      get() { return null; },
+      configurable: true,
+    });
+    try {
+      await installBlocker();
+      expect(document.getElementById(BLOCKER_ID)).not.toBeNull();
+      expect(document.documentElement.contains(document.getElementById(BLOCKER_ID))).toBe(true);
+    } finally {
+      Object.defineProperty(document, 'body', {
+        get() { return originalBody; },
+        configurable: true,
+      });
+    }
+  });
 });
 
 describe('removeBlocker', () => {

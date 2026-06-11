@@ -10,16 +10,50 @@ on:
 permissions: {}
 
 jobs:
+  check-artifacts:
+    name: Check uploaded artifacts
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+    outputs:
+      run_deploy: ${{ steps.check.outputs.run_deploy }}
+      run_cleanup: ${{ steps.check.outputs.run_cleanup }}
+    steps:
+      - name: Check artifacts
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # List artifacts for the triggering workflow run
+          ARTIFACTS=$(gh api repos/${{ github.repository }}/actions/runs/${{ github.event.workflow_run.id }}/artifacts --jq '.artifacts[].name')
+          echo "Found artifacts:"
+          echo "$ARTIFACTS"
+          
+          run_deploy="false"
+          run_cleanup="false"
+          
+          if echo "$ARTIFACTS" | grep -q "^sandbox-preview-pr-"; then
+            run_deploy="true"
+          fi
+          if echo "$ARTIFACTS" | grep -q "^sandbox-close-pr-"; then
+            run_cleanup="true"
+          fi
+          
+          echo "run_deploy=${run_deploy}" >> $GITHUB_OUTPUT
+          echo "run_cleanup=${run_cleanup}" >> $GITHUB_OUTPUT
+
   # ── Deploy preview when the build succeeded ─────────────────────────────────
   deploy:
     name: Deploy sandbox preview
+    needs: check-artifacts
     runs-on: ubuntu-latest
     permissions:
       contents: write
       pull-requests: write
     if: >
       github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.event == 'pull_request'
+      github.event.workflow_run.event == 'pull_request' &&
+      needs.check-artifacts.outputs.run_deploy == 'true'
 
     steps:
       - name: Download preview artifact
@@ -80,8 +114,11 @@ jobs:
   # ── Clean up preview when PR was closed ─────────────────────────────────────
   cleanup:
     name: Cleanup sandbox preview
+    needs: check-artifacts
     runs-on: ubuntu-latest
-    if: github.event.workflow_run.event == 'pull_request'
+    if: >
+      github.event.workflow_run.event == 'pull_request' &&
+      needs.check-artifacts.outputs.run_cleanup == 'true'
     permissions:
       contents: write
       pull-requests: write

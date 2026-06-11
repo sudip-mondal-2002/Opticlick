@@ -10,6 +10,7 @@ import {
   fetchOllamaModels,
   isOllamaModel,
   getProviderForModel,
+  getModelLabel,
 } from '@/utils/models';
 import type { ModelOption, CustomOpenAIConfig } from '@/utils/models';
 import { ThemeProvider } from './context/ThemeContext';
@@ -22,6 +23,7 @@ import { ChatInput } from './components/ChatInput';
 import { ChatFeed } from './components/ChatFeed';
 import { SessionsOverlay } from './components/SessionsOverlay';
 import { TemplatesOverlay } from './components/TemplatesOverlay';
+import { CustomInstructionsOverlay } from './components/CustomInstructionsOverlay';
 import type { LogItem, HistoryStep } from './components/ChatFeed';
 
 // ── Parse model turn from IndexedDB ──────────────────────────────────────────
@@ -88,7 +90,11 @@ function AgentUI() {
   const [sessions, setSessions] = useState<Session[]>([]);
   
   const [currentSessionId, setCurrentSessionId] =
+<<<<<<< HEAD
     useState<number | null>(null);
+=======
+    useState<number | null | undefined>(undefined);
+>>>>>>> upstream/main
 
   
 
@@ -101,6 +107,7 @@ function AgentUI() {
 
   const [templates, setTemplates] = useState<PromptTemplate[]>([]);
   const [showTemplates, setShowTemplates] = useState(false);
+  const [showCustomInstructions, setShowCustomInstructions] = useState(false);
   const [injectedPrompt, setInjectedPrompt] = useState<string | null>(null);
 
   const feedRef = useRef<HTMLDivElement>(null);
@@ -229,6 +236,7 @@ function AgentUI() {
   };
 
   // ── Agent state / logs ─────────────────────────────────────────────────────
+<<<<<<< HEAD
 const refreshSessions = useCallback(async () => {
   const sessions = await getSessions();
 
@@ -243,6 +251,25 @@ const refreshSessions = useCallback(async () => {
     setCurrentSessionId(sessions[0].id ?? null);
   }
 }, [currentSessionId]);
+=======
+  const refreshSessions = useCallback(async () => {
+    const sessions = await getSessions();
+
+    setSessions(sessions);
+
+    setCurrentSessionId((prev) => {
+      // On first load (prev === undefined), auto-select the most recent session.
+      if (prev === undefined) {
+        return sessions.length > 0 ? (sessions[0].id ?? null) : null;
+      }
+      // If the previously selected session was deleted, clear the selection.
+      if (prev !== null && !sessions.some((s) => s.id === prev)) {
+        return null;
+      }
+      return prev;
+    });
+  }, []);
+>>>>>>> upstream/main
 
   const appendLog = useCallback((message: string, level = 'info') => {
     const ts = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
@@ -359,6 +386,7 @@ const refreshSessions = useCallback(async () => {
     setStreamingThinking('');
     setChatInputKey((k) => k + 1);
     textareaRef.current?.focus();
+    chrome.storage.session.remove(['agentState', 'agentLog']);
   };
 
   const handleResumeSession = async (session: Session) => {
@@ -415,9 +443,12 @@ const refreshSessions = useCallback(async () => {
 
       {showSessions && (
         <SessionsOverlay
+          key="sessions-overlay"
           sessions={sessions}
           onClose={() => setShowSessions(false)}
-          onResume={(s) => { handleResumeSession(s); setShowSessions(false); }}
+          onResume={handleResumeSession}
+          onRefresh={refreshSessions}
+          modelLabel={(id) => getModelLabel(id, ollamaModels, customConfigs)}
         />
       )}
 
@@ -445,6 +476,12 @@ const refreshSessions = useCallback(async () => {
         />
       )}
 
+      {showCustomInstructions && (
+        <CustomInstructionsOverlay
+          onClose={() => setShowCustomInstructions(false)}
+        />
+      )}
+
       <Header
         isRunning={isRunning}
         isError={isError}
@@ -452,6 +489,7 @@ const refreshSessions = useCallback(async () => {
         onShowSessions={() => setShowSessions(true)}
         onShowApiKeys={() => setShowApiKeys(true)}
         onShowTemplates={() => setShowTemplates(true)}
+        onShowCustomInstructions={() => setShowCustomInstructions(true)}
       />
       <div className="flex border-b border-slate-200 dark:border-slate-700">
         <button
@@ -503,7 +541,11 @@ const refreshSessions = useCallback(async () => {
         />
       ) : (
         <VFSBrowser
+<<<<<<< HEAD
           sessionId={currentSessionId}
+=======
+          sessionId={currentSessionId ?? null}
+>>>>>>> upstream/main
         />
       )}
 

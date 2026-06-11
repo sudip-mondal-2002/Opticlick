@@ -87,4 +87,15 @@ describe('formatMemoryForPrompt', () => {
     expect(result).toContain('### other');
     expect(result).toContain('`misc/fact`: some info');
   });
+
+  it('falls back to "other" when category is an empty string', () => {
+    // Covers the falsy branch of `entry.category || 'other'` in formatMemoryForPrompt.
+    const entries: MemoryEntry[] = [
+      // Cast to bypass TS to simulate a DB entry whose category field was not set.
+      { key: 'uncategorized/key', values: ['value'], category: '' as string, createdAt: 0, updatedAt: 0 },
+    ];
+    const result = formatMemoryForPrompt(entries);
+    expect(result).toContain('### other');
+    expect(result).toContain('`uncategorized/key`: value');
+  });
 });

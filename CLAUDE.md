@@ -50,11 +50,14 @@ This project is a Manifest V3 (MV3) Chrome Extension that functions as an autono
 - **Image Capture:** Use `chrome.tabs.captureVisibleTab` to generate base64 screenshots. Also auto-save each step's annotated screenshot to VFS as `step_N.png`.
 - **Conversation History:** Each turn is stored in IndexedDB with role (`user`/`model`/`tool`) and metadata. Model turns include `toolCalls: { id, name, args }[]` for function-call history reconstruction. Tool result turns include `toolCallId` and `toolName` to form valid Gemini/LangChain function-response pairs. This ensures the LLM can properly track which tool call produced which result.
 - **URL Anchoring:** On loop start, the active tab's URL is captured and injected into every LLM prompt as `[CONTEXT: The task started on <url>. If you are on an unrelated page, navigate back.]` to help the agent stay task-focused and recover from navigation errors.
+- **SOLID Action Registries:** To follow SRP, OCP, and ISP, all action parsing and executions are decoupled from switch-cases and if-else flows. Parsers are registered in a lookup map in `src/utils/tools/index.ts`. Execution handlers are registered in specialized registries (`uiActionRegistry` and `sideEffectRegistry`) in `src/entrypoints/background/action-registry.ts`. Graph orchestration nodes (`uiActionNode`, `sideEffectsNode`) dynamically query their respective registries to execute actions using segregated `UIActionContext` and `SideEffectContext` payloads.
+
 
 ### 4. Execution Engine (Hardware-Level Simulation)
 - **No Synthetic Events:** NEVER use standard `.click()` DOM events, as they will fail on modern SPAs (React/Vue/Angular).
 - **Chrome Debugger API:** Use `chrome.debugger` to send `Input.dispatchMouseEvent` sequences (`mouseMoved`, `mousePressed`, `mouseReleased`) to simulate true hardware interrupts.
 - **Coordinate Scaling:** **CRITICAL:** You must mathematically scale the LMM's target coordinates down by dividing them by `window.devicePixelRatio` before dispatching the CDP commands, otherwise clicks will miss on high-DPI/Retina displays.
+- **SOLID CDP Router:** To adhere to OCP and SRP, the sandbox debugger mock (`sandbox/src/chrome-mock/debugger.ts`) delegates CDP sendCommand calls to a `CDPCommandRegistry` containing dedicated handler classes for each method (e.g. screenshot, inputs, etc.) registered in `sandbox/src/chrome-mock/cdp-handlers.ts`.
 
 ### 5. Agent Tools
 Tools are categorized into UI actions, DOM inspection, VFS mutations, memory, scratchpad, todo, and control.
@@ -101,27 +104,33 @@ Tools are categorized into UI actions, DOM inspection, VFS mutations, memory, sc
 - **Typical Workflow:** Click (focus) → Type (enter text) → Press_key (submit)
 - **Anti-Loop Rules:** The system tracks action history and uses `shouldPivot()` to detect repeated identical actions (3+ identical click/scroll pairs). When detected, the agent must switch strategies: navigate to a reconstructed URL, try a different interaction path, or ask the user for clarification.
 
-### 6. Persistent Memory
+### 6. Session History Search
+- **Session metadata:** `Session` records store optional `modelId`, `startUrl`, and denormalized `searchText` (lowercase, max 4 KB) for client-side filtering. Set on create in `loop.ts`; `searchText` is appended after each LLM turn in `observe.ts`.
+- **Search module:** `searchSessions()` in `src/utils/session-search.ts` filters/sorts in memory after `getSessions()`. Supports text query (title, URL, `searchText`), date range, model filter, and relevance/newest/oldest sort.
+- **Legacy backfill:** `backfillSessionMetadata()` in `src/utils/session-backfill.ts` parses conversation history for missing `startUrl`/`searchText` when the sessions overlay opens.
+- **IndexedDB:** `DB_VERSION = 5` adds a `by-session` index on the `conversations` store for efficient per-session history reads.
+
+### 7. Persistent Memory
 - **Purpose:** Cross-session memory that lets the agent remember facts about the user (accounts, preferences, display names, etc.) across sessions.
-- **Storage:** IndexedDB `memory` object store (`DB_VERSION = 4`). Each entry is a `MemoryEntry` with `key` (namespaced, e.g. `"github/username"`), `values` (string array for multi-account support), `category`, optional `sourceUrl`, and timestamps.
+- **Storage:** IndexedDB `memory` object store (`DB_VERSION = 5`). Each entry is a `MemoryEntry` with `key` (namespaced, e.g. `"github/username"`), `values` (string array for multi-account support), `category`, optional `sourceUrl`, and timestamps.
 - **Agent Tools:** `memory_upsert` (save/merge values) and `memory_delete` (remove entry). Defined in `src/utils/tools/memory.ts`.
 - **Context Injection:** All memory entries are loaded at loop start (`getAllMemories()`) and injected into every LLM prompt as a `── Long-term Memory ──` context block via `formatMemoryForPrompt()` in `src/utils/memory.ts`.
 - **Upsert Semantics:** When the agent calls `memory_upsert` with an existing key, new values are merged and deduplicated into the existing array. This naturally handles multi-account discovery.
 - **Module layout:** DB CRUD in `src/utils/db.ts`, formatting in `src/utils/memory.ts`, tool schemas in `src/utils/tools/memory.ts`, action handling in `src/entrypoints/background/loop.ts`.
 - **Security Rule:** The LLM is instructed to NEVER store passwords, tokens, or API keys in memory.
 
-### 7. In-Session Scratchpad Memory
+### 8. In-Session Scratchpad Memory
 - **Purpose:** Short-term memory for accumulating intermediate findings (e.g. issues extracted across multiple pages) during a single thread/session. Does NOT persist across sessions.
 - **Storage:** Synced to VFS as `__scratchpad.json` to survive service worker restarts. Cleared automatically on session completion.
 - **Agent Tools:** `note_write` (save/update note) and `note_delete` (remove note). Defined in `src/utils/tools/scratchpad.ts`.
 - **Context Injection:** Injected into every LLM prompt as a `── Scratchpad ──` block via `formatScratchpadForPrompt()` in `src/utils/scratchpad.ts`.
 
-### 8. File Upload Handling
+### 9. File Upload Handling
 - **File Chooser Suppression:** The background loop uses Chrome Debugger Protocol (`Page.setInterceptFileChooserDialog`) combined with JS-level overrides of `HTMLInputElement.prototype.click` and `window.showOpenFilePicker` to suppress any OS file picker dialogs.
 - **VFS File Injection:** When the agent calls `click` with an `uploadFileId` parameter (a VFS file UUID), the loop uses `DOM.setFileInputFiles` to inject the file contents directly into the `<input type="file">` element. This bypasses the native file picker entirely.
 - **Fallback:** For pages that require actual file operations, the agent can use `vfs_download` to fetch remote files into VFS, then reference them by filename or UUID in click actions.
 
-### 9. Attachment Handling (User-Provided Files and Images)
+### 10. Attachment Handling (User-Provided Files and Images)
 - **Attachment Flow:** User-attached files arrive in the `START_AGENT` message as `AttachedFile[]` with fields `name`, `mimeType`, and base64-encoded `data`.
 - **VFS Seeding:** All attachments are immediately saved to the session's VFS via `saveVFSFile()`, making them accessible by filename or UUID throughout the session.
 - **Image Injection:** On step 1 only, image attachments (those whose `mimeType` starts with `image/`) are extracted and injected into the LLM prompt as inline multimodal content:
@@ -135,7 +144,7 @@ Tools are categorized into UI actions, DOM inspection, VFS mutations, memory, sc
 - Validate DOM stability (e.g., using `MutationObserver` to wait for network/DOM idle) before commanding the annotation engine to draw marks.
 
 ## Testing Requirements
-- **Always run lint and tests after making changes.** After completing any code modification, run the relevant test suite before considering the task done.
+- **Always run lint and tests after making changes.** Always run the linter with `npm run lint` before running tests. After completing any code modification, run the relevant test suite before considering the task done.
 - Run unit tests with `npm test` and E2E tests with `npm run test:e2e` (or the equivalent commands in the project).
 - If tests fail, fix the failures before finishing — do not leave the codebase in a broken state.
 - **Write tests for every feature or bug fix.** New tools, actions, or pure utility functions must have corresponding unit tests. Integration or DOM tests are required when the change touches Chrome API wiring, content scripts, or the agent loop.

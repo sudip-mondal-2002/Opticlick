@@ -235,6 +235,26 @@ describe('parseToolCall', () => {
     expect(result.key).toBe('github/username');
   });
 
+  // ── Scratchpad ─────────────────────────────────────────────────────────────
+
+  it('parses "note_write"', () => {
+    const result = parseToolCall('note_write', {
+      key: 'my-findings',
+      value: 'Found a coupon code',
+    }) as AgentAction & { type: 'note_write' };
+    expect(result.type).toBe('note_write');
+    expect(result.key).toBe('my-findings');
+    expect(result.value).toBe('Found a coupon code');
+  });
+
+  it('parses "note_delete"', () => {
+    const result = parseToolCall('note_delete', {
+      key: 'my-findings',
+    }) as AgentAction & { type: 'note_delete' };
+    expect(result.type).toBe('note_delete');
+    expect(result.key).toBe('my-findings');
+  });
+
   // ── Control ───────────────────────────────────────────────────────────────
 
   it('parses "finish" with summary', () => {

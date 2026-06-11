@@ -5,17 +5,23 @@ import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
 import { ChatAnthropic } from '@langchain/anthropic';
 import { ChatOpenAI } from '@langchain/openai';
 
-// Mock all LLM constructors
+// Mock all LLM constructors using constructible functions (avoid arrow functions)
 vi.mock('@langchain/google-genai', () => ({
-  ChatGoogleGenerativeAI: vi.fn((config) => ({ _config: config })),
+  ChatGoogleGenerativeAI: vi.fn(function (config) {
+    return { _config: config };
+  }),
 }));
 
 vi.mock('@langchain/anthropic', () => ({
-  ChatAnthropic: vi.fn((config) => ({ _config: config })),
+  ChatAnthropic: vi.fn(function (config) {
+    return { _config: config };
+  }),
 }));
 
 vi.mock('@langchain/openai', () => ({
-  ChatOpenAI: vi.fn((config) => ({ _config: config })),
+  ChatOpenAI: vi.fn(function (config) {
+    return { _config: config };
+  }),
 }));
 
 describe('createModel (Gemini)', () => {
