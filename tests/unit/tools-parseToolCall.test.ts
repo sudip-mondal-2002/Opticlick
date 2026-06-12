@@ -96,6 +96,41 @@ describe('parseToolCall', () => {
     expect(result.targetX).toBe(500);
     expect(result.targetY).toBe(300);
   });
+  // ── Tabs ────────────────────────────────────────────────────────────────
+  
+  it('parses "open_tab"', () => {
+  const result = parseToolCall('open_tab', {
+    url: 'https://github.com',
+  }) as AgentAction & { type: 'open_tab' };
+
+  expect(result.type).toBe('open_tab');
+  expect(result.url).toBe('https://github.com');
+});
+
+it('parses "switch_tab"', () => {
+  const result = parseToolCall('switch_tab', {
+    tabIndex: 2,
+  }) as AgentAction & { type: 'switch_tab' };
+
+  expect(result.type).toBe('switch_tab');
+  expect(result.tabIndex).toBe(2);
+});
+
+it('parses "close_tab"', () => {
+  const result = parseToolCall('close_tab', {}) as AgentAction & {
+    type: 'close_tab';
+  };
+
+  expect(result.type).toBe('close_tab');
+});
+
+it('parses "list_tabs"', () => {
+  const result = parseToolCall('list_tabs', {}) as AgentAction & {
+    type: 'list_tabs';
+  };
+
+  expect(result.type).toBe('list_tabs');
+});
 
   // ── DOM ────────────────────────────────────────────────────────────────────
 
@@ -281,10 +316,16 @@ describe('parseToolCall', () => {
     expect(result.question).toBe('Which account should I use?');
   });
 
-  it('covers all 19 named tool types', () => {
+  it('covers all 23 named tool types', () => {
     const toolNames = [
       'click', 'type', 'navigate', 'scroll', 'press_key',
       'drag_and_drop',
+
+      'open_tab',
+      'switch_tab',
+      'close_tab',
+      'list_tabs',
+
       'fetch_dom',
       'vfs_save_screenshot', 'vfs_write', 'vfs_delete', 'vfs_download',
       'memory_upsert', 'memory_delete',
@@ -293,6 +334,10 @@ describe('parseToolCall', () => {
     ];
     for (const name of toolNames) {
       const minimalArgs: Record<string, unknown> = {
+        open_tab: { url: 'https://x.com' },
+        switch_tab: { tabIndex: 0 },
+        close_tab: {},
+        list_tabs: {},
         click: { targetId: 1 },
         type: { text: 'hello' },
         navigate: { url: 'https://x.com' },

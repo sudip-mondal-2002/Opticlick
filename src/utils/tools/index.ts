@@ -13,8 +13,10 @@ export { TODO_TOOLS, todoCreateTool, todoUpdateTool, todoAddTool } from './todo'
 export { SCRATCHPAD_TOOLS, noteWriteTool, noteDeleteTool } from './scratchpad';
 export { CONTROL_TOOLS, finishTool, waitTool, askUserTool } from './control';
 
+
 import { UI_TOOLS } from './ui';
 import { DOM_TOOLS } from './dom';
+import { TAB_TOOLS } from './tabs';
 import { VFS_TOOLS } from './vfs';
 import { MEMORY_TOOLS } from './memory';
 import { TODO_TOOLS } from './todo';
@@ -32,6 +34,14 @@ import type { AgentAction, TodoItem } from '../types';
  *   4. UI   — interact with the page (at most one per turn).
  *   5. Control — finish or wait.
  */
+export {
+  TAB_TOOLS,
+  openTabTool,
+  switchTabTool,
+  closeTabTool,
+  listTabsTool,
+} from './tabs';
+
 export const AGENT_TOOLS = [
   ...TODO_TOOLS,
   ...MEMORY_TOOLS,
@@ -39,6 +49,7 @@ export const AGENT_TOOLS = [
   ...VFS_TOOLS,
   ...DOM_TOOLS,
   ...UI_TOOLS,
+  ...TAB_TOOLS,
   ...CONTROL_TOOLS,
 ] as const;
 
@@ -148,6 +159,23 @@ const parsers: Record<string, (args: Record<string, any>) => AgentAction> = {
   ask_user: (args) => ({
     type: 'ask_user',
     question: args.question as string,
+  }),
+  open_tab: (args) => ({
+    type: 'open_tab',
+    url: args.url as string,
+  }),
+
+  switch_tab: (args) => ({
+    type: 'switch_tab',
+    tabIndex: args.tabIndex as number,
+  }),
+
+  close_tab: () => ({
+    type: 'close_tab',
+  }),
+
+  list_tabs: () => ({
+    type: 'list_tabs',
   }),
 };
 

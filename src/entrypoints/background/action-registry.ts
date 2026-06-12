@@ -1,4 +1,5 @@
-import type { AgentAction, CoordinateEntry, ActionRecord } from '@/utils/types';
+import type { AgentAction, CoordinateEntry } from '@/utils/types';
+import type { ActionRecord } from '@/utils/navigation-guard';
 import type { AgentState } from './agent-state';
 import { handleClick } from './nodes/actions/click';
 import { handleNavigate } from './nodes/actions/navigate';
@@ -6,6 +7,12 @@ import { handleScroll } from './nodes/actions/scroll';
 import { handleType } from './nodes/actions/type';
 import { handlePressKey } from './nodes/actions/press-key';
 import { handleDragAndDrop } from './nodes/actions/drag-and-drop';
+import {
+  handleOpenTab,
+  handleSwitchTab,
+  handleCloseTab,
+  handleListTabs,
+} from './nodes/effects/tabs';
 
 import {
   handleVfsSaveScreenshot,
@@ -189,12 +196,32 @@ sideEffectRegistry.register({
 });
 
 sideEffectRegistry.register({
-  type: 'vfs_write',
-  execute: async (action, ctx) => {
-    await handleVfsWrite(action, makeEffectCtx(ctx));
+  type: 'open_tab',
+  execute: async (action) => {
+    const tabId = await handleOpenTab(action);
+    return { tabId };
   },
 });
-
+sideEffectRegistry.register({
+  type: 'switch_tab',
+  execute: async (action, ctx) => {
+    const tabId = await handleSwitchTab(action, ctx.tabId);
+    return { tabId };
+  },
+});
+sideEffectRegistry.register({
+  type: 'close_tab',
+  execute: async (_action, ctx) => {
+    const tabId = await handleCloseTab(ctx.tabId);
+    return { tabId };
+  },
+});
+sideEffectRegistry.register({
+  type: 'list_tabs',
+  execute: async () => {
+    await handleListTabs();
+  },
+});
 sideEffectRegistry.register({
   type: 'vfs_delete',
   execute: async (action, ctx) => {

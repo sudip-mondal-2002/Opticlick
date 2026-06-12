@@ -107,6 +107,21 @@ export type AgentAction =
   | { type: 'todo_create'; items: TodoItem[] }
   | { type: 'todo_update'; updates: TodoUpdate[] }
   | { type: 'todo_add'; items: TodoItem[] }
+   // ── Tab management ──────────────────────────────────────────────────────
+  | {
+      type: 'open_tab';
+      url: string;
+    }
+  | {
+      type: 'switch_tab';
+      tabIndex: number;
+    }
+  | {
+      type: 'close_tab';
+    }
+  | {
+      type: 'list_tabs';
+    }
   // ── Control ──────────────────────────────────────────────────────────────
   | { type: 'finish'; summary: string }
   | {
@@ -153,6 +168,12 @@ export interface AgentState {
   step: number;
   prompt?: string;
   sessionId?: number;
+
+  openTabs?: Array<{
+    tabId: number;
+    title: string;
+    url: string;
+  }>;
 }
 
 /** A stored chat session. */
