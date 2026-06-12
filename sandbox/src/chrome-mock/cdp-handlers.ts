@@ -37,23 +37,44 @@ export class CaptureScreenshotHandler implements CDPCommandHandler {
     if (!doc?.body || !win) {
       throw new Error('Sandbox: iframe not ready for screenshot');
     }
-    const h2c = await getHtml2Canvas();
-    const canvas = await h2c(doc.body, {
-      useCORS: true,
-      allowTaint: true,
-      scale: 1, // Cap at 1x resolution to keep performance fast and prevent thread freeze
-      logging: false,
-      foreignObjectRendering: false,
-      width: win.innerWidth,
-      height: win.innerHeight,
-      scrollX: win.scrollX,
-      scrollY: win.scrollY,
-      windowWidth: win.innerWidth,
-      windowHeight: win.innerHeight,
-    });
-    // Return raw base64 without data-URI prefix (matches real CDP response)
-    const dataUrl = canvas.toDataURL('image/png');
-    return { data: dataUrl.replace(/^data:image\/png;base64,/, '') };
+const overlay =
+  doc.getElementById('__opticlick_overlay__');
+
+const blocker =
+  doc.getElementById('__opticlick_blocker__');
+
+const oldOverlayVisibility = overlay?.style.visibility;
+const oldBlockerVisibility = blocker?.style.visibility;
+
+try {
+  if (overlay) overlay.style.visibility = 'hidden';
+  if (blocker) blocker.style.visibility = 'hidden';
+
+  const h2c = await getHtml2Canvas();
+
+  const canvas = await h2c(doc.body, {
+    useCORS: true,
+    allowTaint: true,
+    scale: 1,
+    logging: false,
+    foreignObjectRendering: false,
+    width: win.innerWidth,
+    height: win.innerHeight,
+    scrollX: win.scrollX,
+    scrollY: win.scrollY,
+    windowWidth: win.innerWidth,
+    windowHeight: win.innerHeight,
+  });
+
+  const dataUrl = canvas.toDataURL('image/png');
+  return {
+    data: dataUrl.replace(/^data:image\/png;base64,/, ''),
+  };
+} finally {
+  if (overlay) overlay.style.visibility = oldOverlayVisibility ?? '';
+  if (blocker) blocker.style.visibility = oldBlockerVisibility ?? '';
+}
+      
   }
 }
 
