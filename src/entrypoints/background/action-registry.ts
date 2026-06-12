@@ -194,6 +194,12 @@ sideEffectRegistry.register({
     await handleVfsSaveScreenshot(action, makeEffectCtx(ctx));
   },
 });
+sideEffectRegistry.register({
+  type: 'vfs_write',
+  execute: async (action, ctx) => {
+    await handleVfsWrite(action, makeEffectCtx(ctx));
+  },
+});
 
 sideEffectRegistry.register({
   type: 'open_tab',
