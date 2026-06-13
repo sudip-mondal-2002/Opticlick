@@ -26,5 +26,14 @@ export default defineConfig({
     icons: { 16: 'icon-16.png', 32: 'icon-32.png', 48: 'icon-48.png', 128: 'icon-128.png' },
     action: { default_icon: { 16: 'icon-16.png', 32: 'icon-32.png', 48: 'icon-48.png', 128: 'icon-128.png' } },
     side_panel: { default_path: 'sidepanel.html' },
+    commands: {
+      'open-side-panel': {
+        suggested_key: {
+          default: 'Ctrl+Shift+O',
+          mac: 'Command+Shift+O',
+        },
+        description: 'Open Opticlick side panel',
+      },
+    },
   },
 });
