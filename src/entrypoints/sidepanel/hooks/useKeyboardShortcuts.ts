@@ -26,6 +26,19 @@ export function useKeyboardShortcuts({
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const mod = e.metaKey || e.ctrlKey;
+      const target = e.target as HTMLElement | null;
+      const isTyping =
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target?.isContentEditable;
+
+      const allowWhileTyping =
+        (mod && e.key === '.') ||
+        e.key === 'Escape';
+
+      if (isTyping && !allowWhileTyping) {
+        return;
+      }
 
       if (mod && e.key === '.') {
         e.preventDefault();
@@ -63,8 +76,8 @@ export function useKeyboardShortcuts({
       }
 
       if (e.key === 'Escape') {
-        e.preventDefault();
-        onCloseOverlay();
+        const closed = onCloseOverlay();
+        if (closed) e.preventDefault();
       }
     };
 

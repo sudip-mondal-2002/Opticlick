@@ -405,11 +405,22 @@ function AgentUI() {
     onFocusInput: () => textareaRef.current?.focus(),
     onShowShortcuts: () => setShowShortcuts(true),
     onCloseOverlay: () => {
+      const hasOverlay =
+        showApiKeys ||
+        showSessions ||
+        showTemplates ||
+        showCustomInstructions ||
+        showShortcuts;
+
+      if (!hasOverlay) return false;
+
       setShowApiKeys(false);
       setShowSessions(false);
       setShowTemplates(false);
       setShowCustomInstructions(false);
       setShowShortcuts(false);
+
+      return true;
     },
   });
 

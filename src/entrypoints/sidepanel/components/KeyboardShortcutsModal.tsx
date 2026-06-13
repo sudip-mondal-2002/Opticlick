@@ -22,11 +22,19 @@ interface Props {
 
 export function KeyboardShortcutsModal({ onClose }: Props) {
   return (
-    <div className="absolute inset-0 z-40 flex flex-col bg-white dark:bg-slate-950">
+    <div
+      className="absolute inset-0 z-40 flex flex-col bg-white dark:bg-slate-950"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="keyboard-shortcuts-title"
+    >
       <div className="shrink-0 flex items-center gap-2 px-3 py-2.5 bg-slate-50 dark:bg-slate-900/60 border-b border-slate-200 dark:border-slate-800">
-        <span className="flex-1 text-[12px] font-semibold text-slate-700 dark:text-slate-200">
+        <h2
+          id="keyboard-shortcuts-title"
+          className="flex-1 text-[12px] font-semibold text-slate-700 dark:text-slate-200"
+        >
           Keyboard Shortcuts
-        </span>
+        </h2>
         <button
           onClick={onClose}
           className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 text-[11px] font-medium transition-colors"
