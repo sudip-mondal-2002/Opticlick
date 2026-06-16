@@ -30,7 +30,6 @@ export const scriptingShim = {
           const resp = await fetch(file);
           const code = await resp.text();
           // Eval in iframe context using Function constructor
-          // eslint-disable-next-line no-new-func
           const fn = new (win as any).Function(code);
           fn();
         } catch (e) {

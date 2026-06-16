@@ -1,10 +1,11 @@
 /**
  * UI interaction tools — at most one may be called per agent turn.
  *
- * click     — hardware-level click, optionally followed by type + key press
- * navigate  — load a full URL in the current tab
- * scroll    — wheel-scroll the page or a specific element
- * press_key — dispatch a raw key event with no prior click
+ * click         — hardware-level click, optionally followed by type + key press
+ * navigate      — load a full URL in the current tab
+ * scroll        — wheel-scroll the page or a specific element
+ * press_key     — dispatch a raw key event with no prior click
+ * drag_and_drop — drag one annotated element onto another element or coordinates
  */
 
 import { tool } from '@langchain/core/tools';
@@ -106,4 +107,18 @@ export const pressKeyTool = tool(
   },
 );
 
-export const UI_TOOLS = [clickTool, typeTool, navigateTool, scrollTool, pressKeyTool] as const;
+export const dragAndDropTool = tool(
+  async () => 'ok',
+  {
+    name: 'drag_and_drop',
+    description: 'Drag an annotated element and drop it onto another annotated element or page coordinates.',
+    schema: z.object({
+      sourceId: z.number().int().min(1).describe('Numeric ID of the annotated element to drag'),
+      targetId: z.number().int().min(1).optional().describe('Numeric ID of the annotated element to drop onto'),
+      targetX: z.number().optional().describe('Page coordinate X to drop onto when targetId is omitted'),
+      targetY: z.number().optional().describe('Page coordinate Y to drop onto when targetId is omitted'),
+    }),
+  },
+);
+
+export const UI_TOOLS = [clickTool, typeTool, navigateTool, scrollTool, pressKeyTool, dragAndDropTool] as const;

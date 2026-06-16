@@ -13,8 +13,14 @@
  */
 
 import { getIframe } from './tabs';
+import { defaultCDPRegistry, type CDPContext } from './cdp-handlers';
 
 let html2canvasLib: ((el: HTMLElement, opts?: object) => Promise<HTMLCanvasElement>) | null = null;
+
+const _objectIdMap = new Map<string, HTMLElement>();
+const _virtualFiles = new Map<string, { data: string; filename: string; mimeType: string }>();
+const _downloadIdMap = new Map<number, string>();
+
 
 // ── Named exports required by @/utils/cdp imports ─────────────────────────────
 // The real cdp/ module exports these; Vite aliases @/utils/cdp to this file.
@@ -58,18 +64,33 @@ export async function typeTextCDP(tabId: number, text: string, _clearField = fal
 export async function dispatchScrollWheel(tabId: number, cssX: number, cssY: number, deltaX: number, deltaY: number): Promise<void> {
   await debuggerShim.sendCommand({ tabId }, 'Input.dispatchMouseEvent', { type: 'mouseWheel', x: cssX, y: cssY, deltaX, deltaY });
 }
+export async function dispatchDragAndDrop(
+    _tabId: number,
+    _sourceCoords: { x: number; y: number },
+    _targetCoords: { x: number; y: number },
+  ): Promise<void> {
+    // no-op sandbox implementation
+}
 
-// File upload helpers — no-op in sandbox (file access not supported)
+// File upload helpers — mock implementation to persist base64 data for sandbox DOM.setFileInputFiles
 export async function writeTempFile(
-  _base64Data: string, _filename: string, _mimeType: string,
+  base64Data: string, filename: string, mimeType: string,
 ): Promise<{ downloadId: number; filePath: string }> {
-  console.warn('[sandbox] writeTempFile: not supported in sandbox mode');
-  return { downloadId: -1, filePath: '' };
+  const downloadId = Math.floor(Math.random() * 1000000);
+  const filePath = `/tmp/opticlick_upload_${downloadId}_${filename}`;
+  _virtualFiles.set(filePath, { data: base64Data, filename, mimeType });
+  _downloadIdMap.set(downloadId, filePath);
+  return { downloadId, filePath };
 }
 
-export async function cleanupTempFile(_downloadId: number): Promise<void> {
-  // no-op
+export async function cleanupTempFile(downloadId: number): Promise<void> {
+  const filePath = _downloadIdMap.get(downloadId);
+  if (filePath) {
+    _virtualFiles.delete(filePath);
+    _downloadIdMap.delete(downloadId);
+  }
 }
+
 
 async function getHtml2Canvas() {
   if (html2canvasLib) return html2canvasLib;
@@ -103,136 +124,20 @@ export const debuggerShim = {
     const win = iframe?.contentWindow;
     const doc = iframe?.contentDocument;
 
-    switch (method) {
-      // ── Screenshot ────────────────────────────────────────────────────────
-      case 'Page.captureScreenshot': {
-        if (!doc?.body || !win) throw new Error('Sandbox: iframe not ready for screenshot');
-        const h2c = await getHtml2Canvas();
-        const canvas = await h2c(doc.body, {
-          useCORS: true,
-          allowTaint: true,
-          scale: 1, // Cap at 1x resolution to keep performance fast and prevent thread freeze
-          logging: false,
-          foreignObjectRendering: false,
-          width: win.innerWidth,
-          height: win.innerHeight,
-          scrollX: win.scrollX,
-          scrollY: win.scrollY,
-          windowWidth: win.innerWidth,
-          windowHeight: win.innerHeight,
-        });
-        // Return raw base64 without data-URI prefix (matches real CDP response)
-        const dataUrl = canvas.toDataURL('image/png');
-        return { data: dataUrl.replace(/^data:image\/png;base64,/, '') };
-      }
-
-      // ── Mouse events ──────────────────────────────────────────────────────
-      case 'Input.dispatchMouseEvent': {
-        if (!win || !doc) return {};
-        const { type, x = 0, y = 0, button = 'left', clickCount = 1, modifiers = 0 } = params ?? {};
-        const evtType = {
-          mousePressed: 'mousedown',
-          mouseReleased: 'mouseup',
-          mouseMoved: 'mousemove',
-          mouseWheel: 'wheel',
-        }[type as string] ?? (type as string);
-
-        if (evtType === 'wheel') {
-          const el = doc.elementFromPoint(x as number, y as number) ?? doc.body;
-          el?.dispatchEvent(new WheelEvent('wheel', {
-            clientX: x as number, clientY: y as number,
-            deltaX: (params?.deltaX as number) ?? 0,
-            deltaY: (params?.deltaY as number) ?? 0,
-            bubbles: true, cancelable: true,
-          }));
-        } else {
-          const btnMap: Record<string, number> = { none: 0, left: 0, middle: 1, right: 2 };
-          const evtInit: PointerEventInit = {
-            clientX: x as number,
-            clientY: y as number,
-            button: btnMap[button as string] ?? 0,
-            buttons: evtType === 'mousedown' ? 1 : 0,
-            bubbles: true,
-            cancelable: true,
-            ctrlKey: !!(modifiers as number & 2),
-            shiftKey: !!(modifiers as number & 8),
-            altKey: !!(modifiers as number & 1),
-            metaKey: !!(modifiers as number & 4),
-            detail: clickCount as number,
-          };
-          const el = doc.elementFromPoint(x as number, y as number) ?? doc.body;
-          el?.dispatchEvent(new PointerEvent('pointer' + evtType.replace('mouse', ''), { ...evtInit, bubbles: true }));
-          el?.dispatchEvent(new MouseEvent(evtType, evtInit));
-          if (evtType === 'mouseup') {
-            el?.dispatchEvent(new MouseEvent('click', { ...evtInit, detail: 1 }));
-          }
-        }
-        return {};
-      }
-
-      // ── Text input ────────────────────────────────────────────────────────
-      case 'Input.insertText': {
-        if (!win) return {};
-        const text = (params?.text as string) ?? '';
-        const active = doc?.activeElement as HTMLInputElement | HTMLTextAreaElement | null;
-        if (active && ('value' in active)) {
-          const nativeInputValueSetter = Object.getOwnPropertyDescriptor(win.HTMLInputElement.prototype, 'value')?.set
-            || Object.getOwnPropertyDescriptor(win.HTMLTextAreaElement.prototype, 'value')?.set;
-          if (nativeInputValueSetter) {
-            nativeInputValueSetter.call(active, active.value + text);
-          } else {
-            active.value += text;
-          }
-          active.dispatchEvent(new win.InputEvent('input', { bubbles: true, data: text, inputType: 'insertText' }));
-          active.dispatchEvent(new win.Event('change', { bubbles: true }));
-        } else {
-          // Fallback: contenteditable
-          try { doc?.execCommand('insertText', false, text); } catch { /* */ }
-        }
-        return {};
-      }
-
-      // ── Key events ────────────────────────────────────────────────────────
-      case 'Input.dispatchKeyEvent': {
-        if (!win || !doc) return {};
-        const { type: kType, key = '', code = '', modifiers = 0, windowsVirtualKeyCode = 0 } = params ?? {};
-        const evtType = kType === 'keyDown' ? 'keydown' : kType === 'keyUp' ? 'keyup' : 'keypress';
-        const target = doc.activeElement ?? doc.body;
-        target?.dispatchEvent(new win.KeyboardEvent(evtType, {
-          key: key as string,
-          code: code as string,
-          keyCode: windowsVirtualKeyCode as number,
-          which: windowsVirtualKeyCode as number,
-          ctrlKey: !!(modifiers as number & 2),
-          shiftKey: !!(modifiers as number & 8),
-          altKey: !!(modifiers as number & 1),
-          metaKey: !!(modifiers as number & 4),
-          bubbles: true,
-          cancelable: true,
-        }));
-        return {};
-      }
-
-      // ── Runtime.evaluate ─────────────────────────────────────────────────
-      case 'Runtime.evaluate': {
-        if (!win) return { result: { type: 'undefined', value: undefined } };
-        try {
-          // Use indirect eval in the iframe's context
-          const fn = new win.Function(params?.expression as string);
-          const value = fn();
-          return { result: { type: typeof value, value } };
-        } catch (e) {
-          return { result: { type: 'undefined' }, exceptionDetails: { text: (e as Error).message } };
-        }
-      }
-
-      // ── No-ops ────────────────────────────────────────────────────────────
-      case 'Page.setInterceptFileChooserDialog':
-      case 'DOM.setFileInputFiles':
-      default:
-        return {};
+    const handler = defaultCDPRegistry.get(method);
+    if (handler) {
+      const ctx: CDPContext = {
+        win,
+        doc,
+        objectIdMap: _objectIdMap,
+        virtualFiles: _virtualFiles,
+        getHtml2Canvas,
+      };
+      return handler.execute(params, ctx);
     }
+    return {};
   },
+
 
   onEvent: {
     addListener(_cb: unknown) {},

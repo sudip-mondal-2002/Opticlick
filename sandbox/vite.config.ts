@@ -160,16 +160,110 @@ async function getTheme() {
   return LIGHT;
 }
 
-function collectInteractables(){
-  return [...document.querySelectorAll('a,button,input,select,textarea,[role=button],[role=link],[role=checkbox],[role=radio],[role=tab],[role=menuitem],[onclick],[tabindex]')].filter(el=>{
-    const s=getComputedStyle(el);
-    return s.display!=='none'&&s.visibility!=='hidden'&&s.opacity!=='0';
-  });
+const INTERACTIVE_ROLES = new Set([
+  'button', 'link', 'menuitem', 'menuitemcheckbox', 'menuitemradio',
+  'option', 'radio', 'checkbox', 'tab', 'treeitem', 'gridcell',
+  'combobox', 'listbox', 'slider', 'spinbutton', 'switch',
+  'textbox', 'searchbox', 'columnheader', 'rowheader',
+]);
+
+const INTERACTIVE_TAGS = new Set([
+  'a', 'button', 'input', 'select', 'textarea', 'label',
+  'summary', 'details', 'video', 'audio',
+]);
+
+function isInteractable(el) {
+  const tag = el.tagName.toLowerCase();
+  const role = (el.getAttribute('role') ?? '').toLowerCase();
+
+  if (INTERACTIVE_TAGS.has(tag)) {
+    if (el.disabled) return false;
+    if (tag === 'input' && el.type === 'hidden') return false;
+    return true;
+  }
+
+  if (INTERACTIVE_ROLES.has(role)) return true;
+
+  if (el.hasAttribute('tabindex') && parseInt(el.getAttribute('tabindex') ?? '0', 10) >= 0)
+    return true;
+
+  try {
+    if (window.getComputedStyle(el).cursor === 'pointer') return true;
+  } catch (e) {}
+
+  if (
+    el.onclick ||
+    el.hasAttribute('onclick') ||
+    el.hasAttribute('ng-click') ||
+    el.hasAttribute('@click') ||
+    el.hasAttribute('v-on:click')
+  )
+    return true;
+
+  return false;
 }
 
-function getLabel(el){
-  return (el.getAttribute('aria-label')||el.innerText||el.value||el.placeholder||el.title||el.alt||el.tagName.toLowerCase()).slice(0,80).trim();
+function collectInteractablesRecursive(root, results = []) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT, null);
+  let node;
+  while ((node = walker.nextNode())) {
+    const el = node;
+    if (isInteractable(el)) {
+      const s = getComputedStyle(el);
+      if (s.display !== 'none' && s.visibility !== 'hidden' && s.opacity !== '0') {
+        results.push(el);
+      }
+    }
+    const shadowRoot = el.shadowRoot;
+    if (shadowRoot) {
+      collectInteractablesRecursive(shadowRoot, results);
+    }
+  }
+  return results;
 }
+
+function collectInteractables() {
+  return collectInteractablesRecursive(document.body || document.documentElement);
+}
+
+function getLabel(el) {
+  const tag = el.tagName.toLowerCase();
+
+  const ariaLabel = el.getAttribute('aria-label');
+  if (ariaLabel) return ariaLabel.trim().slice(0, 40);
+
+  const ariaLabelledBy = el.getAttribute('aria-labelledby');
+  if (ariaLabelledBy) {
+    const ids = ariaLabelledBy.trim().split(/\\s+/);
+
+    const texts = ids
+      .map(id => {
+        const ref = document.getElementById(id);
+        return ref ? (ref.textContent ?? '') : '';
+      })
+      .filter(t => t !== '');
+    if (texts.length > 0) {
+      return texts.join(' ').trim().slice(0, 40);
+    }
+  }
+
+
+  if (tag === 'input') {
+    return (
+      el.placeholder ||
+      el.name ||
+      el.type ||
+      'input'
+    ).slice(0, 40);
+  }
+
+  const text = (el.textContent ?? '').trim().replace(/\\s+/g, ' ');
+  if (text) return text.slice(0, 40);
+
+
+  return tag;
+}
+
 
 async function drawOverlay(){
   destroyOverlay();

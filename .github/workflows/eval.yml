@@ -1,0 +1,18 @@
+name: LLM Eval — LangSmith (Gemma 4)
+on:
+  workflow_dispatch:
+    inputs:
+      filter:
+        description: 'Which cases to run: non-auth | all | easy | medium | hard'
+        required: false
+        default: 'non-auth'
+      threshold:
+        description: 'Minimum pass rate 0-100'
+        required: false
+        default: '70'
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "This is a dummy run just to unlock the workflow_dispatch button in GitHub UI!"

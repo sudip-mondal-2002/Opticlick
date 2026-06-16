@@ -104,4 +104,11 @@ describe('log', () => {
     // Should not throw — errors are caught internally and logged to console.error
     await expect(log('other error', 'info')).resolves.toBeUndefined();
   });
+
+  it('handles errors from sendMessage that are missing a message property', async () => {
+    const rawError = { foo: 'bar' };
+    stubSendMessage(() => Promise.reject(rawError));
+    // Verify it doesn't throw and logs rawError
+    await expect(log('other error without message', 'info')).resolves.toBeUndefined();
+  });
 });

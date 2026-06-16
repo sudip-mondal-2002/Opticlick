@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { VFSBrowser } from './components/VFSBrowser';
 import type { AgentState, LogEntry, Session, AttachedFile, PromptTemplate } from '@/utils/types';
 import { getSessions, getConversationHistory } from '@/utils/db';
 import {
@@ -9,6 +10,7 @@ import {
   fetchOllamaModels,
   isOllamaModel,
   getProviderForModel,
+  getModelLabel,
 } from '@/utils/models';
 import type { ModelOption, CustomOpenAIConfig } from '@/utils/models';
 import { ThemeProvider } from './context/ThemeContext';
@@ -21,6 +23,7 @@ import { ChatInput } from './components/ChatInput';
 import { ChatFeed } from './components/ChatFeed';
 import { SessionsOverlay } from './components/SessionsOverlay';
 import { TemplatesOverlay } from './components/TemplatesOverlay';
+import { CustomInstructionsOverlay } from './components/CustomInstructionsOverlay';
 import type { LogItem, HistoryStep } from './components/ChatFeed';
 
 // ── Parse model turn from IndexedDB ──────────────────────────────────────────
@@ -85,13 +88,22 @@ function AgentUI() {
   const [streamingThinking, setStreamingThinking] = useState('');
 
   const [sessions, setSessions] = useState<Session[]>([]);
-  const [currentSessionId, setCurrentSessionId] = useState<number | null>(null);
+  
+  const [currentSessionId, setCurrentSessionId] =
+    useState<number | null | undefined>(undefined);
+
+  
+
+
   const [historySteps, setHistorySteps] = useState<HistoryStep[]>([]);
   const [showSessions, setShowSessions] = useState(false);
   const [chatInputKey, setChatInputKey] = useState(0);
+  const [activeView, setActiveView] =
+  useState<'chat' | 'files'>('chat');
 
   const [templates, setTemplates] = useState<PromptTemplate[]>([]);
   const [showTemplates, setShowTemplates] = useState(false);
+  const [showCustomInstructions, setShowCustomInstructions] = useState(false);
   const [injectedPrompt, setInjectedPrompt] = useState<string | null>(null);
 
   const feedRef = useRef<HTMLDivElement>(null);
@@ -220,9 +232,22 @@ function AgentUI() {
   };
 
   // ── Agent state / logs ─────────────────────────────────────────────────────
-
   const refreshSessions = useCallback(async () => {
-    setSessions(await getSessions());
+    const sessions = await getSessions();
+
+    setSessions(sessions);
+
+    setCurrentSessionId((prev) => {
+      // On first load (prev === undefined), auto-select the most recent session.
+      if (prev === undefined) {
+        return sessions.length > 0 ? (sessions[0].id ?? null) : null;
+      }
+      // If the previously selected session was deleted, clear the selection.
+      if (prev !== null && !sessions.some((s) => s.id === prev)) {
+        return null;
+      }
+      return prev;
+    });
   }, []);
 
   const appendLog = useCallback((message: string, level = 'info') => {
@@ -340,6 +365,7 @@ function AgentUI() {
     setStreamingThinking('');
     setChatInputKey((k) => k + 1);
     textareaRef.current?.focus();
+    chrome.storage.session.remove(['agentState', 'agentLog']);
   };
 
   const handleResumeSession = async (session: Session) => {
@@ -396,9 +422,12 @@ function AgentUI() {
 
       {showSessions && (
         <SessionsOverlay
+          key="sessions-overlay"
           sessions={sessions}
           onClose={() => setShowSessions(false)}
-          onResume={(s) => { handleResumeSession(s); setShowSessions(false); }}
+          onResume={handleResumeSession}
+          onRefresh={refreshSessions}
+          modelLabel={(id) => getModelLabel(id, ollamaModels, customConfigs)}
         />
       )}
 
@@ -426,6 +455,12 @@ function AgentUI() {
         />
       )}
 
+      {showCustomInstructions && (
+        <CustomInstructionsOverlay
+          onClose={() => setShowCustomInstructions(false)}
+        />
+      )}
+
       <Header
         isRunning={isRunning}
         isError={isError}
@@ -433,7 +468,31 @@ function AgentUI() {
         onShowSessions={() => setShowSessions(true)}
         onShowApiKeys={() => setShowApiKeys(true)}
         onShowTemplates={() => setShowTemplates(true)}
+        onShowCustomInstructions={() => setShowCustomInstructions(true)}
       />
+      <div className="flex border-b border-slate-200 dark:border-slate-700">
+        <button
+          onClick={() => setActiveView('chat')}
+          className={`flex-1 py-2 text-sm ${
+            activeView === 'chat'
+              ? 'font-semibold border-b-2 border-sky-500'
+              : ''
+          }`}
+        >
+          💬 Chat
+        </button>
+
+        <button
+          onClick={() => setActiveView('files')}
+          className={`flex-1 py-2 text-sm ${
+            activeView === 'files'
+              ? 'font-semibold border-b-2 border-sky-500'
+              : ''
+          }`}
+        >
+          📁 Files
+        </button>
+      </div>
 
       {/* Session continuation pill */}
       {activeSession && (
@@ -451,13 +510,19 @@ function AgentUI() {
         </div>
       )}
 
-      <ChatFeed
-        feedRef={feedRef}
-        historySteps={historySteps}
-        submittedPrompt={submittedPrompt}
-        logs={logs}
-        streamingThinking={streamingThinking}
-      />
+      {activeView === 'chat' ? (
+        <ChatFeed
+          feedRef={feedRef}
+          historySteps={historySteps}
+          submittedPrompt={submittedPrompt}
+          logs={logs}
+          streamingThinking={streamingThinking}
+        />
+      ) : (
+        <VFSBrowser
+          sessionId={currentSessionId ?? null}
+        />
+      )}
 
       {isRunning && step > 0 && <StepFooter step={step} />}
 
@@ -516,6 +581,7 @@ function AgentUI() {
 }
 
 export default function App() {
+ 
   return (
     <ThemeProvider>
       <AgentUI />

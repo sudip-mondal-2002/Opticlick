@@ -30,6 +30,62 @@ export async function dispatchHardwareClick(tabId: number, cssX: number, cssY: n
   await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchMouseEvent', { ...base, type: 'mouseReleased', buttons: 0 });
 }
 
+export interface CDPCoords {
+  x: number;
+  y: number;
+}
+
+/**
+ * Simulate dragging from one CSS-pixel coordinate to another.
+ * Uses mouse events first, then tries CDP drag events as a best-effort HTML5 fallback.
+ */
+export async function dispatchDragAndDrop(tabId: number, sourceCoords: CDPCoords, targetCoords: CDPCoords): Promise<void> {
+  await attachDebugger(tabId);
+  const midpoint1 = {
+    x: sourceCoords.x + ((targetCoords.x - sourceCoords.x) / 3),
+    y: sourceCoords.y + ((targetCoords.y - sourceCoords.y) / 3),
+  };
+  const midpoint2 = {
+    x: sourceCoords.x + (((targetCoords.x - sourceCoords.x) * 2) / 3),
+    y: sourceCoords.y + (((targetCoords.y - sourceCoords.y) * 2) / 3),
+  };
+  const base = { button: 'left' as const, clickCount: 1, modifiers: 0 };
+
+  await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchMouseEvent', {
+    ...base, type: 'mouseMoved', x: sourceCoords.x, y: sourceCoords.y, buttons: 0,
+  });
+  await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchMouseEvent', {
+    ...base, type: 'mousePressed', x: sourceCoords.x, y: sourceCoords.y, buttons: 1,
+  });
+  await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchMouseEvent', {
+    ...base, type: 'mouseMoved', x: midpoint1.x, y: midpoint1.y, buttons: 1,
+  });
+  await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchMouseEvent', {
+    ...base, type: 'mouseMoved', x: midpoint2.x, y: midpoint2.y, buttons: 1,
+  });
+  await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchMouseEvent', {
+    ...base, type: 'mouseMoved', x: targetCoords.x, y: targetCoords.y, buttons: 1,
+  });
+  await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchMouseEvent', {
+    ...base, type: 'mouseReleased', x: targetCoords.x, y: targetCoords.y, buttons: 0,
+  });
+
+  try {
+    const dragData = { items: [], dragOperationsMask: 1 };
+    await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchDragEvent', {
+      type: 'dragEnter', x: targetCoords.x, y: targetCoords.y, data: dragData,
+    });
+    await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchDragEvent', {
+      type: 'dragOver', x: targetCoords.x, y: targetCoords.y, data: dragData,
+    });
+    await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchDragEvent', {
+      type: 'drop', x: targetCoords.x, y: targetCoords.y, data: dragData,
+    });
+  } catch {
+    // Some Chromium targets do not expose Input.dispatchDragEvent.
+  }
+}
+
 /**
  * Clears the currently focused editable element in the page.
  * Exported for direct use in DOM tests (jsdom).

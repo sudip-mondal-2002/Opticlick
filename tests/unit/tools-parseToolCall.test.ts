@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseToolCall } from '@/utils/tools/index';
+import { dragAndDropTool, parseToolCall } from '@/utils/tools/index';
 import type { AgentAction, TodoItem } from '@/utils/types';
 
 describe('parseToolCall', () => {
@@ -69,6 +69,32 @@ describe('parseToolCall', () => {
     const result = parseToolCall('press_key', { key: 'Escape' }) as AgentAction & { type: 'press_key' };
     expect(result.type).toBe('press_key');
     expect(result.key).toBe('Escape');
+  });
+
+  it('accepts "drag_and_drop" schema with sourceId and targetId', () => {
+    const result = dragAndDropTool.schema.parse({ sourceId: 1, targetId: 2 });
+    expect(result).toEqual({ sourceId: 1, targetId: 2 });
+  });
+
+  it('parses "drag_and_drop" with annotated target', () => {
+    const result = parseToolCall('drag_and_drop', { sourceId: 1, targetId: 2 }) as AgentAction & { type: 'drag_and_drop' };
+    expect(result.type).toBe('drag_and_drop');
+    expect(result.sourceId).toBe(1);
+    expect(result.targetId).toBe(2);
+    expect(result.targetX).toBeUndefined();
+    expect(result.targetY).toBeUndefined();
+  });
+
+  it('parses "drag_and_drop" with coordinate target', () => {
+    const result = parseToolCall('drag_and_drop', {
+      sourceId: 1,
+      targetX: 500,
+      targetY: 300,
+    }) as AgentAction & { type: 'drag_and_drop' };
+    expect(result.type).toBe('drag_and_drop');
+    expect(result.sourceId).toBe(1);
+    expect(result.targetX).toBe(500);
+    expect(result.targetY).toBe(300);
   });
 
   // ── DOM ────────────────────────────────────────────────────────────────────
@@ -209,6 +235,26 @@ describe('parseToolCall', () => {
     expect(result.key).toBe('github/username');
   });
 
+  // ── Scratchpad ─────────────────────────────────────────────────────────────
+
+  it('parses "note_write"', () => {
+    const result = parseToolCall('note_write', {
+      key: 'my-findings',
+      value: 'Found a coupon code',
+    }) as AgentAction & { type: 'note_write' };
+    expect(result.type).toBe('note_write');
+    expect(result.key).toBe('my-findings');
+    expect(result.value).toBe('Found a coupon code');
+  });
+
+  it('parses "note_delete"', () => {
+    const result = parseToolCall('note_delete', {
+      key: 'my-findings',
+    }) as AgentAction & { type: 'note_delete' };
+    expect(result.type).toBe('note_delete');
+    expect(result.key).toBe('my-findings');
+  });
+
   // ── Control ───────────────────────────────────────────────────────────────
 
   it('parses "finish" with summary', () => {
@@ -235,9 +281,10 @@ describe('parseToolCall', () => {
     expect(result.question).toBe('Which account should I use?');
   });
 
-  it('covers all 18 named tool types', () => {
+  it('covers all 19 named tool types', () => {
     const toolNames = [
       'click', 'type', 'navigate', 'scroll', 'press_key',
+      'drag_and_drop',
       'fetch_dom',
       'vfs_save_screenshot', 'vfs_write', 'vfs_delete', 'vfs_download',
       'memory_upsert', 'memory_delete',
@@ -251,6 +298,7 @@ describe('parseToolCall', () => {
         navigate: { url: 'https://x.com' },
         scroll: { direction: 'down' },
         press_key: { key: 'Enter' },
+        drag_and_drop: { sourceId: 1, targetId: 2 },
         fetch_dom: { targetId: 1 },
         vfs_save_screenshot: { name: 'x.png' },
         vfs_write: { name: 'x.txt', content: '' },
