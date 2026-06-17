@@ -6,10 +6,14 @@ import {
   MAX_PIVOT_RETRIES,
   SCROLL_DELTA_THRESHOLD_PX,
   SCROLL_STEP_PX,
+  MAX_SCROLL_WHEEL_ATTEMPTS,
   detectAlternatingLoop,
   detectScrollBoundary,
   detectDomUnchanged,
   detectLoop,
+  buildPageScrollYExpression,
+  buildScrollPositionAtPointExpression,
+  scrollKeyForDirection,
 } from '@/utils/navigation-guard';
 import type { ActionRecord } from '@/utils/navigation-guard';
 
@@ -236,5 +240,34 @@ describe('detectLoop', () => {
     const history = [click(5), click(5), click(5)];
     const result = detectLoop(history, click(5));
     expect(result?.suggestedStrategies.length).toBeGreaterThan(0);
+  });
+});
+
+describe('scroll expression helpers', () => {
+  it('buildPageScrollYExpression includes multiple fallbacks', () => {
+    const expr = buildPageScrollYExpression();
+    expect(expr).toContain('window.scrollY');
+    expect(expr).toContain('document.documentElement.scrollTop');
+    expect(expr).toContain('document.body.scrollTop');
+  });
+
+  it('buildScrollPositionAtPointExpression includes coordinates and elementFromPoint', () => {
+    const expr = buildScrollPositionAtPointExpression(120, 340);
+    expect(expr).toContain('120');
+    expect(expr).toContain('340');
+    expect(expr).toContain('elementFromPoint');
+  });
+});
+
+describe('scroll fallback helpers', () => {
+  it('maps direction to expected fallback key', () => {
+    expect(scrollKeyForDirection('down')).toBe('PageDown');
+    expect(scrollKeyForDirection('up')).toBe('PageUp');
+    expect(scrollKeyForDirection('left')).toBe('ArrowLeft');
+    expect(scrollKeyForDirection('right')).toBe('ArrowRight');
+  });
+
+  it('uses at least two wheel attempts before fallback', () => {
+    expect(MAX_SCROLL_WHEEL_ATTEMPTS).toBeGreaterThanOrEqual(2);
   });
 });

@@ -30,6 +30,40 @@ export async function retryTabUpdate(
 
 const UNINJECTABLE_PATTERNS = /^(about:|chrome:|chrome-extension:|edge:|brave:)/;
 
+export function urlsDifferSignificantly(before: string, after: string): boolean {
+  if (!before || !after || before === after) return false;
+  try {
+    const prev = new URL(before);
+    const next = new URL(after);
+    const stableKey = (u: URL) => `${u.origin}${u.pathname}${u.search}`;
+    return stableKey(prev) !== stableKey(next);
+  } catch {
+    return before !== after;
+  }
+}
+
+export function waitForPossibleNavigation(tabId: number, timeoutMs = 3_000): Promise<boolean> {
+  return new Promise((resolve) => {
+    let sawLoading = false;
+    let resolved = false;
+
+    const done = (navigated: boolean) => {
+      if (resolved) return;
+      resolved = true;
+      chrome.tabs.onUpdated.removeListener(listener);
+      resolve(navigated);
+    };
+
+    const listener = (updatedTabId: number, changeInfo: chrome.tabs.TabChangeInfo) => {
+      if (updatedTabId !== tabId) return;
+      if (changeInfo.status === 'loading') sawLoading = true;
+      if (sawLoading && changeInfo.status === 'complete') done(true);
+    };
+    chrome.tabs.onUpdated.addListener(listener);
+    setTimeout(() => done(false), timeoutMs);
+  });
+}
+
 export function sendToTab<T = unknown>(
   tabId: number,
   message: Record<string, unknown>,

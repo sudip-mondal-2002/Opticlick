@@ -11,6 +11,7 @@ export const SCROLL_DELTA_THRESHOLD_PX = 50;
 
 /** CSS-pixel magnitude used per mouse-wheel scroll step. */
 export const SCROLL_STEP_PX = 500;
+export const MAX_SCROLL_WHEEL_ATTEMPTS = 3;
 
 /** Window size for alternating loop detection. */
 export const ALTERNATING_LOOP_WINDOW = 6;
@@ -36,6 +37,29 @@ export function scrollDeltaIsSignificant(
   threshold = SCROLL_DELTA_THRESHOLD_PX,
 ): boolean {
   return Math.abs(afterY - beforeY) >= threshold;
+}
+
+/** Best-effort page scroll position across browser implementations. */
+export function buildPageScrollYExpression(): string {
+  return 'Math.max(window.scrollY||0,document.documentElement.scrollTop||0,document.body.scrollTop||0)';
+}
+
+/**
+ * Returns an expression that reads the closest scroll container position at a point.
+ * Falls back to page scrollY when no local container is scrollable.
+ */
+export function buildScrollPositionAtPointExpression(cssX: number, cssY: number): string {
+  return `(function(){var x=${cssX},y=${cssY};var el=document.elementFromPoint(x,y);var n=el;while(n){var st=getComputedStyle(n);var scrollY=(st.overflowY==='auto'||st.overflowY==='scroll'||st.overflowY==='overlay')&&n.scrollHeight>n.clientHeight;if(scrollY)return n.scrollTop;var scrollX=(st.overflowX==='auto'||st.overflowX==='scroll'||st.overflowX==='overlay')&&n.scrollWidth>n.clientWidth;if(scrollX)return n.scrollLeft;n=n.parentElement;}return Math.max(window.scrollY||0,document.documentElement.scrollTop||0,document.body.scrollTop||0);})()`;
+}
+
+/** Keyboard fallback used when wheel scrolling has no effect. */
+export function scrollKeyForDirection(direction: 'up' | 'down' | 'left' | 'right'): string {
+  switch (direction) {
+    case 'down': return 'PageDown';
+    case 'up': return 'PageUp';
+    case 'left': return 'ArrowLeft';
+    case 'right': return 'ArrowRight';
+  }
 }
 
 // ── Anti-loop pivot ───────────────────────────────────────────────────────────

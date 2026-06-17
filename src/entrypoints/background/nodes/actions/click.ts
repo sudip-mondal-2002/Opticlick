@@ -6,7 +6,15 @@ import {
 } from '@/utils/cdp';
 import { log } from '@/utils/agent-log';
 import { setAgentState } from '@/utils/agent-state';
-import { sendToTab, ensureContentScript, waitForTabLoad, retryTabUpdate } from '@/utils/tab-helpers';
+import {
+  sendToTab,
+  ensureContentScript,
+  waitForTabLoad,
+  retryTabUpdate,
+  waitForPossibleNavigation,
+  urlsDifferSignificantly,
+} from '@/utils/tab-helpers';
+import { shouldOpenLinkInNewTab } from '@/utils/link-click-policy';
 import { sleep } from '@/utils/sleep';
 import { injectFileUpload } from '@/utils/file-upload';
 import { STEP_DELAY_MS } from '../../agent-state';
@@ -14,12 +22,17 @@ import type { AgentAction, CoordinateEntry } from '@/utils/types';
 import type { ActionCtx } from './ctx';
 
 type ClickAction = Extract<AgentAction, { type: 'click' }>;
+type ClickModifier = NonNullable<ClickAction['modifier']>;
 
 // ── Regular hardware click ────────────────────────────────────────────────────
 
-async function dispatchClick(tabId: number, action: ClickAction, target: CoordinateEntry): Promise<void> {
+async function dispatchClick(
+  tabId: number,
+  modifier: ClickModifier | undefined,
+  target: CoordinateEntry,
+): Promise<void> {
   try { await sendToTab(tabId, { type: 'UNBLOCK_INPUT' }); } catch { /* */ }
-  const modBitmask = action.modifier ? (CDP_MODIFIER[action.modifier] ?? 0) : 0;
+  const modBitmask = modifier ? (CDP_MODIFIER[modifier] ?? 0) : 0;
   try {
     await chrome.debugger.sendCommand({ tabId }, 'Runtime.evaluate', {
       expression: `document.querySelectorAll('input[type="file"]').forEach(function(i){i.dataset.ocfd=i.disabled?'1':'0';i.disabled=true;})`,
@@ -57,7 +70,12 @@ export async function handleClick(
     return tabId;
   }
 
-  await log(`Clicking element #${target.id} "${target.text}" at (${target.rect.x}, ${target.rect.y})`, 'act');
+  const openInNewTab = shouldOpenLinkInNewTab(target, action);
+  const effectiveModifier: ClickModifier | undefined = action.modifier ?? (openInNewTab ? 'ctrl' : undefined);
+  const clickLabel = openInNewTab
+    ? `Ctrl+clicking link #${target.id} "${target.text}" (new tab)`
+    : `Clicking element #${target.id} "${target.text}" at (${target.rect.x}, ${target.rect.y})`;
+  await log(clickLabel, 'act');
 
   let newTabId: number | null = null;
   const newTabListener = (tab: chrome.tabs.Tab) => {
@@ -65,12 +83,17 @@ export async function handleClick(
   };
   chrome.tabs.onCreated.addListener(newTabListener);
 
+  let urlBefore = '';
+  try {
+    urlBefore = (await chrome.tabs.get(tabId)).url ?? '';
+  } catch { /* */ }
+
   let actError: string | null = null;
   try {
     if (action.uploadFileId) {
       await injectFileUpload(tabId, sessionId, action.uploadFileId, target);
     } else {
-      await dispatchClick(tabId, action, target);
+      await dispatchClick(tabId, effectiveModifier, target);
     }
   } catch (actErr_) {
     actError = (actErr_ as Error).message;
@@ -82,8 +105,24 @@ export async function handleClick(
   await sleep(500);
   chrome.tabs.onCreated.removeListener(newTabListener);
 
+  let urlAfter = '';
+  try {
+    urlAfter = (await chrome.tabs.get(tabId)).url ?? '';
+  } catch { /* */ }
+
+  let sameTabNavigated = !newTabId && urlsDifferSignificantly(urlBefore, urlAfter);
+  if (!newTabId && !sameTabNavigated && target.tag === 'a' && !actError) {
+    const sawNavigation = await waitForPossibleNavigation(tabId);
+    if (sawNavigation) {
+      try {
+        urlAfter = (await chrome.tabs.get(tabId)).url ?? '';
+      } catch { /* */ }
+      sameTabNavigated = urlsDifferSignificantly(urlBefore, urlAfter);
+    }
+  }
+
   if (newTabId) {
-    await log('Click opened new tab. Following it.', 'observe');
+    await log('Click opened new tab. Switching agent to it.', 'observe');
     try { await sendToTab(tabId, { type: 'UNBLOCK_INPUT' }); } catch { /* */ }
     await detachDebugger(tabId);
     tabId = newTabId;
@@ -93,9 +132,22 @@ export async function handleClick(
     await waitForTabLoad(tabId);
     await ensureContentScript(tabId);
     await sendToTab(tabId, { type: 'BLOCK_INPUT' });
+    const newTabUrl = (await chrome.tabs.get(tabId).catch(() => null))?.url ?? '';
     await appendConversationTurn(
       sessionId, 'tool',
-      `[Step ${step}] Clicked #${action.targetId} ("${target.text}") → opened new tab. Task: ${userPrompt}`,
+      `[Step ${step}] Clicked #${action.targetId} ("${target.text}") → opened new tab${newTabUrl ? ` at ${newTabUrl}` : ''}. Agent is now on the new page. Task: ${userPrompt}`,
+      { toolCallId, toolName },
+    );
+  } else if (sameTabNavigated) {
+    await log('Click navigated in the same tab. Waiting for page load…', 'observe');
+    try { await sendToTab(tabId, { type: 'UNBLOCK_INPUT' }); } catch { /* */ }
+    await detachDebugger(tabId);
+    await waitForTabLoad(tabId, 15_000, true);
+    await ensureContentScript(tabId);
+    await sendToTab(tabId, { type: 'BLOCK_INPUT' });
+    await appendConversationTurn(
+      sessionId, 'tool',
+      `[Step ${step}] Clicked #${action.targetId} ("${target.text}") → navigated to ${urlAfter}. Task: ${userPrompt}`,
       { toolCallId, toolName },
     );
   } else if (actError) {
