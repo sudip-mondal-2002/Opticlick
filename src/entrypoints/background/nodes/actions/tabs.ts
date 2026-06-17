@@ -10,7 +10,7 @@ export async function handleListTabs(
   _action: ListTabsAction,
   ctx: ActionCtx,
 ): Promise<void> {
-  const { sessionId, step, toolCallId, toolName } = ctx;
+  const { sessionId, toolCallId, toolName } = ctx;
 
   const tabs = await chrome.tabs.query({});
 
