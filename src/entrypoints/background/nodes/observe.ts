@@ -13,7 +13,7 @@ import {
   getConversationHistory,
   touchSession,
   saveVFSFile,
-  listVFSFiles,
+  listAccessibleVFSFiles,
 } from '@/utils/db';
 import { callModel } from '@/utils/llm';
 import type { InlineImage } from '@/utils/llm';
@@ -65,7 +65,7 @@ export async function captureAndDestroyNode(state: AgentState): Promise<Partial<
 
 export async function reasonNode(state: AgentState, config: RunnableConfig): Promise<Partial<AgentState>> {
   const history = await getConversationHistory(state.sessionId);
-  const vfsFiles = await listVFSFiles(state.sessionId);
+  const vfsFiles = await listAccessibleVFSFiles(state.sessionId);
   await log('Sending to LLM…', 'observe');
 
   // Adjust prompt when there are no interactable elements
