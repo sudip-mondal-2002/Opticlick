@@ -1,0 +1,1 @@
+import{a as e}from"./tabs-CH2f3Yjw.js";export{e as tabsShim};
