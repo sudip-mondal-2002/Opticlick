@@ -6,6 +6,12 @@ import { handleScroll } from './nodes/actions/scroll';
 import { handleType } from './nodes/actions/type';
 import { handlePressKey } from './nodes/actions/press-key';
 import { handleDragAndDrop } from './nodes/actions/drag-and-drop';
+import {
+  handleListTabs,
+  handleOpenTab,
+  handleSwitchTab,
+  handleCloseTab,
+} from './nodes/actions/tabs';
 
 import {
   handleVfsSaveScreenshot,
@@ -178,6 +184,47 @@ uiActionRegistry.register({
     await handleDragAndDrop(action, makeActionCtx(ctx), ctx.coordinateMap);
   },
 });
+uiActionRegistry.register({
+  type: 'list_tabs',
+  execute: async (action, ctx) => {
+    await handleListTabs(action, makeActionCtx(ctx));
+  },
+});
+
+uiActionRegistry.register({
+  type: 'open_tab',
+  execute: async (action, ctx) => {
+    const tabId = await handleOpenTab(action, makeActionCtx(ctx));
+    ctx.tabIdRef.current = tabId;
+    return { tabId };
+  },
+});
+uiActionRegistry.register({
+  type: 'switch_tab',
+  execute: async (action, ctx) => {
+    const tabId = await handleSwitchTab(
+      action,
+      makeActionCtx(ctx),
+    );
+
+    ctx.tabIdRef.current = tabId;
+
+    return { tabId };
+  },
+});
+uiActionRegistry.register({
+  type: 'close_tab',
+  execute: async (action, ctx) => {
+    const tabId = await handleCloseTab(
+      action,
+      makeActionCtx(ctx),
+    );
+
+    ctx.tabIdRef.current = tabId;
+
+    return { tabId };
+  },
+});
 
 // ── Side Effect registrations ─────────────────────────────────────────────────
 
@@ -239,6 +286,7 @@ sideEffectRegistry.register({
     await handleFetchDom(action, makeEffectCtx(ctx));
   },
 });
+
 
 sideEffectRegistry.register({
   type: 'wait',

@@ -79,7 +79,7 @@ export type AgentAction =
       scrollTargetId?: number;
     }
   | { type: 'press_key'; key: string }
-  | {
+    | {
       type: 'drag_and_drop';
       /** Numeric ID of the annotated element to drag. */
       sourceId: number;
@@ -90,6 +90,13 @@ export type AgentAction =
       /** Page coordinate Y to drop onto when targetId is omitted. */
       targetY?: number;
     }
+
+  // ── Tab management ──────────────────────────────────────────────────────
+  | { type: 'open_tab'; url: string }
+  | { type: 'switch_tab'; tabIndex: number }
+  | { type: 'close_tab' }
+  | { type: 'list_tabs' }
+
   // ── DOM inspection ───────────────────────────────────────────────────────
   | { type: 'fetch_dom'; targetId: number }
   // ── VFS mutations ────────────────────────────────────────────────────────

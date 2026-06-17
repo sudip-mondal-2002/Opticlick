@@ -12,6 +12,13 @@ export { MEMORY_TOOLS, memoryUpsertTool, memoryDeleteTool } from './memory';
 export { TODO_TOOLS, todoCreateTool, todoUpdateTool, todoAddTool } from './todo';
 export { SCRATCHPAD_TOOLS, noteWriteTool, noteDeleteTool } from './scratchpad';
 export { CONTROL_TOOLS, finishTool, waitTool, askUserTool } from './control';
+export {
+  TAB_TOOLS,
+  openTabTool,
+  switchTabTool,
+  closeTabTool,
+  listTabsTool,
+} from './tabs';
 
 import { UI_TOOLS } from './ui';
 import { DOM_TOOLS } from './dom';
@@ -20,6 +27,7 @@ import { MEMORY_TOOLS } from './memory';
 import { TODO_TOOLS } from './todo';
 import { SCRATCHPAD_TOOLS } from './scratchpad';
 import { CONTROL_TOOLS } from './control';
+import { TAB_TOOLS } from './tabs';
 import type { AgentAction, TodoItem } from '../types';
 
 /**
@@ -39,9 +47,9 @@ export const AGENT_TOOLS = [
   ...VFS_TOOLS,
   ...DOM_TOOLS,
   ...UI_TOOLS,
+  ...TAB_TOOLS,
   ...CONTROL_TOOLS,
 ] as const;
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Tool-call parser
 // ─────────────────────────────────────────────────────────────────────────────
@@ -148,6 +156,23 @@ const parsers: Record<string, (args: Record<string, any>) => AgentAction> = {
   ask_user: (args) => ({
     type: 'ask_user',
     question: args.question as string,
+  }),
+    open_tab: (args) => ({
+    type: 'open_tab',
+    url: args.url as string,
+  }),
+
+  switch_tab: (args) => ({
+    type: 'switch_tab',
+    tabIndex: args.tabIndex as number,
+  }),
+
+  close_tab: () => ({
+    type: 'close_tab',
+  }),
+
+  list_tabs: () => ({
+    type: 'list_tabs',
   }),
 };
 
