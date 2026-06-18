@@ -2,9 +2,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   deleteVFSFile,
   listVFSFiles,
+  listGlobalVFSFiles,
   type VFSFile,
 } from '@/utils/db/vfs';
 
+import { getSessions } from '@/utils/db/sessions';
 interface Props {
   sessionId: number | null;
 }
@@ -34,30 +36,45 @@ function TrashIcon() {
 
 export function VFSBrowser({ sessionId }: Props) {
   const [files, setFiles] = useState<VFSFile[]>([]);
+  const [globalFiles, setGlobalFiles] = useState<VFSFile[]>([]);
+const [sessionGroups, setSessionGroups] = useState<
+  { id?: number; title: string; files: VFSFile[] }[]
+>([]);
   const loadFilesRequestId = useRef(0);
   const stepScreenshotFiles = files.filter((file) => STEP_SCREENSHOT_RE.test(file.name));
-
   const loadFiles = useCallback(async () => {
-    const requestId = ++loadFilesRequestId.current;
+  const requestId = ++loadFilesRequestId.current;
 
-    if (!sessionId) {
-      setFiles([]);
-      return;
+  try {
+    const sessions = await getSessions();
+
+    const groupedSessions = await Promise.all(
+      sessions.map(async (session) => ({
+        id: session.id,
+        title: session.title,
+        files: await listVFSFiles(session.id!),
+      })),
+    );
+
+    const globals = await listGlobalVFSFiles();
+
+    if (requestId === loadFilesRequestId.current) {
+      setGlobalFiles(globals);
+
+      setSessionGroups(
+        groupedSessions.filter((g) => g.files.length > 0),
+      );
+
+      setFiles([
+        ...globals,
+        ...groupedSessions.flatMap((g) => g.files),
+      ]);
     }
-
-    try {
-      const files = await listVFSFiles(sessionId);
-
-      if (requestId === loadFilesRequestId.current) {
-        setFiles(files);
-      }
-    } catch (error) {
-      if (requestId === loadFilesRequestId.current) {
-        console.error('Failed to load VFS files', error);
-      }
-    }
-  }, [sessionId]);
-
+  } catch (error) {
+    console.error('Failed to load VFS files', error);
+  }
+}, []);
+  
   const downloadFile = (file: VFSFile) => {
     const link = document.createElement('a');
 
@@ -87,73 +104,99 @@ export function VFSBrowser({ sessionId }: Props) {
     return () => chrome.runtime.onMessage.removeListener(handler);
   }, [loadFiles]);
 
-  return (
-    <div className="flex-1 overflow-y-auto p-3">
-      <div className="mb-3 flex items-center justify-between gap-2">
-        <h2 className="text-sm font-semibold">
-          Files ({files.length})
-        </h2>
-        <button
-          onClick={clearStepScreenshots}
-          disabled={stepScreenshotFiles.length === 0}
-          className="text-xs px-2 py-1 rounded border disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          Clear Step Screenshots
-        </button>
+const renderFile = (file: VFSFile) => (
+  <div
+    key={file.id}
+    className="group flex items-center gap-2 py-2"
+  >
+    {file.mimeType.startsWith('image/') && (
+      <img
+        src={`data:${file.mimeType};base64,${file.data}`}
+        alt={file.name}
+        className="w-9 h-9 shrink-0 object-cover rounded-[6px] border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900"
+      />
+    )}
+
+    <div className="min-w-0 flex-1 flex items-center gap-2">
+      <div className="truncate text-[12px] font-medium text-slate-700 dark:text-slate-200">
+        {file.name}
       </div>
 
-      {files.length === 0 ? (
-        <div className="text-center text-sm text-slate-500 mt-6">
-          No files found for this session.
-        </div>
-      ) : (
-        <div className="divide-y divide-slate-100 dark:divide-slate-800/70">
-          {files.map((file) => (
-            <div
-              key={file.id}
-              className="group flex items-center gap-2 py-2"
-            >
-              {file.mimeType.startsWith('image/') && (
-                <img
-                  src={`data:${file.mimeType};base64,${file.data}`}
-                  alt={file.name}
-                  className="w-9 h-9 shrink-0 object-cover rounded-[6px] border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900"
-                />
-              )}
-              <div className="min-w-0 flex-1 flex items-center gap-2">
-                <div className="truncate text-[12px] font-medium text-slate-700 dark:text-slate-200">
-                  {file.name}
-                </div>
-                <div className="shrink-0 text-[10px] text-slate-400 dark:text-slate-500">
-                  {(file.size / 1024).toFixed(1)} KB
-                </div>
-              </div>
-              <div className="shrink-0 flex items-center gap-1">
-                <button
-                  onClick={() => downloadFile(file)}
-                  className="w-7 h-7 flex items-center justify-center rounded-[6px] text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-                  title="Download"
-                  aria-label={`Download ${file.name}`}
-                >
-                  <DownloadIcon />
-                </button>
-
-                <button
-                  onClick={async () => {
-                    await deleteVFSFile(file.id);
-                    await loadFiles();
-                  }}
-                  className="w-7 h-7 flex items-center justify-center rounded-[6px] text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors"
-                  title="Delete"
-                  aria-label={`Delete ${file.name}`}
-                >
-                  <TrashIcon />
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+      <div className="shrink-0 text-[10px] text-slate-400 dark:text-slate-500">
+        {(file.size / 1024).toFixed(1)} KB
+      </div>
     </div>
-  );
+
+    <div className="shrink-0 flex items-center gap-1">
+      <button
+        onClick={() => downloadFile(file)}
+        className="w-7 h-7 flex items-center justify-center rounded-[6px]"
+      >
+        <DownloadIcon />
+      </button>
+
+      <button
+        onClick={async () => {
+          await deleteVFSFile(file.id);
+          await loadFiles();
+        }}
+        className="w-7 h-7 flex items-center justify-center rounded-[6px]"
+      >
+        <TrashIcon />
+      </button>
+    </div>
+  </div>
+);
+
+return (
+  <div className="flex-1 overflow-y-auto p-3">
+    <div className="mb-3 flex items-center justify-between gap-2">
+      <h2 className="text-sm font-semibold">
+        Files ({files.length})
+      </h2>
+
+      <button
+        onClick={clearStepScreenshots}
+        disabled={stepScreenshotFiles.length === 0}
+        className="text-xs px-2 py-1 rounded border disabled:opacity-40 disabled:cursor-not-allowed"
+      >
+        Clear Step Screenshots
+      </button>
+    </div>
+
+    {files.length === 0 ? (
+      <div className="text-center text-sm text-slate-500 mt-6">
+        No files found.
+      </div>
+    ) : (
+      <div className="space-y-4">
+
+        {globalFiles.length > 0 && (
+          <div>
+            <h3 className="mb-2 text-sm font-semibold">
+              Global Files
+            </h3>
+
+            <div className="divide-y divide-slate-100 dark:divide-slate-800/70">
+              {globalFiles.map(renderFile)}
+            </div>
+          </div>
+        )}
+
+        {sessionGroups.map((group) => (
+          <div key={group.id ?? group.title}>
+            <h3 className="mb-2 text-sm font-semibold">
+              {group.title}
+            </h3>
+
+            <div className="divide-y divide-slate-100 dark:divide-slate-800/70">
+              {group.files.map(renderFile)}
+            </div>
+          </div>
+        ))}
+
+      </div>
+    )}
+  </div>
+);
 }
