@@ -58,6 +58,33 @@ function makeMockTab(url = currentUrl): chrome.tabs.Tab {
 }
 
 export const tabsShim = {
+  create(
+    props: chrome.tabs.CreateProperties,
+    callback?: (tab: chrome.tabs.Tab) => void,
+  ): Promise<chrome.tabs.Tab> {
+    const url = props.url ?? currentUrl;
+
+    currentUrl = url;
+
+    if (iframeEl) {
+      iframeEl.src = proxyUrl(url);
+    }
+
+    const tab = makeMockTab(url);
+
+    callback?.(tab);
+
+    return Promise.resolve(tab);
+  },
+
+  remove(
+    _tabIds: number | number[],
+    callback?: () => void,
+  ): Promise<void> {
+    callback?.();
+    return Promise.resolve();
+  },
+  
   query(_info: object, callback?: (tabs: chrome.tabs.Tab[]) => void): Promise<chrome.tabs.Tab[]> {
     const result = [makeMockTab()];
     callback?.(result);
