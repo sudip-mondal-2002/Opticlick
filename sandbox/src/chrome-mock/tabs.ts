@@ -9,7 +9,26 @@ let iframeEl: HTMLIFrameElement | null = null;
 let currentUrl = 'https://example.com';
 let tabUpdateListeners: Array<(tabId: number, changeInfo: Partial<chrome.tabs.TabChangeInfo>, tab: Partial<chrome.tabs.Tab>) => void> = [];
 
-const MOCK_TAB_ID = 1;
+let nextTabId = 1;
+
+let tabs: chrome.tabs.Tab[] = [
+  {
+    id: nextTabId++,
+    index: 0,
+    windowId: 1,
+    active: true,
+    pinned: false,
+    highlighted: true,
+    incognito: false,
+    selected: true,
+    discarded: false,
+    autoDiscardable: true,
+    groupId: -1,
+    url: currentUrl,
+    title: 'Sandbox Tab',
+    status: 'complete',
+  } as chrome.tabs.Tab,
+];
 
 export function setIframeRef(el: HTMLIFrameElement) {
   iframeEl = el;
@@ -38,16 +57,16 @@ export function proxyUrl(url: string): string {
   return url;
 }
 
-function makeMockTab(url = currentUrl): chrome.tabs.Tab {
+function createTab(url: string, active = true): chrome.tabs.Tab {
   return {
-    id: MOCK_TAB_ID,
-    index: 0,
+    id: nextTabId++,
+    index: tabs.length,
     windowId: 1,
-    active: true,
+    active,
     pinned: false,
-    highlighted: true,
+    highlighted: active,
     incognito: false,
-    selected: true,
+    selected: active,
     discarded: false,
     autoDiscardable: true,
     groupId: -1,
@@ -64,55 +83,102 @@ export const tabsShim = {
   ): Promise<chrome.tabs.Tab> {
     const url = props.url ?? currentUrl;
 
+    tabs.forEach(t => {
+      t.active = false;
+      t.highlighted = false;
+    });
+
+    const newTab = createTab(url, true);
+
+    tabs.push(newTab);
+
     currentUrl = url;
 
     if (iframeEl) {
       iframeEl.src = proxyUrl(url);
     }
 
-    const tab = makeMockTab(url);
+    callback?.(newTab);
 
-    callback?.(tab);
-
-    return Promise.resolve(tab);
+    return Promise.resolve(newTab);
   },
 
-  remove(
-    _tabIds: number | number[],
-    callback?: () => void,
-  ): Promise<void> {
-    callback?.();
-    return Promise.resolve();
-  },
+remove(
+  _tabIds: number | number[],
+  callback?: () => void,
+): Promise<void> {
+  const ids = Array.isArray(_tabIds) ? _tabIds : [_tabIds];
+
+  tabs = tabs.filter(t => t.id !== undefined && !ids.includes(t.id));
+
+  if (tabs.length > 0 && !tabs.some(t => t.active)) {
+    tabs[0].active = true;
+    tabs[0].highlighted = true;
+
+    currentUrl = tabs[0].url ?? currentUrl;
+
+    if (iframeEl && tabs[0].url) {
+      iframeEl.src = proxyUrl(tabs[0].url);
+    }
+  }
+
+  callback?.();
+
+  return Promise.resolve();
+},
   
   query(_info: object, callback?: (tabs: chrome.tabs.Tab[]) => void): Promise<chrome.tabs.Tab[]> {
-    const result = [makeMockTab()];
+    const result = [...tabs];
     callback?.(result);
     return Promise.resolve(result);
   },
 
   get(tabId: number, callback?: (tab: chrome.tabs.Tab) => void): Promise<chrome.tabs.Tab> {
-    const tab = makeMockTab();
+    const tab = tabs.find(t => t.id === tabId);
+
+    if (!tab) {
+      throw new Error(`Tab ${tabId} not found`);
+    }
+
     callback?.(tab);
+
     return Promise.resolve(tab);
   },
 
-  update(_tabId: number, props: chrome.tabs.UpdateProperties, callback?: (tab?: chrome.tabs.Tab) => void): Promise<chrome.tabs.Tab | undefined> {
-    if (props.url && iframeEl) {
-      const targetUrl = props.url;
-      currentUrl = targetUrl;
-      iframeEl.src = proxyUrl(targetUrl);
-      // Fire onUpdated: loading
-      tabUpdateListeners.forEach(l => l(MOCK_TAB_ID, { status: 'loading', url: targetUrl }, makeMockTab(targetUrl)));
-      // Fire onUpdated: complete after load
-      iframeEl.onload = () => {
-        tabUpdateListeners.forEach(l => l(MOCK_TAB_ID, { status: 'complete', url: targetUrl }, makeMockTab(targetUrl)));
-      };
+update(
+  _tabId: number,
+  props: chrome.tabs.UpdateProperties,
+  callback?: (tab?: chrome.tabs.Tab) => void,
+): Promise<chrome.tabs.Tab | undefined> {
+  const tab = tabs.find(t => t.id === _tabId);
+
+  if (!tab) {
+    return Promise.resolve(undefined);
+  }
+
+  if (props.active === true) {
+    tabs.forEach(t => {
+      t.active = false;
+      t.highlighted = false;
+    });
+
+    tab.active = true;
+    tab.highlighted = true;
+  }
+
+  if (props.url) {
+    tab.url = props.url;
+    currentUrl = props.url;
+
+    if (iframeEl) {
+      iframeEl.src = proxyUrl(props.url);
     }
-    const tab = makeMockTab();
-    callback?.(tab);
-    return Promise.resolve(tab);
-  },
+  }
+
+  callback?.(tab);
+
+  return Promise.resolve(tab);
+},
 
   captureVisibleTab(_windowId?: number, _options?: object, callback?: (dataUrl: string) => void): Promise<string> {
     // Handled by debugger shim — returns empty here as fallback
@@ -120,7 +186,7 @@ export const tabsShim = {
     return Promise.resolve('');
   },
 
-  sendMessage(tabId: number, message: unknown, _options?: object, callback?: (response: unknown) => void): Promise<unknown> {
+  sendMessage(_tabId: number, message: unknown, _options?: object, callback?: (response: unknown) => void): Promise<unknown> {
     // Handled by messaging shim
     if (iframeEl?.contentWindow) {
       iframeEl.contentWindow.postMessage({ __opticlick__: true, ...( typeof message === 'object' ? message : { message }) }, '*');
