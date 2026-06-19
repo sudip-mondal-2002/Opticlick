@@ -38,6 +38,7 @@ export async function drawOverlay(): Promise<CoordinateEntry[]> {
 
   const canvas = document.createElement('canvas');
   canvas.id = CANVAS_ID;
+  canvas.setAttribute('data-opticlick-overlay', 'true');
   canvas.width = Math.round(width * dpr);
   canvas.height = Math.round(height * dpr);
   canvas.style.cssText = `
