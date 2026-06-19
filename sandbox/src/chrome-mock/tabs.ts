@@ -106,7 +106,7 @@ export const tabsShim = {
     tabs.push(newTab);
 
     tabCreatedListeners.forEach((listener) => listener(newTab));
-    
+
 emitTabUpdate(newTab, { status: 'loading' });
 emitTabUpdate(newTab, { status: 'complete' });
 
@@ -174,15 +174,21 @@ update(
     return Promise.resolve(undefined);
   }
 
-  if (props.active === true) {
-    tabs.forEach(t => {
-      t.active = false;
-      t.highlighted = false;
-    });
+if (props.active === true) {
+  tabs.forEach(t => {
+    t.active = false;
+    t.highlighted = false;
+  });
 
-    tab.active = true;
-    tab.highlighted = true;
+  tab.active = true;
+  tab.highlighted = true;
+
+  currentUrl = tab.url ?? currentUrl;
+
+  if (iframeEl && tab.url) {
+    iframeEl.src = proxyUrl(tab.url);
   }
+}
 
 if (props.url) {
   tab.url = props.url;
