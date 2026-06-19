@@ -8,6 +8,7 @@
 let iframeEl: HTMLIFrameElement | null = null;
 let currentUrl = 'https://example.com';
 let tabUpdateListeners: Array<(tabId: number, changeInfo: Partial<chrome.tabs.TabChangeInfo>, tab: Partial<chrome.tabs.Tab>) => void> = [];
+let tabCreatedListeners: Array<(tab: chrome.tabs.Tab) => void> = [];
 
 let nextTabId = 1;
 
@@ -56,6 +57,18 @@ export function proxyUrl(url: string): string {
   }
   return url;
 }
+function emitTabUpdate(
+  tab: chrome.tabs.Tab,
+  changeInfo: Partial<chrome.tabs.TabChangeInfo>,
+) {
+const tabId = tab.id;
+
+if (tabId == null) return;
+
+tabUpdateListeners.forEach((listener) =>
+  listener(tabId, changeInfo, tab),
+);
+}
 
 function createTab(url: string, active = true): chrome.tabs.Tab {
   return {
@@ -91,6 +104,11 @@ export const tabsShim = {
     const newTab = createTab(url, true);
 
     tabs.push(newTab);
+
+    tabCreatedListeners.forEach((listener) => listener(newTab));
+    
+emitTabUpdate(newTab, { status: 'loading' });
+emitTabUpdate(newTab, { status: 'complete' });
 
     currentUrl = url;
 
@@ -166,14 +184,20 @@ update(
     tab.highlighted = true;
   }
 
-  if (props.url) {
-    tab.url = props.url;
-    currentUrl = props.url;
+if (props.url) {
+  tab.url = props.url;
+  currentUrl = props.url;
 
-    if (iframeEl) {
-      iframeEl.src = proxyUrl(props.url);
-    }
+ emitTabUpdate(tab, { status: 'loading', url: props.url });
+
+  if (iframeEl) {
+    iframeEl.src = proxyUrl(props.url);
   }
+
+  emitTabUpdate(tab, { status: 'complete', url: props.url });
+}
+  
+
 
   callback?.(tab);
 
@@ -205,10 +229,17 @@ update(
     hasListener: () => false,
   },
 
-  onCreated: {
-    addListener(cb: (tab: chrome.tabs.Tab) => void) {},
-    removeListener(cb: any) {},
-    hasListener: () => false,
+onCreated: {
+  addListener(cb: (tab: chrome.tabs.Tab) => void) {
+    tabCreatedListeners.push(cb);
   },
+  removeListener(cb: (tab: chrome.tabs.Tab) => void) {
+    tabCreatedListeners = tabCreatedListeners.filter(
+      (listener) => listener !== cb,
+    );
+  },
+  hasListener(cb: (tab: chrome.tabs.Tab) => void) {
+    return tabCreatedListeners.includes(cb);
+  },
+},
 };
-
