@@ -110,6 +110,22 @@ async function main() {
   if (process.env.STORAGE_STATE_BASE64) {
     console.log('📦 Found STORAGE_STATE_BASE64! Decoding directly and bypassing UI logins...');
     const decoded = Buffer.from(process.env.STORAGE_STATE_BASE64, 'base64').toString('utf-8');
+
+    // Validate structure before persisting — bad state causes cryptic errors downstream
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(decoded);
+    } catch {
+      throw new Error('STORAGE_STATE_BASE64 is not valid JSON — re-export state.json and re-encode');
+    }
+    if (
+      typeof parsed !== 'object' ||
+      parsed === null ||
+      !Array.isArray((parsed as Record<string, unknown>).cookies)
+    ) {
+      throw new Error('STORAGE_STATE_BASE64 is missing required "cookies" field — re-export state.json');
+    }
+
     fs.writeFileSync(STATE_PATH, decoded, 'utf8');
     console.log(`✅ Saved persistent auth state to ${STATE_PATH}`);
     return;
@@ -118,39 +134,42 @@ async function main() {
   // 2. Automated UI Logins
   console.log('🌐 Booting headless browser for automated auth...');
   const browser = await chromium.launch({ headless: true });
-  const context = await browser.newContext({
-    userAgent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36',
-  });
+  try {
+    const context = await browser.newContext({
+      userAgent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36',
+    });
 
-  // Stealth patch
-  await context.addInitScript(() => {
-    Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-  });
+    // Stealth patch
+    await context.addInitScript(() => {
+      Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+    });
 
-  const page = await context.newPage();
+    const page = await context.newPage();
 
-  // Try each login independently so a CAPTCHA on one doesn't crash the others
-  const logins = [
-    { name: 'GitHub',   fn: loginGitHub },
-    { name: 'Reddit',   fn: loginReddit },
-    { name: 'Notion',   fn: loginNotion },
-    { name: 'LinkedIn', fn: loginLinkedIn },
-    { name: 'Discord',  fn: loginDiscord },
-  ];
+    // Try each login independently so a CAPTCHA on one doesn't crash the others
+    const logins = [
+      { name: 'GitHub',   fn: loginGitHub },
+      { name: 'Reddit',   fn: loginReddit },
+      { name: 'Notion',   fn: loginNotion },
+      { name: 'LinkedIn', fn: loginLinkedIn },
+      { name: 'Discord',  fn: loginDiscord },
+    ];
 
-  for (const { name, fn } of logins) {
-    try {
-      await fn(page);
-    } catch (err) {
-      console.error(`❌ Failed to log into ${name}: ${(err as Error).message}`);
+    for (const { name, fn } of logins) {
+      try {
+        await fn(page);
+      } catch (err) {
+        console.error(`❌ Failed to log into ${name}: ${(err as Error).message}`);
+      }
     }
+
+    // 3. Save the resulting cookies
+    await context.storageState({ path: STATE_PATH });
+    console.log(`\n✅ Saved persistent auth state to ${STATE_PATH}`);
+  } finally {
+    // Always close the browser — even if a login or storageState() throws
+    await browser.close();
   }
-
-  // 3. Save the resulting cookies
-  await context.storageState({ path: STATE_PATH });
-  console.log(`\n✅ Saved persistent auth state to ${STATE_PATH}`);
-
-  await browser.close();
 }
 
 main().catch((err) => {
