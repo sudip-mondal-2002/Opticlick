@@ -34,7 +34,7 @@ function TrashIcon() {
   );
 }
 
-export function VFSBrowser({ sessionId }: Props) {
+export function VFSBrowser({ sessionId: _sessionId }: Props)  {
   const [files, setFiles] = useState<VFSFile[]>([]);
   const [globalFiles, setGlobalFiles] = useState<VFSFile[]>([]);
 const [sessionGroups, setSessionGroups] = useState<
@@ -52,7 +52,9 @@ const [sessionGroups, setSessionGroups] = useState<
       sessions.map(async (session) => ({
         id: session.id,
         title: session.title,
-        files: await listVFSFiles(session.id!),
+        files: session.id
+  ? await listVFSFiles(session.id)
+  : [],
       })),
     );
 
