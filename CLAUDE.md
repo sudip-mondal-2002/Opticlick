@@ -145,7 +145,7 @@ Tools are categorized into UI actions, DOM inspection, VFS mutations, memory, sc
 
 ## Testing Requirements
 - **Always run lint and tests after making changes.** Always run the linter with `npm run lint` before running tests. After completing any code modification, run the relevant test suite before considering the task done.
-- Run unit tests with `npm test` and E2E tests with `npm run test:e2e` (or the equivalent commands in the project).
+- Run unit/integration/DOM tests with `npm test`. E2E tests require a built extension and Playwright Chromium: `npm run build && npx playwright install chromium && npm run test:e2e`. CI runs the full suite (including E2E) via `npm run test:coverage` after build.
 - If tests fail, fix the failures before finishing — do not leave the codebase in a broken state.
 - **Write tests for every feature or bug fix.** New tools, actions, or pure utility functions must have corresponding unit tests. Integration or DOM tests are required when the change touches Chrome API wiring, content scripts, or the agent loop.
 - When adding new functionality, verify that existing tests still pass and that new behavior is covered by tests.
