@@ -72,6 +72,31 @@ describe('clearFocusedField — <input>', () => {
 
     expect(input.value).toBe('');
   });
+
+  it('clears value directly if prototype value setter is missing', () => {
+    const input = document.createElement('input');
+    input.value = 'fallback text';
+    document.body.appendChild(input);
+    input.focus();
+
+    const originalDesc = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+    if (originalDesc) {
+      Object.defineProperty(HTMLInputElement.prototype, 'value', {
+        value: 'fallback text',
+        writable: true,
+        configurable: true,
+      });
+    }
+
+    try {
+      clearFocusedField();
+      expect(input.value).toBe('');
+    } finally {
+      if (originalDesc) {
+        Object.defineProperty(HTMLInputElement.prototype, 'value', originalDesc);
+      }
+    }
+  });
 });
 
 // ── <textarea> ───────────────────────────────────────────────────────────────
@@ -166,5 +191,19 @@ describe('clearFocusedField — non-editable element', () => {
     const execSpy = vi.spyOn(document, 'execCommand').mockReturnValue(true);
     expect(() => clearFocusedField()).not.toThrow();
     expect(execSpy).not.toHaveBeenCalled();
+  });
+
+  it('returns early when document.activeElement is null', () => {
+    Object.defineProperty(document, 'activeElement', {
+      get() { return null; },
+      configurable: true,
+    });
+    try {
+      const execSpy = vi.spyOn(document, 'execCommand').mockReturnValue(true);
+      clearFocusedField();
+      expect(execSpy).not.toHaveBeenCalled();
+    } finally {
+      delete (document as any).activeElement;
+    }
   });
 });

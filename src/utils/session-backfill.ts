@@ -13,9 +13,11 @@ function extractMetadataFromHistory(
 ): { startUrl?: string; searchText?: string } {
   const patch: { startUrl?: string; searchText?: string } = {};
   const searchParts: string[] = [session.title];
+  let hasUserOrModelTurns = false;
 
   for (const turn of turns) {
     if (turn.role !== 'user' && turn.role !== 'model') continue;
+    hasUserOrModelTurns = true;
     searchParts.push(turn.content);
     if (!session.startUrl && !patch.startUrl) {
       const url = parseStartUrlFromContent(turn.content);
@@ -23,10 +25,12 @@ function extractMetadataFromHistory(
     }
   }
 
-  const fullSearchText = buildSearchText(...searchParts);
-  const titleOnlyText = buildSearchText(session.title);
-  if (!session.searchText || session.searchText === titleOnlyText) {
-    patch.searchText = fullSearchText;
+  if (hasUserOrModelTurns) {
+    const fullSearchText = buildSearchText(...searchParts);
+    const titleOnlyText = buildSearchText(session.title);
+    if (!session.searchText || session.searchText === titleOnlyText) {
+      patch.searchText = fullSearchText;
+    }
   }
 
   return patch;

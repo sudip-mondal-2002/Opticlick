@@ -201,4 +201,16 @@ describe('captureScreenshot', () => {
 
     expect(tabsMock.captureVisibleTab).toHaveBeenCalledWith(99, expect.objectContaining({ format: 'png' }));
   });
+
+  it('throws lastError even when it is falsy (e.g. null)', async () => {
+    const tabs = [{ id: 1, windowId: 10, active: true }];
+    const tabsMock = installTabsMock(tabs);
+    const debugger_ = getDebuggerMock();
+    // Reject both paths with null
+    debugger_.sendCommand.mockRejectedValue(null);
+    tabsMock.captureVisibleTab.mockRejectedValue(null);
+
+    const { captureScreenshot } = await import('@/utils/screenshot');
+    await expect(captureScreenshot(1)).rejects.toThrow('captureScreenshot: all attempts failed');
+  });
 });

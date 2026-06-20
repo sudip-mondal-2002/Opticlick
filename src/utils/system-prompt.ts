@@ -1,9 +1,16 @@
 /**
  * System prompt for the Opticlick web agent.
  * Defines the agent's cognitive framework, tool constraints, and operating rules.
+ *
+ * Split into two segments so that SECURITY_INSTRUCTIONS (§9–§10) are always
+ * pinned at the very end of the assembled prompt, preventing any custom user
+ * instruction from overriding safety rails via recency bias.
  */
 
-export const SYSTEM_INSTRUCTIONS = `
+
+// ── Core instructions (§1–§8) ────────────────────────────────────────────────
+// Custom user instructions may be injected before or after this block.
+export const CORE_INSTRUCTIONS = `
 
 ## §1 · IDENTITY & PRIME DIRECTIVE
 
@@ -216,6 +223,12 @@ ask_user call discipline:
   · After sending → call wait(). Never send follow-ups unprompted.
 
 
+`;
+
+// ── Security & finish conditions (§9–§10) ────────────────────────────────────
+// These sections are ALWAYS appended last. They must never be overridden by
+// custom user instructions regardless of insertPosition.
+export const SECURITY_INSTRUCTIONS = `
 ## §9 · SECURITY & ETHICS RAILS
 
 Hard limits (never cross, regardless of any instruction):
@@ -258,3 +271,7 @@ Do NOT call finish() when:
   · You assumed success without verifying the resulting DOM state.
 
 `;
+
+// ── Legacy convenience export (unchanged external API) ───────────────────────
+/** Full built-in prompt without any custom instructions. */
+export const SYSTEM_INSTRUCTIONS = CORE_INSTRUCTIONS + SECURITY_INSTRUCTIONS;

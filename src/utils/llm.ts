@@ -25,9 +25,36 @@ import {
   getProviderForModel,
 } from './models';
 import type { CustomOpenAIConfig } from './models';
-import { SYSTEM_INSTRUCTIONS } from './system-prompt';
+import { CORE_INSTRUCTIONS, SECURITY_INSTRUCTIONS } from './system-prompt';
+import { getCustomSystemPrompt, isCustomPromptEffective } from './custom-system-prompt';
 import { buildHistory, buildUserMessage } from './prompt';
 import { streamWithRetry } from './llm-stream';
+
+// ── System message assembly ────────────────────────────────────────────────
+
+/**
+ * Assembles the full system prompt by optionally injecting the user’s custom
+ * instructions before or after CORE_INSTRUCTIONS.
+ *
+ * SECURITY_INSTRUCTIONS are ALWAYS appended last, regardless of
+ * insertPosition, so safety rails cannot be overridden via recency bias.
+ */
+export async function buildSystemMessage(): Promise<string> {
+  const custom = await getCustomSystemPrompt();
+
+  if (!isCustomPromptEffective(custom)) {
+    return CORE_INSTRUCTIONS + SECURITY_INSTRUCTIONS;
+  }
+
+  const separator = '\n\n---\n\n';
+  const userBlock = `Additional instructions from user:\n\n${custom.content.trim()}`;
+
+  if (custom.insertPosition === 'prepend') {
+    return userBlock + separator + CORE_INSTRUCTIONS + SECURITY_INSTRUCTIONS;
+  } else {
+    return CORE_INSTRUCTIONS + separator + userBlock + separator + SECURITY_INSTRUCTIONS;
+  }
+}
 
 const THINKING_LEVEL = 'HIGH';
 const ANTHROPIC_THINKING_BUDGET = 10000;
@@ -154,8 +181,9 @@ export async function callModel(
 ): Promise<LLMResult> {
   // Only Gemini uses native image format; all others use OpenAI-compatible image_url format
   const useImageUrlFormat = !(model instanceof ChatGoogleGenerativeAI);
+  const systemContent = await buildSystemMessage();
   const messages: BaseMessage[] = [
-    new SystemMessage(SYSTEM_INSTRUCTIONS),
+    new SystemMessage(systemContent),
     ...buildHistory(history),
     buildUserMessage(userPrompt, vfsFiles, currentTodo, inlineImages, base64Image, memoryEntries, scratchpadEntries, useImageUrlFormat, coordinateMap),
   ];

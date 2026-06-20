@@ -27,22 +27,81 @@ export async function captureScreenshot(tabId: number): Promise<string> {
     }
 
     // Try the flicker-free CDP path first.
-    try {
-      await attachDebugger(tabId);
-      const result = await chrome.debugger.sendCommand(
-        { tabId },
-        'Page.captureScreenshot',
-        { format: 'png', fromSurface: true },
-      ) as { data: string };
+   try {
+    await attachDebugger(tabId);
+// Hide overlay + blocker
+await chrome.debugger.sendCommand(
+  { tabId },
+  'Runtime.evaluate',
+  {
+    expression: `
+      (() => {
+        const overlay =
+          document.getElementById('__opticlick_overlay__');
+        const blocker =
+          document.getElementById('__opticlick_blocker__');
 
-      if (result?.data && result.data.length >= MIN_VALID_B64_LENGTH) {
-        return result.data; // Already raw base64 — no data-URI prefix.
-      }
-    } catch (err) {
-      lastError = err;
-      // Debugger may not be attachable (e.g. chrome:// pages); try fallback below.
+        if (overlay) overlay.style.visibility = 'hidden';
+        if (blocker) blocker.style.visibility = 'hidden';
+      })()
+    `,
+  },
+);
+
+let result: { data: string };
+
+try {
+  result = await chrome.debugger.sendCommand(
+    { tabId },
+    'Page.captureScreenshot',
+    { format: 'png', fromSurface: true },
+  ) as { data: string };
+} finally {
+  // Restore overlay + blocker even if screenshot capture fails
+  await chrome.debugger.sendCommand(
+    { tabId },
+    'Runtime.evaluate',
+    {
+      expression: `
+        (() => {
+          const overlay =
+            document.getElementById('__opticlick_overlay__');
+          const blocker =
+            document.getElementById('__opticlick_blocker__');
+
+          if (overlay) overlay.style.visibility = '';
+          if (blocker) blocker.style.visibility = '';
+        })()
+      `,
+    },
+  );
+}
+
+    // Restore overlay + blocker
+    await chrome.debugger.sendCommand(
+      { tabId },
+      'Runtime.evaluate',
+      {
+        expression: `
+          (() => {
+            const overlay =
+              document.getElementById('__opticlick_overlay__');
+            const blocker =
+              document.getElementById('__opticlick_blocker__');
+
+            if (overlay) overlay.style.visibility = '';
+            if (blocker) blocker.style.visibility = '';
+          })()
+        `,
+      },
+    );
+
+    if (result?.data && result.data.length >= MIN_VALID_B64_LENGTH) {
+      return result.data;
     }
-
+  } catch (err) {
+    lastError = err;
+  }
     // Fallback: temporarily activate the target tab so captureVisibleTab works.
     try {
       const tab = await chrome.tabs.get(tabId);
