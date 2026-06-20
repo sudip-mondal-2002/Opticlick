@@ -32,9 +32,11 @@ describe('IndexedDB Error Paths and Fallbacks', () => {
 
   it('covers openDB VersionError fallback by deleting and recreating the database', async () => {
     // Delete the database to get a clean state
-    await new Promise<void>((resolve) => {
+    await new Promise<void>((resolve, reject) => {
       const req = indexedDB.deleteDatabase(DB_NAME);
       req.onsuccess = () => resolve();
+      req.onerror = (e) => reject((e.target as IDBOpenDBRequest).error);
+      req.onblocked = () => reject(new Error('Delete blocked'));
     });
 
     // Create a database with version 999
@@ -42,13 +44,14 @@ describe('IndexedDB Error Paths and Fallbacks', () => {
       const req = indexedDB.open(DB_NAME, 999);
       req.onsuccess = (e) => resolve((e.target as IDBOpenDBRequest).result);
       req.onerror = (e) => reject((e.target as IDBOpenDBRequest).error);
+      req.onblocked = (e) => reject(new Error('Open blocked'));
     });
     db1.close();
 
     // Now call openDB(), which uses DB_VERSION = 5.
     // It should throw VersionError initially, catch it, delete the DB,
     // and successfully open version 5.
-    const db2 = await openDB();
+    const db2 = await openDB({ mode: 'auto-delete' });
     expect(db2.version).toBe(5);
     db2.close();
   });
@@ -79,7 +82,7 @@ describe('IndexedDB Error Paths and Fallbacks', () => {
       return req;
     });
 
-    await expect(openDB()).rejects.toThrow();
+    await expect(openDB({ mode: 'auto-delete' })).rejects.toThrow();
     deleteSpy.mockRestore();
   });
 
@@ -107,8 +110,33 @@ describe('IndexedDB Error Paths and Fallbacks', () => {
       return req;
     });
 
-    await expect(openDB()).rejects.toThrow();
+    await expect(openDB({ mode: 'auto-delete' })).rejects.toThrow();
     deleteSpy.mockRestore();
+  });
+
+  it('rejects with VersionError when mode is reject', async () => {
+    // Delete the database first
+    await new Promise<void>((resolve, reject) => {
+      const req = indexedDB.deleteDatabase(DB_NAME);
+      req.onsuccess = () => resolve();
+      req.onerror = (e) => reject((e.target as IDBOpenDBRequest).error);
+      req.onblocked = () => reject(new Error('Delete blocked'));
+    });
+
+    // Create a database with version 999
+    const db1 = await new Promise<IDBDatabase>((resolve, reject) => {
+      const req = indexedDB.open(DB_NAME, 999);
+      req.onsuccess = (e) => resolve((e.target as IDBOpenDBRequest).result);
+      req.onerror = (e) => reject((e.target as IDBOpenDBRequest).error);
+      req.onblocked = (e) => reject(new Error('Open blocked'));
+    });
+    db1.close();
+
+    // openDB() should reject with a VersionError under reject mode (default in test)
+    await expect(openDB()).rejects.toThrow();
+
+    // openDB({ mode: 'reject' }) should also reject
+    await expect(openDB({ mode: 'reject' })).rejects.toThrow();
   });
 
   it('covers getConversationHistory fallback when index is missing', async () => {
