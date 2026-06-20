@@ -5,7 +5,7 @@
  * to the target platforms and checking for logged-in UI elements.
  * Prevents wasting LLM tokens on evals if the session is dead/expired.
  *
- * Automatically skipped when EVAL_FILTER=non-auth since no auth is needed.
+ * Automatically skipped when EVAL_AUTH_FILTER=non-auth since no auth is needed.
  * When cookies fail, logs a warning but does NOT abort — the runner will skip
  * auth-required cases if cookies are unavailable.
  */
@@ -23,11 +23,11 @@ const DOMAIN_CHECKS = [
 ];
 
 async function main() {
-  const filter = (process.env.EVAL_FILTER ?? 'non-auth').toLowerCase();
+  const authFilter = (process.env.EVAL_AUTH_FILTER ?? 'non-auth').toLowerCase();
 
   // No auth needed for non-auth runs — skip entirely
-  if (filter === 'non-auth') {
-    console.log('⏭️ EVAL_FILTER=non-auth — skipping auth smoke test.');
+  if (authFilter === 'non-auth') {
+    console.log('⏭️ EVAL_AUTH_FILTER=non-auth — skipping auth smoke test.');
     return;
   }
 

@@ -4,8 +4,8 @@
  * LangSmith SDK wrapper.
  *
  * - loadFilteredExamples() : fetch raw LangSmith Example objects filtered by
- *                            EVAL_FILTER / EVAL_IDS — passed directly to evaluate()
- *                            so runs are properly linked to the dataset as an experiment.
+ *                            EVAL_AUTH_FILTER, EVAL_DIFFICULTY, or EVAL_IDS — passed directly
+ *                            to evaluate() so runs are properly linked to the dataset as an experiment.
  * - loadCases()            : same data, typed as EvalCase[] (used for summary/threshold logic)
  */
 
@@ -31,8 +31,8 @@ export function exampleToEvalCase(example: Example): EvalCase {
 
   // LangSmith dataset uses snake_case field names; support both for robustness
   const requiresAuth =
-    inputs.requires_auth === true  || inputs.requires_auth === 'true' ||
-    inputs.requiresAuth  === true  || inputs.requiresAuth  === 'true';
+    inputs.requires_auth === true || String(inputs.requires_auth).toLowerCase() === 'true' ||
+    inputs.requiresAuth  === true || String(inputs.requiresAuth).toLowerCase()  === 'true';
 
   const difficulty = (
     (inputs.difficulty as string) || 'medium'
@@ -76,20 +76,25 @@ function applyFilter(cases: EvalCase[]): EvalCase[] {
     return cases.filter((c) => idSet.has(c.id));
   }
 
-  const filter = (process.env.EVAL_FILTER ?? 'non-auth').toLowerCase();
-  switch (filter) {
-    case 'all':    return cases;
-    case 'easy':   return cases.filter((c) => c.difficulty === 'easy');
-    case 'medium': return cases.filter((c) => c.difficulty === 'medium');
-    case 'hard':   return cases.filter((c) => c.difficulty === 'hard');
-    case 'non-auth':
-    default:
-      return cases.filter((c) => !c.requiresAuth);
+  let filtered = cases;
+
+  const authFilter = (process.env.EVAL_AUTH_FILTER ?? 'non-auth').toLowerCase();
+  if (authFilter === 'non-auth') {
+    filtered = filtered.filter((c) => !c.requiresAuth);
+  } else if (authFilter === 'auth') {
+    filtered = filtered.filter((c) => c.requiresAuth);
   }
+
+  const diffFilter = (process.env.EVAL_DIFFICULTY ?? 'all').toLowerCase();
+  if (diffFilter !== 'all') {
+    filtered = filtered.filter((c) => c.difficulty === diffFilter);
+  }
+
+  return filtered;
 }
 
 /**
- * Fetch raw LangSmith Example objects, filtered by EVAL_FILTER / EVAL_IDS.
+ * Fetch raw LangSmith Example objects, filtered by EVAL_AUTH_FILTER / EVAL_DIFFICULTY / EVAL_IDS.
  * Pass the returned array directly to evaluate() so runs are linked to the
  * dataset and grouped as a proper experiment.
  */

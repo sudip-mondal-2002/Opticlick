@@ -18,7 +18,8 @@
  *   LANGSMITH_PROJECT        — optional: project to log into (default: opticlick-evals)
  *   LANGSMITH_DATASET_NAME   — optional: dataset to run against (default: Opticlick Eval Test Cases)
  *   EVAL_EXPERIMENT_NAME     — optional: experiment prefix (default: opticlick-eval)
- *   EVAL_FILTER              — optional: non-auth | all | easy | medium | hard
+ *   EVAL_AUTH_FILTER         — optional: non-auth | auth | all (default: non-auth)
+ *   EVAL_DIFFICULTY          — optional: easy | medium | hard | all (default: all)
  *   EVAL_IDS                 — optional: comma-separated case IDs
  *   EVAL_THRESHOLD           — optional: min pass rate 0-100 (default: 70)
  */
@@ -46,12 +47,12 @@ const expectedOutputByCase = new Map<string, string>();
 /** Build EvalCase from evaluate() inputs, using the pre-built expectedOutput map. */
 function buildEvalCase(inputs: Record<string, unknown>): EvalCase {
   const requiresAuth =
-    inputs.requires_auth === true  || inputs.requires_auth === 'true' ||
-    inputs.requiresAuth  === true  || inputs.requiresAuth  === 'true';
+    inputs.requires_auth === true || String(inputs.requires_auth).toLowerCase() === 'true' ||
+    inputs.requiresAuth  === true || String(inputs.requiresAuth).toLowerCase()  === 'true';
 
   const id = inputs.case_number != null
     ? String(inputs.case_number)
-    : (inputs.id as string) || '';
+    : (inputs.langsmithExampleId as string) || (inputs.id as string) || '';
 
   return {
     id,
@@ -213,16 +214,23 @@ async function main(): Promise<void> {
   // runs are linked to the dataset and shown as an experiment in the LangSmith UI
   const examples = await loadFilteredExamples();
   if (examples.length === 0) {
-    console.error('❌ No eval cases found. Check EVAL_FILTER / EVAL_IDS env vars.');
+    console.error('❌ No eval cases found. Check EVAL_AUTH_FILTER, EVAL_DIFFICULTY, or EVAL_IDS env vars.');
     process.exit(1);
   }
 
   const threshold = Number(process.env.EVAL_THRESHOLD ?? '70');
+  if (Number.isNaN(threshold)) {
+    console.error('❌ EVAL_THRESHOLD must be a valid number');
+    process.exit(1);
+  }
   const experimentPrefix = process.env.EVAL_EXPERIMENT_NAME || 'opticlick-eval';
 
   // Populate the expectedOutput lookup Map before evaluate() runs.
   // example.outputs = Reference Outputs column; example.inputs = Inputs column.
   for (const ex of examples) {
+    if (ex.inputs) {
+      ex.inputs.langsmithExampleId = ex.id; // inject so runAgent has access to it
+    }
     const inp = (ex.inputs ?? {}) as Record<string, unknown>;
     const out = (ex.outputs ?? {}) as Record<string, unknown>;
     const id = inp.case_number != null ? String(inp.case_number) : ex.id;
