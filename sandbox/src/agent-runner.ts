@@ -26,11 +26,13 @@ export async function runSandboxAgent(msg: Record<string, unknown>): Promise<voi
   _stopRequested = false;
 
   // Re-initialize LangSmith with any locally stored credentials
-  const stored = await chrome.storage.local.get(['langsmithApiKey', 'langsmithProject']);
+  const stored = await chrome.storage.local.get(['langsmithApiKey', 'langsmithProject', 'langsmithEndpoint']);
   if (stored.langsmithApiKey) {
     // Override env vars with user-provided credentials
     (window as unknown as Record<string, string>).__LANGSMITH_API_KEY__ = stored.langsmithApiKey as string;
     (window as unknown as Record<string, string>).__LANGSMITH_PROJECT__ = (stored.langsmithProject as string) || 'opticlick-sandbox';
+    (window as unknown as Record<string, string>).__LANGSMITH_ENDPOINT__ = (stored.langsmithEndpoint as string) || 'https://api.smith.langchain.com';
+    (window as unknown as Record<string, string>).__LANGSMITH_TRACING__ = 'true';
   }
 
   initializeLangSmith();
