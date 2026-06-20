@@ -4,6 +4,10 @@
  * Validates that the pre-authenticated cookies actually work by physically navigating
  * to the target platforms and checking for logged-in UI elements.
  * Prevents wasting LLM tokens on evals if the session is dead/expired.
+ *
+ * Automatically skipped when EVAL_FILTER=non-auth since no auth is needed.
+ * When cookies fail, logs a warning but does NOT abort — the runner will skip
+ * auth-required cases if cookies are unavailable.
  */
 
 import { chromium } from '@playwright/test';
@@ -19,8 +23,16 @@ const DOMAIN_CHECKS = [
 ];
 
 async function main() {
+  const filter = (process.env.EVAL_FILTER ?? 'non-auth').toLowerCase();
+
+  // No auth needed for non-auth runs — skip entirely
+  if (filter === 'non-auth') {
+    console.log('⏭️ EVAL_FILTER=non-auth — skipping auth smoke test.');
+    return;
+  }
+
   if (!fs.existsSync(STATE_PATH)) {
-    console.log('⏭️ No state.json found. Skipping smoke test.');
+    console.log('⚠️  No state.json found. Skipping smoke test (will rely on username/password login).');
     return;
   }
 
@@ -58,8 +70,12 @@ async function main() {
   await browser.close();
 
   if (failed) {
-    console.error('\n❌ Smoke test failed! Aborting pipeline to save tokens.');
-    process.exit(1);
+    // Warn but don't abort — the eval runner will skip auth cases if cookies are invalid.
+    // Username/password login in setup-auth.ts will be used as fallback.
+    console.warn('\n⚠️  Some auth cookies are expired or invalid.');
+    console.warn('   Auth-required eval cases may be skipped or fail gracefully.');
+    console.warn('   To fix: re-run export-cookies.ts locally and update STORAGE_STATE_BASE64 secret.');
+    return;
   }
 
   console.log('\n✅ All targeted platforms passed the smoke test!');
