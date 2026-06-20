@@ -53,6 +53,64 @@ describe('IndexedDB Error Paths and Fallbacks', () => {
     db2.close();
   });
 
+  it('covers openDB VersionError deleteDatabase error path', async () => {
+    // Delete the database first
+    await new Promise<void>((resolve) => {
+      const req = indexedDB.deleteDatabase(DB_NAME);
+      req.onsuccess = () => resolve();
+    });
+
+    // Create a database with version 999
+    const db1 = await new Promise<IDBDatabase>((resolve, reject) => {
+      const req = indexedDB.open(DB_NAME, 999);
+      req.onsuccess = (e) => resolve((e.target as IDBOpenDBRequest).result);
+      req.onerror = (e) => reject((e.target as IDBOpenDBRequest).error);
+    });
+    db1.close();
+
+    // Mock deleteDatabase to fail
+    const mockError = new Error('Mock delete failure');
+    const deleteSpy = vi.spyOn(indexedDB, 'deleteDatabase').mockImplementation(() => {
+      const req = {} as any;
+      setTimeout(() => {
+        req.error = mockError;
+        if (req.onerror) req.onerror({ target: req } as any);
+      }, 0);
+      return req;
+    });
+
+    await expect(openDB()).rejects.toThrow();
+    deleteSpy.mockRestore();
+  });
+
+  it('covers openDB VersionError deleteDatabase blocked path', async () => {
+    // Delete the database first
+    await new Promise<void>((resolve) => {
+      const req = indexedDB.deleteDatabase(DB_NAME);
+      req.onsuccess = () => resolve();
+    });
+
+    // Create a database with version 999
+    const db1 = await new Promise<IDBDatabase>((resolve, reject) => {
+      const req = indexedDB.open(DB_NAME, 999);
+      req.onsuccess = (e) => resolve((e.target as IDBOpenDBRequest).result);
+      req.onerror = (e) => reject((e.target as IDBOpenDBRequest).error);
+    });
+    db1.close();
+
+    // Mock deleteDatabase to block
+    const deleteSpy = vi.spyOn(indexedDB, 'deleteDatabase').mockImplementation(() => {
+      const req = {} as any;
+      setTimeout(() => {
+        if (req.onblocked) req.onblocked({ target: req } as any);
+      }, 0);
+      return req;
+    });
+
+    await expect(openDB()).rejects.toThrow();
+    deleteSpy.mockRestore();
+  });
+
   it('covers getConversationHistory fallback when index is missing', async () => {
     const originalOpen = indexedDB.open.bind(indexedDB);
     const openSpy = vi.spyOn(indexedDB, 'open').mockImplementation((name, version) => {
