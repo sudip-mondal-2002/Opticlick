@@ -46,18 +46,21 @@ const expectedOutputByCase = new Map<string, string>();
 
 /** Build EvalCase from evaluate() inputs, using the pre-built expectedOutput map. */
 function buildEvalCase(inputs: Record<string, unknown>): EvalCase {
+  const rawRequiresAuth = inputs.requires_auth ?? inputs.requiresAuth ?? inputs['Requires Auth'] ?? inputs.Requires_Auth;
   const requiresAuth =
-    inputs.requires_auth === true || String(inputs.requires_auth).toLowerCase() === 'true' ||
-    inputs.requiresAuth  === true || String(inputs.requiresAuth).toLowerCase()  === 'true';
+    rawRequiresAuth === true || String(rawRequiresAuth).toLowerCase() === 'true';
 
-  const id = inputs.case_number != null
-    ? String(inputs.case_number)
+  const rawCaseNumber = inputs.case_number ?? inputs.caseNumber ?? inputs['Case Number'] ?? inputs.Case_Number;
+  const id = rawCaseNumber != null
+    ? String(rawCaseNumber)
     : (inputs.langsmithExampleId as string) || (inputs.id as string) || '';
+
+  const rawDifficulty = (inputs.difficulty ?? inputs.Difficulty ?? 'medium') as string;
 
   return {
     id,
     title:          (inputs.title as string) || `Case ${id}`,
-    difficulty:     (((inputs.difficulty as string) || 'medium').toLowerCase()) as 'easy' | 'medium' | 'hard',
+    difficulty:     rawDifficulty.toLowerCase() as 'easy' | 'medium' | 'hard',
     requiresAuth,
     timeoutMs:      (inputs.timeout_ms as number) || (inputs.timeoutMs as number) || 1_200_000,
     prompt:         (inputs.prompt as string) || (inputs.input as string) || '',
@@ -233,7 +236,8 @@ async function main(): Promise<void> {
     }
     const inp = (ex.inputs ?? {}) as Record<string, unknown>;
     const out = (ex.outputs ?? {}) as Record<string, unknown>;
-    const id = inp.case_number != null ? String(inp.case_number) : ex.id;
+    const rawCaseNumber = inp.case_number ?? inp.caseNumber ?? inp['Case Number'] ?? inp.Case_Number;
+    const id = rawCaseNumber != null ? String(rawCaseNumber) : ex.id;
     expectedOutputByCase.set(
       id,
       (out.expected_output as string) || (out.expectedOutput as string) || (out.output as string) || '',

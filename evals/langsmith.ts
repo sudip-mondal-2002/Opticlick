@@ -30,17 +30,17 @@ export function exampleToEvalCase(example: Example): EvalCase {
   const outputs = (example.outputs ?? {}) as Record<string, unknown>;
 
   // LangSmith dataset uses snake_case field names; support both for robustness
+  const rawRequiresAuth = inputs.requires_auth ?? inputs.requiresAuth ?? inputs['Requires Auth'] ?? inputs.Requires_Auth;
   const requiresAuth =
-    inputs.requires_auth === true || String(inputs.requires_auth).toLowerCase() === 'true' ||
-    inputs.requiresAuth  === true || String(inputs.requiresAuth).toLowerCase()  === 'true';
+    rawRequiresAuth === true || String(rawRequiresAuth).toLowerCase() === 'true';
 
-  const difficulty = (
-    (inputs.difficulty as string) || 'medium'
-  ).toLowerCase() as 'easy' | 'medium' | 'hard';
+  const rawDifficulty = (inputs.difficulty ?? inputs.Difficulty ?? 'medium') as string;
+  const difficulty = rawDifficulty.toLowerCase() as 'easy' | 'medium' | 'hard';
 
   // case_number is the dataset's numeric ID field; fall back to example.id (UUID)
-  const id = inputs.case_number != null
-    ? String(inputs.case_number)
+  const rawCaseNumber = inputs.case_number ?? inputs.caseNumber ?? inputs['Case Number'] ?? inputs.Case_Number;
+  const id = rawCaseNumber != null
+    ? String(rawCaseNumber)
     : (inputs.id as string) || example.id;
 
   const timeoutMs =
