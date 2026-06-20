@@ -11,6 +11,8 @@ export interface EvalCase {
   prompt: string;
   /** Reference description of what success looks like (used by LLM judge). */
   expectedOutput: string;
+  /** LangSmith Example UUID — stored at load time to avoid redundant dataset scans. */
+  langsmithExampleId?: string;
 }
 
 export interface RunResult {

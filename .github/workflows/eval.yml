@@ -15,6 +15,14 @@ on:
         description: 'LangSmith project name to log results into'
         required: false
         default: 'opticlick-evals'
+      dataset_name:
+        description: 'LangSmith dataset name to run evals against'
+        required: false
+        default: 'Opticlick Eval Test Cases'
+      experiment_name:
+        description: 'Experiment name prefix shown in LangSmith (auto-suffixed with timestamp)'
+        required: false
+        default: 'opticlick-eval'
 
 jobs:
   eval:
@@ -57,6 +65,8 @@ jobs:
           # ── Phase 1: required ──────────────────────────────────────────────
           LANGSMITH_API_KEY: ${{ secrets.LANGSMITH_API_KEY }}
           LANGSMITH_PROJECT: ${{ inputs.langsmith_project }}
+          LANGSMITH_DATASET_NAME: ${{ inputs.dataset_name }}
+          EVAL_EXPERIMENT_NAME: ${{ inputs.experiment_name }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           EVAL_FILTER: ${{ inputs.filter }}
           EVAL_THRESHOLD: ${{ inputs.threshold }}

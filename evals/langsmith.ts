@@ -3,180 +3,123 @@
  *
  * LangSmith SDK wrapper.
  *
- * - loadCases()    : load eval cases from local dataset.json
- *                    (optionally filtered by EVAL_FILTER / EVAL_IDS env vars)
- * - logResult()    : log a completed EvalResult to LangSmith as a run + feedback scores
- * - createExperimentRun() / endExperimentRun() : wrap the entire batch
+ * - loadFilteredExamples() : fetch raw LangSmith Example objects filtered by
+ *                            EVAL_FILTER / EVAL_IDS — passed directly to evaluate()
+ *                            so runs are properly linked to the dataset as an experiment.
+ * - loadCases()            : same data, typed as EvalCase[] (used for summary/threshold logic)
  */
 
 import { Client } from 'langsmith';
-import * as crypto from 'node:crypto';
-import type { EvalCase, EvalResult } from './types.js';
-import type { ProgrammaticMetrics } from './metrics.js';
-import type { JudgeResult } from './types.js';
+import type { Example } from 'langsmith/schemas';
+import type { EvalCase } from './types.js';
 
-const LANGSMITH_DATASET_NAME = 'Opticlick Eval Test Cases';
+/** Dataset name — set via LANGSMITH_DATASET_NAME env var (workflow dispatch input). */
+function getDatasetName(): string {
+  return process.env.LANGSMITH_DATASET_NAME || 'Opticlick Eval Test Cases';
+}
 
-function getClient(): Client {
+export function getClient(): Client {
   const apiKey = process.env.LANGSMITH_API_KEY;
   if (!apiKey) throw new Error('LANGSMITH_API_KEY is not set');
   return new Client({ apiKey });
 }
 
-/**
- * Load eval cases directly from LangSmith SDK instead of local dataset.json.
- * Filtered by:
- *   EVAL_IDS      = comma-separated case IDs  (e.g. "eval-001,eval-003")
- *   EVAL_FILTER   = difficulty level or "non-auth" | "all" | "easy" | "medium" | "hard"
- */
-export async function loadCases(): Promise<EvalCase[]> {
-  const client = getClient();
-  const all: EvalCase[] = [];
+/** Convert raw LangSmith Example inputs into a typed EvalCase. */
+export function exampleToEvalCase(example: Example): EvalCase {
+  const inputs  = (example.inputs  ?? {}) as Record<string, unknown>;
+  const outputs = (example.outputs ?? {}) as Record<string, unknown>;
 
-  try {
-    for await (const example of client.listExamples({ datasetName: LANGSMITH_DATASET_NAME })) {
-      const inputs = example.inputs || {};
-      const outputs = example.outputs || {};
+  // LangSmith dataset uses snake_case field names; support both for robustness
+  const requiresAuth =
+    inputs.requires_auth === true  || inputs.requires_auth === 'true' ||
+    inputs.requiresAuth  === true  || inputs.requiresAuth  === 'true';
 
-      all.push({
-        id: (inputs.id as string) || example.id,
-        title: (inputs.title as string) || 'Untitled Case',
-        difficulty: (inputs.difficulty as 'easy' | 'medium' | 'hard') || 'medium',
-        requiresAuth: (inputs.requiresAuth as boolean) || false,
-        timeoutMs: (inputs.timeoutMs as number) || 300000,
-        prompt: (inputs.prompt as string) || (inputs.input as string) || '',
-        expectedOutput: (outputs?.expectedOutput as string) || (outputs?.output as string) || '',
-      });
-    }
-  } catch (err) {
-    console.error(`❌ Failed to fetch dataset '${LANGSMITH_DATASET_NAME}' from LangSmith: ${(err as Error).message}`);
-    console.error('Make sure LANGSMITH_API_KEY is set and the dataset exists.');
-    process.exit(1);
-  }
+  const difficulty = (
+    (inputs.difficulty as string) || 'medium'
+  ).toLowerCase() as 'easy' | 'medium' | 'hard';
 
+  // case_number is the dataset's numeric ID field; fall back to example.id (UUID)
+  const id = inputs.case_number != null
+    ? String(inputs.case_number)
+    : (inputs.id as string) || example.id;
+
+  const timeoutMs =
+    (inputs.timeout_ms as number) ||
+    (inputs.timeoutMs  as number) ||
+    1_200_000; // 20 minutes
+
+  const prompt =
+    (inputs.prompt as string) ||
+    (inputs.input  as string) || '';
+
+  const expectedOutput =
+    (outputs.expected_output as string) ||
+    (outputs.expectedOutput  as string) ||
+    (outputs.output          as string) || '';
+
+  return {
+    id,
+    title:             (inputs.title as string) || `Case ${id}`,
+    difficulty,
+    requiresAuth,
+    timeoutMs,
+    prompt,
+    expectedOutput,
+    langsmithExampleId: example.id, // LangSmith UUID — used to link run to example
+  };
+}
+
+function applyFilter(cases: EvalCase[]): EvalCase[] {
   const ids = process.env.EVAL_IDS;
   if (ids) {
     const idSet = new Set(ids.split(',').map((s) => s.trim()));
-    return all.filter((c) => idSet.has(c.id));
+    return cases.filter((c) => idSet.has(c.id));
   }
 
   const filter = (process.env.EVAL_FILTER ?? 'non-auth').toLowerCase();
   switch (filter) {
-    case 'all':
-      return all;
-    case 'easy':
-      return all.filter((c) => c.difficulty === 'easy');
-    case 'medium':
-      return all.filter((c) => c.difficulty === 'medium');
-    case 'hard':
-      return all.filter((c) => c.difficulty === 'hard');
+    case 'all':    return cases;
+    case 'easy':   return cases.filter((c) => c.difficulty === 'easy');
+    case 'medium': return cases.filter((c) => c.difficulty === 'medium');
+    case 'hard':   return cases.filter((c) => c.difficulty === 'hard');
     case 'non-auth':
     default:
-      return all.filter((c) => !c.requiresAuth);
+      return cases.filter((c) => !c.requiresAuth);
   }
 }
 
 /**
- * Log a single eval result to LangSmith.
- * Creates a run linked to the dataset + logs all metric scores as feedback.
+ * Fetch raw LangSmith Example objects, filtered by EVAL_FILTER / EVAL_IDS.
+ * Pass the returned array directly to evaluate() so runs are linked to the
+ * dataset and grouped as a proper experiment.
  */
-export async function logResult(
-  evalCase: EvalCase,
-  result: EvalResult,
-  metrics: ProgrammaticMetrics,
-  judgeResult: JudgeResult,
-  experimentName: string,
-): Promise<void> {
+export async function loadFilteredExamples(): Promise<Example[]> {
   const client = getClient();
+  const datasetName = getDatasetName();
+  const allExamples: Example[] = [];
 
-  // Find the matching example in the LangSmith dataset (best-effort; skip if not found)
-  let referenceExampleId: string | undefined;
   try {
-    for await (const example of client.listExamples({
-      datasetName: LANGSMITH_DATASET_NAME,
-    })) {
-      // Match by title or id stored in example inputs
-      const exInputs = example.inputs as Record<string, unknown>;
-      if (
-        exInputs?.id === evalCase.id ||
-        exInputs?.title === evalCase.title
-      ) {
-        referenceExampleId = example.id;
-        break;
-      }
+    for await (const example of client.listExamples({ datasetName })) {
+      allExamples.push(example);
     }
-  } catch {
-    // Non-fatal — LangSmith dataset lookup is optional
+  } catch (err) {
+    console.error(`❌ Failed to fetch dataset '${datasetName}' from LangSmith: ${(err as Error).message}`);
+    console.error('Make sure LANGSMITH_API_KEY is set and the dataset exists in LangSmith.');
+    process.exit(1);
   }
 
-  const runId = crypto.randomUUID();
-  const startTime = new Date(Date.now() - metrics.time_to_completion_seconds * 1000);
+  // Convert to EvalCase for filtering, then map back to Example
+  const allCases = allExamples.map(exampleToEvalCase);
+  const filteredCases = applyFilter(allCases);
+  const filteredIds = new Set(filteredCases.map((c) => c.langsmithExampleId));
 
-  // Create the run
-  await client.createRun({
-    id: runId,
-    name: `[${evalCase.id}] ${evalCase.title}`,
-    run_type: 'chain',
-    project_name: process.env.LANGSMITH_PROJECT ?? 'opticlick-evals',
-    inputs: {
-      id: evalCase.id,
-      title: evalCase.title,
-      difficulty: evalCase.difficulty,
-      prompt: evalCase.prompt,
-      expectedOutput: evalCase.expectedOutput,
-    },
-    outputs: {
-      finishReason: result.finishReason,
-      passed: result.passed,
-      videoPath: result.compressedVideoPath,
-      judgeReasoning: judgeResult.reasoning,
-    },
-    extra: {
-      metadata: {
-        experiment: experimentName,
-        model: 'gemma-4-31b-it',
-        requiresAuth: evalCase.requiresAuth,
-      },
-    },
-    reference_example_id: referenceExampleId,
-    start_time: startTime.toISOString(),
-  });
+  return allExamples.filter((ex) => filteredIds.has(ex.id));
+}
 
-  // End the run
-  await client.updateRun(runId, {
-    end_time: new Date().toISOString(),
-    error: result.errorOccurred ? 'Agent errored' : undefined,
-  });
-
-  // Log qualitative (LLM judge) feedback scores
-  const qualitativeScores: Array<[string, number | boolean]> = [
-    ['task_completed', judgeResult.task_completed ? 1 : 0],
-    ['navigation_accuracy', judgeResult.navigation_accuracy],
-    ['output_correctness', judgeResult.output_correctness],
-    ['unnecessary_actions', judgeResult.unnecessary_actions ? 1 : 0],
-    ['efficiency_score', judgeResult.efficiency_score],
-  ];
-
-  for (const [key, score] of qualitativeScores) {
-    await client.createFeedback(runId, key, {
-      score: score as number,
-      sourceInfo: { model: 'gemma-4-31b-it', type: 'llm_judge' },
-    });
-  }
-
-  // Log programmatic feedback scores
-  const programmaticScores: Array<[string, number]> = [
-    ['time_to_completion_seconds', metrics.time_to_completion_seconds],
-    ['video_duration_seconds', metrics.video_duration_seconds],
-    ['num_steps', metrics.num_steps],
-    ['timed_out', metrics.timed_out ? 1 : 0],
-    ['error_occurred', metrics.error_occurred ? 1 : 0],
-  ];
-
-  for (const [key, score] of programmaticScores) {
-    await client.createFeedback(runId, key, {
-      score,
-      sourceInfo: { type: 'programmatic' },
-    });
-  }
+/**
+ * Load filtered examples as typed EvalCase[] (used for threshold/summary logic).
+ */
+export async function loadCases(): Promise<EvalCase[]> {
+  const examples = await loadFilteredExamples();
+  return examples.map(exampleToEvalCase);
 }
