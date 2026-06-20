@@ -44,7 +44,7 @@ describe('IndexedDB Error Paths and Fallbacks', () => {
       const req = indexedDB.open(DB_NAME, 999);
       req.onsuccess = (e) => resolve((e.target as IDBOpenDBRequest).result);
       req.onerror = (e) => reject((e.target as IDBOpenDBRequest).error);
-      req.onblocked = (e) => reject(new Error('Open blocked'));
+      req.onblocked = () => reject(new Error('Open blocked'));
     });
     db1.close();
 
@@ -128,7 +128,7 @@ describe('IndexedDB Error Paths and Fallbacks', () => {
       const req = indexedDB.open(DB_NAME, 999);
       req.onsuccess = (e) => resolve((e.target as IDBOpenDBRequest).result);
       req.onerror = (e) => reject((e.target as IDBOpenDBRequest).error);
-      req.onblocked = (e) => reject(new Error('Open blocked'));
+      req.onblocked = () => reject(new Error('Open blocked'));
     });
     db1.close();
 
