@@ -40,6 +40,24 @@ export function openDB(): Promise<IDBDatabase> {
       }
     };
     req.onsuccess = (e) => resolve((e.target as IDBOpenDBRequest).result);
-    req.onerror = (e) => reject((e.target as IDBOpenDBRequest).error);
+    req.onerror = (e) => {
+      const error = (e.target as IDBOpenDBRequest).error;
+      if (error && error.name === 'VersionError') {
+        console.warn(`[openDB] Version mismatch (requested ${DB_VERSION}). Deleting database ${DB_NAME} and retrying...`);
+        const deleteReq = indexedDB.deleteDatabase(DB_NAME);
+        deleteReq.onsuccess = () => {
+          openDB().then(resolve).catch(reject);
+        };
+        deleteReq.onerror = () => {
+          reject(error);
+        };
+        deleteReq.onblocked = () => {
+          console.warn('[openDB] Database deletion is blocked by another open connection.');
+          reject(error);
+        };
+      } else {
+        reject(error);
+      }
+    };
   });
 }

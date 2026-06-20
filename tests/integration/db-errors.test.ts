@@ -30,6 +30,29 @@ describe('IndexedDB Error Paths and Fallbacks', () => {
     openSpy.mockRestore();
   });
 
+  it('covers openDB VersionError fallback by deleting and recreating the database', async () => {
+    // Delete the database to get a clean state
+    await new Promise<void>((resolve) => {
+      const req = indexedDB.deleteDatabase(DB_NAME);
+      req.onsuccess = () => resolve();
+    });
+
+    // Create a database with version 999
+    const db1 = await new Promise<IDBDatabase>((resolve, reject) => {
+      const req = indexedDB.open(DB_NAME, 999);
+      req.onsuccess = (e) => resolve((e.target as IDBOpenDBRequest).result);
+      req.onerror = (e) => reject((e.target as IDBOpenDBRequest).error);
+    });
+    db1.close();
+
+    // Now call openDB(), which uses DB_VERSION = 5.
+    // It should throw VersionError initially, catch it, delete the DB,
+    // and successfully open version 5.
+    const db2 = await openDB();
+    expect(db2.version).toBe(5);
+    db2.close();
+  });
+
   it('covers getConversationHistory fallback when index is missing', async () => {
     const originalOpen = indexedDB.open.bind(indexedDB);
     const openSpy = vi.spyOn(indexedDB, 'open').mockImplementation((name, version) => {
