@@ -142,7 +142,7 @@ export async function handleClick(
     await log('Click navigated in the same tab. Waiting for page load…', 'observe');
     try { await sendToTab(tabId, { type: 'UNBLOCK_INPUT' }); } catch { /* */ }
     await detachDebugger(tabId);
-    await waitForTabLoad(tabId, 15_000, true);
+    await waitForTabLoad(tabId, 15_000, false);
     await ensureContentScript(tabId);
     await sendToTab(tabId, { type: 'BLOCK_INPUT' });
     await appendConversationTurn(
