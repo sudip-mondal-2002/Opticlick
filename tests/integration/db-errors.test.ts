@@ -52,7 +52,7 @@ describe('IndexedDB Error Paths and Fallbacks', () => {
     // It should throw VersionError initially, catch it, delete the DB,
     // and successfully open version 5.
     const db2 = await openDB({ mode: 'auto-delete' });
-    expect(db2.version).toBe(5);
+    expect(db2.version).toBe(6);
     db2.close();
   });
 
