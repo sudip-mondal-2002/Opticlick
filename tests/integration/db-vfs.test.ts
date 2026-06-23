@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect ,vi} from 'vitest';
 import {
   createSession,
   saveVFSFile,
@@ -208,4 +208,76 @@ describe('clearVFSFiles', () => {
     await clearVFSFiles(sid, []);
     expect(await listVFSFiles(sid)).toEqual([]);
   });
+  it('rejects listGlobalVFSFiles when request errors', async () => {
+  const openSpy = vi.spyOn(indexedDB, 'open').mockImplementation(() => {
+    const req: any = {};
+
+    setTimeout(() => {
+      const db: any = {
+        transaction: () => ({
+          objectStore: () => ({
+            index: () => ({
+              getAll: () => {
+                const request: any = {};
+
+                setTimeout(() => {
+                  request.error = new Error('Mock request failure');
+                  request.onerror?.({ target: request });
+                }, 0);
+
+                return request;
+              },
+            }),
+          }),
+        }),
+      };
+
+      req.result = db;
+      req.onsuccess?.({ target: req });
+    }, 0);
+
+    return req;
+  });
+
+  await expect(listGlobalVFSFiles()).rejects.toThrow(
+    'Mock request failure',
+  );
+
+  openSpy.mockRestore();
+});
+it('rejects saveGlobalVFSFile when transaction errors', async () => {
+  const openSpy = vi.spyOn(indexedDB, 'open').mockImplementation(() => {
+    const req: any = {};
+
+    setTimeout(() => {
+      const tx: any = {
+        objectStore: () => ({
+          add: () => {},
+        }),
+      };
+
+      const db: any = {
+        transaction: () => {
+          setTimeout(() => {
+            tx.error = new Error('Mock transaction failure');
+            tx.onerror?.({ target: tx });
+          }, 0);
+
+          return tx;
+        },
+      };
+
+      req.result = db;
+      req.onsuccess?.({ target: req });
+    }, 0);
+
+    return req;
+  });
+
+  await expect(
+    saveGlobalVFSFile('global.txt', 'SGVsbG8=', 'text/plain'),
+  ).rejects.toThrow('Mock transaction failure');
+
+  openSpy.mockRestore();
+});
 });
