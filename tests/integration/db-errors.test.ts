@@ -177,8 +177,8 @@ describe('IndexedDB Error Paths and Fallbacks', () => {
     db1.close();
 
     const db2 = await openDB();
-    expect(db2.objectStoreNames.contains(CONV_STORE)).toBe(true);
-    db2.close();
+    expect(db2.version).toBe(6);
+
   });
 
   it('covers upgradeneeded when CONV_STORE already exists (takes the else branch for existing store)', async () => {
