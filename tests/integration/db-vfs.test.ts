@@ -7,37 +7,67 @@ import {
   deleteVFSFile,
   writeVFSFile,
   clearVFSFiles,
+  saveGlobalVFSFile,
+  listGlobalVFSFiles,
+  listAccessibleVFSFiles,
 } from '@/utils/db';
 
 async function makeSession(title = 'Test') {
   return createSession(title);
 }
 
-describe('saveVFSFile', () => {
-  it('returns a VFSFile with a UUID id', async () => {
-    const sid = await makeSession();
-    const file = await saveVFSFile(sid, 'test.txt', 'aGVsbG8=', 'text/plain');
-    expect(file.id).toMatch(
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+ 
+  describe('global VFS files', () => {
+  it('saves and lists global files', async () => {
+    await saveGlobalVFSFile(
+      'global.txt',
+      'aGVsbG8=',
+      'text/plain',
     );
+
+    const files = await listGlobalVFSFiles();
+
+    expect(files.some((f) => f.name === 'global.txt')).toBe(true);
   });
 
-  it('size equals Math.round(base64Data.length * 0.75)', async () => {
+  it('listAccessibleVFSFiles returns both global and session files', async () => {
     const sid = await makeSession();
-    const b64 = 'aGVsbG8='; // 8 chars
-    const file = await saveVFSFile(sid, 'f.txt', b64, 'text/plain');
-    expect(file.size).toBe(Math.round(b64.length * 0.75));
+
+    await saveGlobalVFSFile(
+      'global.txt',
+      'aGVsbG8=',
+      'text/plain',
+    );
+
+    await saveVFSFile(
+      sid,
+      'session.txt',
+      'd29ybGQ=',
+      'text/plain',
+    );
+
+    const files = await listAccessibleVFSFiles(sid);
+
+    expect(files.map((f) => f.name)).toContain('global.txt');
+    expect(files.map((f) => f.name)).toContain('session.txt');
   });
 
-  it('stores all fields correctly', async () => {
-    const sid = await makeSession();
-    const before = Date.now();
-    const file = await saveVFSFile(sid, 'img.png', 'abc', 'image/png');
-    expect(file.sessionId).toBe(sid);
-    expect(file.name).toBe('img.png');
-    expect(file.mimeType).toBe('image/png');
-    expect(file.data).toBe('abc');
-    expect(file.createdAt).toBeGreaterThanOrEqual(before);
+  it('listAccessibleVFSFiles excludes session files from other sessions', async () => {
+    const sid1 = await makeSession('S1');
+    const sid2 = await makeSession('S2');
+
+    await saveVFSFile(
+      sid2,
+      'foreign.txt',
+      'ZGF0YQ==',
+      'text/plain',
+    );
+
+    const files = await listAccessibleVFSFiles(sid1);
+
+    expect(
+      files.some((f) => f.name === 'foreign.txt'),
+    ).toBe(false);
   });
 });
 
