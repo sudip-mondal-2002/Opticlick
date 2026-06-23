@@ -159,7 +159,7 @@ describe('IndexedDB Error Paths and Fallbacks', () => {
     await expect(touchSession(999999)).resolves.not.toThrow();
   });
 
-  it('covers database upgradeneeded branch for version < 5', async () => {
+  it('covers database upgradeneeded branch for version < 6', async () => {
     await new Promise<void>((resolve) => {
       const req = indexedDB.deleteDatabase(DB_NAME);
       req.onsuccess = () => resolve();
