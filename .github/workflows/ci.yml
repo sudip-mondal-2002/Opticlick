@@ -52,10 +52,16 @@ jobs:
       - name: Build
         run: npm run build
 
-      # ── Install Playwright browser (needed before any tests run) ─────────────
-      # --with-deps installs the OS libraries (libnss3, libglib2.0-0, etc.)
-      # that Playwright's Chromium needs on Ubuntu.
-      - name: Install Playwright Chromium
+      - name: Restore Playwright Chromium cache
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-
+
+      - name: Install Playwright Chromium and dependencies
         run: npx playwright install chromium --with-deps
 
       # ── All tests with coverage (unit + integration + dom + e2e) ─────────────

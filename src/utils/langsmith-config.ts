@@ -11,10 +11,13 @@ import { Client } from 'langsmith';
 let _tracer: LangChainTracer | null = null;
 
 export function initializeLangSmith(): void {
-  const apiKey = import.meta.env.VITE_LANGSMITH_API_KEY as string | undefined;
-  const endpoint = import.meta.env.VITE_LANGSMITH_ENDPOINT as string | undefined;
-  const project = import.meta.env.VITE_LANGSMITH_PROJECT as string | undefined;
-  const tracing = import.meta.env.VITE_LANGSMITH_TRACING === 'true';
+  const globalObj = typeof globalThis !== 'undefined' ? globalThis : (typeof window !== 'undefined' ? window : {});
+  const g = globalObj as unknown as Record<string, string | undefined>;
+
+  const apiKey = g.__LANGSMITH_API_KEY__ || (import.meta.env.VITE_LANGSMITH_API_KEY as string | undefined);
+  const endpoint = g.__LANGSMITH_ENDPOINT__ || (import.meta.env.VITE_LANGSMITH_ENDPOINT as string | undefined);
+  const project = g.__LANGSMITH_PROJECT__ || (import.meta.env.VITE_LANGSMITH_PROJECT as string | undefined);
+  const tracing = g.__LANGSMITH_TRACING__ === 'true' || (g.__LANGSMITH_API_KEY__ !== undefined && g.__LANGSMITH_TRACING__ !== 'false') || import.meta.env.VITE_LANGSMITH_TRACING === 'true';
 
   console.log('[LangSmith] Initializing with config:', {
     tracing,
