@@ -9,6 +9,7 @@ let iframeEl: HTMLIFrameElement | null = null;
 let currentUrl = 'https://example.com';
 let tabUpdateListeners: Array<(tabId: number, changeInfo: Partial<chrome.tabs.TabChangeInfo>, tab: Partial<chrome.tabs.Tab>) => void> = [];
 let tabCreatedListeners: Array<(tab: chrome.tabs.Tab) => void> = [];
+let tabRemovedListeners: Array<(tabId: number, removeInfo: chrome.tabs.TabRemoveInfo) => void> = [];
 
 let nextTabId = 1;
 
@@ -39,8 +40,23 @@ export function getIframe(): HTMLIFrameElement | null {
   return iframeEl;
 }
 
-export function setCurrentUrl(url: string) {
+export function setCurrentUrl(url: string, title?: string) {
   currentUrl = url;
+  const activeTab = tabs.find(t => t.active);
+  if (activeTab) {
+    let changed = false;
+    if (activeTab.url !== url) {
+      activeTab.url = url;
+      changed = true;
+    }
+    if (title && activeTab.title !== title) {
+      activeTab.title = title;
+      changed = true;
+    }
+    if (changed) {
+      emitTabUpdate(activeTab, { url, title });
+    }
+  }
 }
 
 export function getCurrentUrl(): string {
@@ -71,6 +87,13 @@ tabUpdateListeners.forEach((listener) =>
 }
 
 function createTab(url: string, active = true): chrome.tabs.Tab {
+  let title = 'New Tab';
+  try {
+    const parsed = new URL(url);
+    title = parsed.hostname || 'New Tab';
+  } catch {
+    title = url || 'New Tab';
+  }
   return {
     id: nextTabId++,
     index: tabs.length,
@@ -84,7 +107,7 @@ function createTab(url: string, active = true): chrome.tabs.Tab {
     autoDiscardable: true,
     groupId: -1,
     url,
-    title: 'Sandbox Tab',
+    title,
     status: 'complete',
   } as chrome.tabs.Tab;
 }
@@ -129,6 +152,12 @@ remove(
 
   tabs = tabs.filter(t => t.id !== undefined && !ids.includes(t.id));
 
+  ids.forEach(id => {
+    tabRemovedListeners.forEach(listener =>
+      listener(id, { windowId: 1, isWindowClosing: false }),
+    );
+  });
+
   if (tabs.length > 0 && !tabs.some(t => t.active)) {
     tabs[0].active = true;
     tabs[0].highlighted = true;
@@ -138,6 +167,7 @@ remove(
     if (iframeEl && tabs[0].url) {
       iframeEl.src = proxyUrl(tabs[0].url);
     }
+    emitTabUpdate(tabs[0], { active: true });
   }
 
   callback?.();
@@ -246,6 +276,18 @@ onCreated: {
   },
   hasListener(cb: (tab: chrome.tabs.Tab) => void) {
     return tabCreatedListeners.includes(cb);
+  },
+},
+
+onRemoved: {
+  addListener(cb: (tabId: number, removeInfo: chrome.tabs.TabRemoveInfo) => void) {
+    tabRemovedListeners.push(cb);
+  },
+  removeListener(cb: any) {
+    tabRemovedListeners = tabRemovedListeners.filter(l => l !== cb);
+  },
+  hasListener(cb: any) {
+    return tabRemovedListeners.includes(cb);
   },
 },
 };

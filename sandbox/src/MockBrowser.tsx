@@ -5,7 +5,45 @@ interface MockBrowserProps {
   initialUrl?: string;
 }
 
+function useTabs() {
+  const [tabs, setTabs] = useState<chrome.tabs.Tab[]>([]);
+  const [activeTab, setActiveTab] = useState<chrome.tabs.Tab | null>(null);
+
+  const refreshTabs = useCallback(() => {
+    chrome.tabs.query({}, (result) => {
+      setTabs(result);
+      const active = result.find(t => t.active) || null;
+      setActiveTab(active);
+    });
+  }, []);
+
+  useEffect(() => {
+    refreshTabs();
+
+    const handleCreated = () => refreshTabs();
+    const handleUpdated = () => refreshTabs();
+    const handleRemoved = () => refreshTabs();
+
+    chrome.tabs.onCreated.addListener(handleCreated);
+    chrome.tabs.onUpdated.addListener(handleUpdated);
+    if (chrome.tabs.onRemoved) {
+      chrome.tabs.onRemoved.addListener(handleRemoved);
+    }
+
+    return () => {
+      chrome.tabs.onCreated.removeListener(handleCreated);
+      chrome.tabs.onUpdated.removeListener(handleUpdated);
+      if (chrome.tabs.onRemoved) {
+        chrome.tabs.onRemoved.removeListener(handleRemoved);
+      }
+    };
+  }, [refreshTabs]);
+
+  return { tabs, activeTab, refreshTabs };
+}
+
 export function MockBrowser({ initialUrl = 'https://example.com' }: MockBrowserProps) {
+  const { tabs, activeTab } = useTabs();
   const [addressInput, setAddressInput] = useState(initialUrl);
   const [isLoading, setIsLoading] = useState(false);
   const [isSecure, setIsSecure] = useState(true);
@@ -18,6 +56,14 @@ export function MockBrowser({ initialUrl = 'https://example.com' }: MockBrowserP
       setIframeRef(iframeRef.current);
     }
   }, []);
+
+  // Sync addressInput with active tab url changes
+  useEffect(() => {
+    if (activeTab?.url) {
+      setAddressInput(activeTab.url);
+      setIsSecure(activeTab.url.startsWith('https://'));
+    }
+  }, [activeTab?.url]);
 
   // Listen to Service Worker readiness before triggering navigation
   useEffect(() => {
@@ -53,14 +99,21 @@ export function MockBrowser({ initialUrl = 'https://example.com' }: MockBrowserP
       }
     }
 
-    setCurrentUrl(target);
-    setAddressInput(target);
-    setIsLoading(true);
-    setIsSecure(target.startsWith('https://'));
-
-    if (iframeRef.current) {
-      iframeRef.current.src = proxyUrl(target);
-    }
+    chrome.tabs.query({ active: true }, (tabsList) => {
+      const active = tabsList[0] || null;
+      if (active && active.id != null) {
+        chrome.tabs.update(active.id, { url: target });
+      } else {
+        // Fallback: If shims/tabs aren't ready yet, set iframe src directly
+        setCurrentUrl(target);
+        setAddressInput(target);
+        setIsLoading(true);
+        setIsSecure(target.startsWith('https://'));
+        if (iframeRef.current) {
+          iframeRef.current.src = proxyUrl(target);
+        }
+      }
+    });
   }, []);
 
   const handleAddressKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -82,8 +135,11 @@ export function MockBrowser({ initialUrl = 'https://example.com' }: MockBrowserP
             if (target) displayUrl = target;
           } catch { /* parse failure fallback */ }
         }
+
+        const displayTitle = iframeRef.current?.contentWindow?.document?.title || 'New Tab';
+        setCurrentUrl(displayUrl, displayTitle);
         setAddressInput(displayUrl);
-        setCurrentUrl(displayUrl);
+        setIsSecure(displayUrl.startsWith('https://'));
       }
     } catch { /* cross-origin frame guard */ }
   };
@@ -98,6 +154,53 @@ export function MockBrowser({ initialUrl = 'https://example.com' }: MockBrowserP
 
   return (
     <div className="sandbox-browser-pane">
+      {/* Tabs Container */}
+      <div className="browser-tabs-container">
+        <div className="browser-tabs-list">
+          {tabs.map((tab) => {
+            const isActive = tab.active;
+            return (
+              <div
+                key={tab.id}
+                className={`browser-tab${isActive ? ' active' : ''}`}
+                onClick={() => {
+                  if (tab.id != null) {
+                    chrome.tabs.update(tab.id, { active: true });
+                  }
+                }}
+              >
+                <span className="browser-tab-title" title={tab.title || tab.url}>
+                  {tab.title || tab.url || 'New Tab'}
+                </span>
+                {tabs.length > 1 && (
+                  <button
+                    className="browser-tab-close"
+                    title="Close Tab"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (tab.id != null) {
+                        chrome.tabs.remove(tab.id);
+                      }
+                    }}
+                  >
+                    ✕
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        <button
+          className="browser-tab-new"
+          title="New Tab"
+          onClick={() => {
+            chrome.tabs.create({ url: 'https://example.com' });
+          }}
+        >
+          +
+        </button>
+      </div>
+
       {/* Toolbar */}
       <div className="browser-toolbar">
         <button
@@ -205,3 +308,4 @@ export function MockBrowser({ initialUrl = 'https://example.com' }: MockBrowserP
     </div>
   );
 }
+
