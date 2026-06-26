@@ -134,7 +134,7 @@ jobs:
     name: Release to Chrome Web Store
     runs-on: ubuntu-latest
     needs: ci
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: github.repository == 'sudip-mondal-2002/Opticlick' && github.ref == 'refs/heads/main' && github.event_name == 'push'
 
     steps:
       - name: Download release zip

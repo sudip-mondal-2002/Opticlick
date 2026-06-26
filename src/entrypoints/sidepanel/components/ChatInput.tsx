@@ -3,6 +3,9 @@ import type { AttachedFile, PromptTemplate } from '@/utils/types';
 
 interface Props {
   isRunning: boolean;
+  isPaused: boolean;
+  onPause: () => void;
+  onResume: () => void;
   textareaRef: React.RefObject<HTMLTextAreaElement | null>;
   onRun: (prompt: string, attachments: AttachedFile[]) => void;
   onStop: () => void;
@@ -62,6 +65,9 @@ type AttachmentItem = AttachedFile & { previewUrl?: string };
 
 export function ChatInput({
   isRunning,
+  isPaused,
+  onPause,
+  onResume,
   textareaRef,
   onRun,
   onStop,
@@ -100,7 +106,7 @@ export function ChatInput({
 
   const handleRun = () => {
     const trimmed = prompt.trim();
-    if (!trimmed || isRunning) return;
+    if (!trimmed || isRunning || isPaused) return;
     const pending = attachments.map(({ name, mimeType, data }) => ({ name, mimeType, data }));
     setPrompt('');
     setAttachments([]);
@@ -276,7 +282,7 @@ export function ChatInput({
           onChange={(e) => setPrompt(e.target.value)}
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
-          disabled={isRunning}
+          disabled={isRunning || isPaused}
           placeholder="Describe a task… (Enter to run, Shift+Enter for newline, / for templates)"
         />
 
@@ -308,7 +314,7 @@ export function ChatInput({
         <div className="flex items-center gap-1.5">
           <button
             className="flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-medium rounded-[7px] text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 transition-all hover:bg-slate-200 dark:hover:bg-slate-700 active:scale-[0.97] disabled:opacity-30 disabled:cursor-not-allowed"
-            disabled={isRunning}
+            disabled={isRunning || isPaused}
             onClick={() => fileInputRef.current?.click()}
             title="Attach file"
           >
@@ -317,7 +323,7 @@ export function ChatInput({
           </button>
           <button
             className="flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-medium rounded-[7px] text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 transition-all hover:bg-slate-200 dark:hover:bg-slate-700 active:scale-[0.97] disabled:opacity-30 disabled:cursor-not-allowed"
-            disabled={isRunning || !prompt.trim()}
+            disabled={isRunning || isPaused || !prompt.trim()}
             onClick={() => setShowSaveForm(true)}
             title="Save as template"
           >
@@ -327,24 +333,59 @@ export function ChatInput({
         </div>
 
         <div className="flex items-center gap-1.5">
-          <button
-            className="flex items-center justify-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold rounded-[7px] text-rose-500 dark:text-rose-400 bg-slate-100 dark:bg-slate-900 border border-rose-200 dark:border-rose-900/60 transition-all hover:bg-rose-50 dark:hover:bg-rose-950/30 active:scale-[0.97] disabled:opacity-30 disabled:cursor-not-allowed"
-            disabled={!isRunning}
-            onClick={onStop}
-            title="Stop agent"
-          >
-            <StopIcon />
-            Stop
-          </button>
-          <button
-            className="flex items-center justify-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold rounded-[7px] text-white bg-gradient-to-r from-sky-700 via-sky-500 to-sky-400 shadow-[0_2px_8px_rgba(14,165,233,0.3)] transition-all hover:brightness-105 active:scale-[0.97] disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none"
-            disabled={isRunning || !prompt.trim()}
-            onClick={handleRun}
-            title="Run agent"
-          >
-            <PlayIcon />
-            Run
-          </button>
+          {isRunning ? (
+            <button
+              className="flex items-center justify-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold rounded-[7px] text-amber-600 dark:text-amber-400 bg-slate-100 dark:bg-slate-900 border border-amber-200 dark:border-amber-900/60 transition-all hover:bg-amber-50 dark:hover:bg-amber-950/30 active:scale-[0.97]"
+              onClick={onPause}
+              title="Pause agent"
+            >
+              {/* Pause Icon */}
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
+              </svg>
+              Pause
+            </button>
+          ) : isPaused ? (
+            <button
+              className="flex items-center justify-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold rounded-[7px] text-sky-600 dark:text-sky-400 bg-slate-100 dark:bg-slate-900 border border-sky-200 dark:border-sky-900/60 transition-all hover:bg-sky-50 dark:hover:bg-sky-950/30 active:scale-[0.97]"
+              onClick={onResume}
+              title="Resume agent"
+            >
+              <PlayIcon />
+              Resume
+            </button>
+          ) : null}
+
+          {(isRunning || isPaused) ? (
+            <button
+              className="flex items-center justify-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold rounded-[7px] text-rose-500 dark:text-rose-400 bg-slate-100 dark:bg-slate-900 border border-rose-200 dark:border-rose-900/60 transition-all hover:bg-rose-50 dark:hover:bg-rose-950/30 active:scale-[0.97]"
+              onClick={onStop}
+              title="Stop agent"
+            >
+              <StopIcon />
+              Stop
+            </button>
+          ) : (
+            <>
+              <button
+                className="flex items-center justify-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold rounded-[7px] text-rose-500 dark:text-rose-400 bg-slate-100 dark:bg-slate-900 border border-rose-200 dark:border-rose-900/60 transition-all hover:bg-rose-50 dark:hover:bg-rose-950/30 active:scale-[0.97] disabled:opacity-30 disabled:cursor-not-allowed"
+                disabled
+                title="Stop agent"
+              >
+                <StopIcon />
+                Stop
+              </button>
+              <button
+                className="flex items-center justify-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold rounded-[7px] text-white bg-gradient-to-r from-sky-700 via-sky-500 to-sky-400 shadow-[0_2px_8px_rgba(14,165,233,0.3)] transition-all hover:brightness-105 active:scale-[0.97] disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none"
+                disabled={!prompt.trim()}
+                onClick={handleRun}
+                title="Run agent"
+              >
+                <PlayIcon />
+                Run
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>
