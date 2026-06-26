@@ -8,7 +8,7 @@ export interface LogItem {
 }
 
 export interface HistoryStep {
-  kind: 'think' | 'act' | 'done' | 'prompt' | 'observe' | 'screenshot';
+  kind: 'think' | 'act' | 'done' | 'prompt' | 'observe' | 'screenshot' | 'pause' | 'resume';
   text: string;
 }
 
@@ -36,6 +36,8 @@ const historyStepStyle: Record<string, { label: string; className: string }> = {
   prompt:     { label: '[TASK]',    className: 'text-violet-400/60' },
   observe:    { label: '[OBSERVE]', className: 'text-emerald-400/60' },
   screenshot: { label: '[SNAP]',    className: 'text-violet-400/60' },
+  pause:      { label: '[PAUSE]',   className: 'text-amber-500/60' },
+  resume:     { label: '[RESUME]',  className: 'text-sky-500/60' },
 };
 
 function ScreenshotModal({ src, onClose }: { src: string; onClose: () => void }) {

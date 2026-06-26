@@ -148,7 +148,7 @@ export interface AgentResult {
 
 /** Persisted agent state in chrome.storage.session. */
 export interface AgentState {
-  status: 'idle' | 'running' | 'done' | 'stopped' | 'error';
+  status: 'idle' | 'running' | 'paused' | 'done' | 'stopped' | 'error';
   tabId?: number;
   step: number;
   prompt?: string;
@@ -197,6 +197,10 @@ export interface AttachedFile {
 export type Message =
   | { type: 'START_AGENT'; tabId: number; prompt: string; sessionId?: number; attachments?: AttachedFile[]; modelId?: string }
   | { type: 'STOP_AGENT' }
+  | { type: 'PAUSE_AGENT' }
+  | { type: 'RESUME_AGENT' }
+  | { type: 'AGENT_PAUSED' }
+  | { type: 'AGENT_RESUMED' }
   | { type: 'AGENT_LOG'; message: string; level: string }
   | { type: 'AGENT_STATE_CHANGE' }
   | { type: 'DRAW_MARKS' }
