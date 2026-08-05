@@ -22,6 +22,7 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "eval": "tsx evals/runner.ts",
+    "eval:report": "tsx evals/report.ts",
     "eval:auth-setup": "tsx evals/auth/setup-auth.ts",
     "eval:smoke-test": "tsx evals/auth/smoke-test.ts"
   },

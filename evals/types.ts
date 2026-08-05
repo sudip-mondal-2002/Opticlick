@@ -59,6 +59,11 @@ export type EvalResult = RunResult &
 /** Summary written to evals/results/summary.json after all cases complete. */
 export interface EvalSummary {
   runAt: string;
+  datasetId?: string;
+  datasetName: string;
+  datasetUrl?: string;
+  experimentName: string;
+  experimentUrl?: string;
   totalCases: number;
   passed: number;
   failed: number;

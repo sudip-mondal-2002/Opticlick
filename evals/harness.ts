@@ -55,24 +55,12 @@ export async function launchWithExtension() {
       '--no-sandbox',
       '--disable-dev-shm-usage',
       '--disable-gpu',
-      // ── Stealth: prevent Google / Cloudflare bot detection ──────────────
-      '--disable-blink-features=AutomationControlled', // removes navigator.webdriver flag
-      '--disable-infobars',
       '--no-first-run',
       '--no-default-browser-check',
       // ────────────────────────────────────────────────────────────────────
       `--disable-extensions-except=${EXTENSION_PATH}`,
       `--load-extension=${EXTENSION_PATH}`,
     ],
-    // Realistic user agent (not the Playwright headless UA)
-    userAgent:
-      'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36',
-  });
-
-  // Patch navigator.webdriver = undefined on every page/frame before any script runs.
-  // This is the primary signal Google uses to detect automation.
-  await context.addInitScript(() => {
-    Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
   });
 
   // Inject pre-authenticated cookies if state.json exists

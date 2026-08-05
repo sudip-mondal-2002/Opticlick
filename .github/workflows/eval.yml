@@ -23,6 +23,10 @@ on:
         description: 'LangSmith dataset name to run evals against'
         required: false
         default: 'Opticlick Eval Test Cases'
+      dataset_id:
+        description: 'LangSmith dataset UUID (pinned to the Opticlick benchmark)'
+        required: false
+        default: 'cda8e734-406a-449b-8513-7e828481ced1'
       experiment_name:
         description: 'Experiment name prefix shown in LangSmith (auto-suffixed with timestamp)'
         required: false
@@ -70,18 +74,13 @@ jobs:
           LANGSMITH_API_KEY: ${{ secrets.LANGSMITH_API_KEY }}
           LANGSMITH_PROJECT: ${{ inputs.langsmith_project }}
           LANGSMITH_DATASET_NAME: ${{ inputs.dataset_name }}
+          LANGSMITH_DATASET_ID: ${{ inputs.dataset_id }}
           EVAL_EXPERIMENT_NAME: ${{ inputs.experiment_name }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           EVAL_AUTH_FILTER: ${{ inputs.auth_filter }}
           EVAL_DIFFICULTY: ${{ inputs.difficulty }}
           EVAL_THRESHOLD: ${{ inputs.threshold }}
-          # ── Phase 2: auth secrets ──────────────────────────────────────────
-          # Shared credentials used across all platforms (same email/password)
-          EVAL_BOT_EMAIL: ${{ secrets.EVAL_BOT_EMAIL }}
-          EVAL_BOT_PASSWORD: ${{ secrets.EVAL_BOT_PASSWORD }}
-          # Username for platforms that use username instead of email (GitHub, Reddit)
-          EVAL_BOT_USERNAME: ${{ secrets.EVAL_BOT_USERNAME }}
-          # ── Fallback: base64-encoded storageState (bypasses UI logins) ─────
+          # Isolated test-account state for auth runs; no UI login is attempted.
           STORAGE_STATE_BASE64: ${{ secrets.STORAGE_STATE_BASE64 }}
         # xvfb-run provides a virtual display — required since extensions need headless:false
         run: |
@@ -89,8 +88,17 @@ jobs:
           xvfb-run --auto-servernum -- npm run eval:smoke-test
           xvfb-run --auto-servernum -- npm run eval
 
-      - name: Upload eval artifacts
+      - name: Publish GitHub eval summary
         if: always()
+        env:
+          LANGSMITH_DATASET_ID: ${{ inputs.dataset_id }}
+          LANGSMITH_DATASET_NAME: ${{ inputs.dataset_name }}
+        run: npm run eval:report
+
+      - name: Upload eval artifacts
+        # Authenticated recordings can contain private account data. Detailed
+        # auth results belong in access-controlled LangSmith traces only.
+        if: ${{ always() && inputs.auth_filter == 'non-auth' }}
         # actions/upload-artifact v4.6.2 — pinned to immutable commit SHA
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:

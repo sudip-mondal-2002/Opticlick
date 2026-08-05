@@ -18,6 +18,11 @@ function getDatasetName(): string {
   return process.env.LANGSMITH_DATASET_NAME || 'Opticlick Eval Test Cases';
 }
 
+/** Immutable dataset UUID. Prefer this over the display name when configured. */
+export function getDatasetId(): string | undefined {
+  return process.env.LANGSMITH_DATASET_ID || undefined;
+}
+
 export function getClient(): Client {
   const apiKey = process.env.LANGSMITH_API_KEY;
   if (!apiKey) throw new Error('LANGSMITH_API_KEY is not set');
@@ -101,14 +106,15 @@ function applyFilter(cases: EvalCase[]): EvalCase[] {
 export async function loadFilteredExamples(): Promise<Example[]> {
   const client = getClient();
   const datasetName = getDatasetName();
+  const datasetId = getDatasetId();
   const allExamples: Example[] = [];
 
   try {
-    for await (const example of client.listExamples({ datasetName })) {
+    for await (const example of client.listExamples(datasetId ? { datasetId } : { datasetName })) {
       allExamples.push(example);
     }
   } catch (err) {
-    console.error(`❌ Failed to fetch dataset '${datasetName}' from LangSmith: ${(err as Error).message}`);
+    console.error(`❌ Failed to fetch dataset '${datasetId ?? datasetName}' from LangSmith: ${(err as Error).message}`);
     console.error('Make sure LANGSMITH_API_KEY is set and the dataset exists in LangSmith.');
     process.exit(1);
   }

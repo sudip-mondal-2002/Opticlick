@@ -34,7 +34,7 @@ import { runEvalCase } from './harness.js';
 import { compressVideo, extractFrames, cleanupFrames } from './recorder.js';
 import { judgeRun } from './judge.js';
 import { collectMetrics } from './metrics.js';
-import { loadFilteredExamples, getClient } from './langsmith.js';
+import { loadFilteredExamples, getClient, getDatasetId } from './langsmith.js';
 
 /**
  * expectedOutput lives in example.outputs (Reference Outputs column), not inputs.
@@ -222,11 +222,13 @@ async function main(): Promise<void> {
   }
 
   const threshold = Number(process.env.EVAL_THRESHOLD ?? '70');
-  if (Number.isNaN(threshold)) {
-    console.error('❌ EVAL_THRESHOLD must be a valid number');
+  if (!Number.isFinite(threshold) || threshold < 0 || threshold > 100) {
+    console.error('❌ EVAL_THRESHOLD must be a number between 0 and 100');
     process.exit(1);
   }
   const experimentPrefix = process.env.EVAL_EXPERIMENT_NAME || 'opticlick-eval';
+  const datasetId = getDatasetId();
+  const datasetName = process.env.LANGSMITH_DATASET_NAME || 'Opticlick Eval Test Cases';
 
   // Populate the expectedOutput lookup Map before evaluate() runs.
   // example.outputs = Reference Outputs column; example.inputs = Inputs column.
@@ -257,7 +259,25 @@ async function main(): Promise<void> {
     evaluators,
     experimentPrefix,        // experiment name shown in LangSmith UI
     maxConcurrency: 1,       // sequential — avoids Gemini rate limits
+    description: `Opticlick browser-agent evaluation (${examples.length} cases, ${process.env.EVAL_AUTH_FILTER ?? 'non-auth'} auth filter, ${process.env.EVAL_DIFFICULTY ?? 'all'} difficulty)`,
+    metadata: {
+      dataset_id: datasetId,
+      dataset_name: datasetName,
+      auth_filter: process.env.EVAL_AUTH_FILTER ?? 'non-auth',
+      difficulty: process.env.EVAL_DIFFICULTY ?? 'all',
+      threshold,
+      github_repository: process.env.GITHUB_REPOSITORY,
+      github_run_id: process.env.GITHUB_RUN_ID,
+      github_sha: process.env.GITHUB_SHA,
+    },
   });
+
+  const experimentName = evalResults.experimentName;
+  const client = getClient();
+  const [experimentUrl, datasetUrl] = await Promise.all([
+    client.getProjectUrl({ projectName: experimentName }).catch(() => undefined),
+    client.getDatasetUrl(datasetId ? { datasetId } : { datasetName }).catch(() => undefined),
+  ]);
 
   // ── Build summary from evaluate() results ─────────────────────────────────
   const results: EvalResult[] = [];
@@ -291,6 +311,11 @@ async function main(): Promise<void> {
 
   const summary: EvalSummary = {
     runAt: new Date().toISOString(),
+    datasetId,
+    datasetName,
+    datasetUrl,
+    experimentName,
+    experimentUrl,
     totalCases: results.length,
     passed,
     failed: results.length - passed,
