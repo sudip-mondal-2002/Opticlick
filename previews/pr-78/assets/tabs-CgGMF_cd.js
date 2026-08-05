@@ -1,0 +1,1 @@
+import{a as e}from"./tabs-DI6-JuRq.js";export{e as tabsShim};
