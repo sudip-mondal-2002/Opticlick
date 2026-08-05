@@ -24,6 +24,8 @@ import { ChatFeed } from './components/ChatFeed';
 import { SessionsOverlay } from './components/SessionsOverlay';
 import { TemplatesOverlay } from './components/TemplatesOverlay';
 import { CustomInstructionsOverlay } from './components/CustomInstructionsOverlay';
+import { KeyboardShortcutsModal } from './components/KeyboardShortcutsModal';
+import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import type { LogItem, HistoryStep } from './components/ChatFeed';
 
 // ── Parse model turn from IndexedDB ──────────────────────────────────────────
@@ -77,6 +79,7 @@ function AgentUI() {
 
   const [selectedModel, setSelectedModel] = useState(DEFAULT_MODEL);
   const [ollamaModels, setOllamaModels] = useState<ModelOption[]>([]);
+  const [speechLanguage, setSpeechLanguage] = useState<string>('');
 
   const [submittedPrompt, setSubmittedPrompt] = useState<string | null>(null);
   const [pendingQuestion, setPendingQuestion] = useState<string | null>(null);
@@ -104,6 +107,7 @@ function AgentUI() {
 
   const [templates, setTemplates] = useState<PromptTemplate[]>([]);
   const [showTemplates, setShowTemplates] = useState(false);
+  const [showShortcuts, setShowShortcuts] = useState(false);
   const [showCustomInstructions, setShowCustomInstructions] = useState(false);
   const [injectedPrompt, setInjectedPrompt] = useState<string | null>(null);
 
@@ -115,7 +119,7 @@ function AgentUI() {
   useEffect(() => {
     (async () => {
       const [stored, ollama] = await Promise.all([
-        chrome.storage.local.get(['geminiApiKey', 'anthropicApiKey', 'openaiApiKey', 'customOpenaiConfigs', 'selectedModel', 'promptTemplates']),
+        chrome.storage.local.get(['geminiApiKey', 'anthropicApiKey', 'openaiApiKey', 'customOpenaiConfigs', 'selectedModel', 'promptTemplates', 'speechLanguage']),
         fetchOllamaModels(),
       ]);
       const gKey = (stored.geminiApiKey as string) || null;
@@ -151,6 +155,7 @@ function AgentUI() {
         }
       }
       setSelectedModel(model);
+      setSpeechLanguage((stored.speechLanguage as string) || '');
       setKeyLoading(false);
     })();
   }, []);
@@ -181,6 +186,12 @@ function AgentUI() {
     const updated = customConfigs.filter((c) => c.id !== configId);
     setCustomConfigs(updated);
     chrome.storage.local.set({ customOpenaiConfigs: updated });
+  };
+
+  const saveSpeechLanguage = (lang: string) => {
+    chrome.storage.local.set({ speechLanguage: lang }).then(() => {
+      setSpeechLanguage(lang);
+    });
   };
 
   const handleModelChange = (modelId: string) => {
@@ -413,6 +424,35 @@ function AgentUI() {
     setHistorySteps(steps);
   };
 
+  useKeyboardShortcuts({
+    isRunning,
+    onStop: handleStop,
+    onOpenSettings: () => setShowApiKeys(true),
+    onOpenHistory: () => setShowSessions(true),
+    onOpenTemplates: () => setShowTemplates(true),
+    onNewChat: handleNewChat,
+    onFocusInput: () => textareaRef.current?.focus(),
+    onShowShortcuts: () => setShowShortcuts(true),
+    onCloseOverlay: () => {
+      const hasOverlay =
+        showApiKeys ||
+        showSessions ||
+        showTemplates ||
+        showCustomInstructions ||
+        showShortcuts;
+
+      if (!hasOverlay) return false;
+
+      setShowApiKeys(false);
+      setShowSessions(false);
+      setShowTemplates(false);
+      setShowCustomInstructions(false);
+      setShowShortcuts(false);
+
+      return true;
+    },
+  });
+
   // ── Render ─────────────────────────────────────────────────────────────────
 
   if (keyLoading) return null;
@@ -463,6 +503,8 @@ function AgentUI() {
           onSaveCustomConfig={saveCustomConfig}
           onDeleteCustomConfig={deleteCustomConfig}
           onClose={() => setShowApiKeys(false)}
+          speechLanguage={speechLanguage}
+          onSaveSpeechLanguage={saveSpeechLanguage}
         />
       )}
 
@@ -474,6 +516,20 @@ function AgentUI() {
           onSave={updateTemplate}
           onDelete={deleteTemplate}
         />
+      )}
+
+      {showTemplates && (
+        <TemplatesOverlay
+          templates={templates}
+          onClose={() => setShowTemplates(false)}
+          onUse={useTemplate}
+          onSave={updateTemplate}
+          onDelete={deleteTemplate}
+        />
+      )}
+
+      {showShortcuts && (
+        <KeyboardShortcutsModal onClose={() => setShowShortcuts(false)} />
       )}
 
       {showCustomInstructions && (
@@ -588,6 +644,7 @@ function AgentUI() {
         onClearInjectedPrompt={() => setInjectedPrompt(null)}
         templates={templates}
         onSaveTemplate={saveTemplate}
+        speechLanguage={speechLanguage}
       />
 
       <ModelSelector

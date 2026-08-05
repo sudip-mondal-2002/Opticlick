@@ -11,6 +11,8 @@ interface Props {
   onSaveCustomConfig: (config: CustomOpenAIConfig) => void;
   onDeleteCustomConfig: (configId: string) => void;
   onClose: () => void;
+  speechLanguage: string;
+  onSaveSpeechLanguage: (lang: string) => void;
 }
 
 function KeyIcon() {
@@ -267,6 +269,23 @@ function CustomEndpointSection({ configs, onSave, onDelete }: CustomEndpointSect
 
 // ── Main overlay ─────────────────────────────────────────────────────────────
 
+
+const LANGUAGES = [
+  { code: '', label: 'System Default' },
+  { code: 'en-US', label: 'English (United States)' },
+  { code: 'en-GB', label: 'English (United Kingdom)' },
+  { code: 'es-ES', label: 'Spanish (Spain)' },
+  { code: 'es-MX', label: 'Spanish (Mexico)' },
+  { code: 'fr-FR', label: 'French (France)' },
+  { code: 'de-DE', label: 'German (Germany)' },
+  { code: 'it-IT', label: 'Italian (Italy)' },
+  { code: 'ja-JP', label: 'Japanese (Japan)' },
+  { code: 'zh-CN', label: 'Chinese (Simplified)' },
+  { code: 'zh-TW', label: 'Chinese (Traditional)' },
+  { code: 'pt-BR', label: 'Portuguese (Brazil)' },
+  { code: 'hi-IN', label: 'Hindi (India)' },
+];
+
 export function ApiKeyOverlay({
   geminiApiKey,
   anthropicApiKey,
@@ -277,6 +296,8 @@ export function ApiKeyOverlay({
   onSaveCustomConfig,
   onDeleteCustomConfig,
   onClose,
+  speechLanguage,
+  onSaveSpeechLanguage,
 }: Props) {
   return (
     <div className="absolute inset-0 z-30 flex flex-col bg-white dark:bg-slate-950">
@@ -284,7 +305,7 @@ export function ApiKeyOverlay({
       <div className="shrink-0 flex items-center gap-2 px-3 py-2.5 bg-slate-50 dark:bg-slate-900/60 border-b border-slate-200 dark:border-slate-800">
         <KeyIcon />
         <span className="flex-1 text-[12px] font-semibold text-slate-700 dark:text-slate-200">
-          API Keys
+          Settings & Keys
         </span>
         <button
           onClick={onClose}
@@ -295,7 +316,7 @@ export function ApiKeyOverlay({
       </div>
 
       {/* Body */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
         <ProviderKeyCard
           providerName="Gemini API"
           providerUrl="aistudio.google.com"
@@ -332,8 +353,45 @@ export function ApiKeyOverlay({
           onDelete={onDeleteCustomConfig}
         />
 
+        {/* Voice Input card */}
+        <div className="rounded-lg border border-slate-200 dark:border-slate-800 overflow-hidden">
+          {/* Card header */}
+          <div className="flex items-center gap-2.5 px-3 py-2.5 bg-slate-50 dark:bg-slate-900/50 border-b border-slate-200 dark:border-slate-800">
+            <div className="w-6 h-6 rounded-md bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center shrink-0">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-sky-600 dark:text-sky-400">
+                <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+                <line x1="12" x2="12" y1="19" y2="22" />
+              </svg>
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-[11px] font-semibold text-slate-700 dark:text-slate-200">Voice Input</div>
+              <div className="text-[9px] text-slate-400 dark:text-slate-500 mt-[1px]">Speech-to-text language settings</div>
+            </div>
+          </div>
+
+          {/* Card body */}
+          <div className="px-3 py-3 space-y-2">
+            <label htmlFor="speech-lang-select" className="block text-[10px] font-semibold text-slate-500 dark:text-slate-400">
+              Dictation Language
+            </label>
+            <select
+              id="speech-lang-select"
+              value={speechLanguage}
+              onChange={(e) => onSaveSpeechLanguage(e.target.value)}
+              className="w-full px-2 py-1.5 text-[12px] border border-slate-200 dark:border-slate-700 rounded-[6px] bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-200 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-500/20"
+            >
+              {LANGUAGES.map((lang) => (
+                <option key={lang.code} value={lang.code}>
+                  {lang.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
         <p className="text-[10px] text-slate-400 dark:text-slate-500 text-center leading-relaxed px-2">
-          Keys are stored locally in your browser and never sent anywhere except the respective API endpoint.
+          Settings are saved automatically. Keys are stored locally in your browser and never sent anywhere except the respective API endpoint.
         </p>
       </div>
     </div>
