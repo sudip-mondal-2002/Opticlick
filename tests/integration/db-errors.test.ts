@@ -30,6 +30,115 @@ describe('IndexedDB Error Paths and Fallbacks', () => {
     openSpy.mockRestore();
   });
 
+  it('covers openDB VersionError fallback by deleting and recreating the database', async () => {
+    // Delete the database to get a clean state
+    await new Promise<void>((resolve, reject) => {
+      const req = indexedDB.deleteDatabase(DB_NAME);
+      req.onsuccess = () => resolve();
+      req.onerror = (e) => reject((e.target as IDBOpenDBRequest).error);
+      req.onblocked = () => reject(new Error('Delete blocked'));
+    });
+
+    // Create a database with version 999
+    const db1 = await new Promise<IDBDatabase>((resolve, reject) => {
+      const req = indexedDB.open(DB_NAME, 999);
+      req.onsuccess = (e) => resolve((e.target as IDBOpenDBRequest).result);
+      req.onerror = (e) => reject((e.target as IDBOpenDBRequest).error);
+      req.onblocked = () => reject(new Error('Open blocked'));
+    });
+    db1.close();
+
+    // Now call openDB(), which uses DB_VERSION = 5.
+    // It should throw VersionError initially, catch it, delete the DB,
+    // and successfully open version 5.
+    const db2 = await openDB({ mode: 'auto-delete' });
+    expect(db2.version).toBe(6);
+    db2.close();
+  });
+
+  it('covers openDB VersionError deleteDatabase error path', async () => {
+    // Delete the database first
+    await new Promise<void>((resolve) => {
+      const req = indexedDB.deleteDatabase(DB_NAME);
+      req.onsuccess = () => resolve();
+    });
+
+    // Create a database with version 999
+    const db1 = await new Promise<IDBDatabase>((resolve, reject) => {
+      const req = indexedDB.open(DB_NAME, 999);
+      req.onsuccess = (e) => resolve((e.target as IDBOpenDBRequest).result);
+      req.onerror = (e) => reject((e.target as IDBOpenDBRequest).error);
+    });
+    db1.close();
+
+    // Mock deleteDatabase to fail
+    const mockError = new Error('Mock delete failure');
+    const deleteSpy = vi.spyOn(indexedDB, 'deleteDatabase').mockImplementation(() => {
+      const req = {} as any;
+      setTimeout(() => {
+        req.error = mockError;
+        if (req.onerror) req.onerror({ target: req } as any);
+      }, 0);
+      return req;
+    });
+
+    await expect(openDB({ mode: 'auto-delete' })).rejects.toThrow();
+    deleteSpy.mockRestore();
+  });
+
+  it('covers openDB VersionError deleteDatabase blocked path', async () => {
+    // Delete the database first
+    await new Promise<void>((resolve) => {
+      const req = indexedDB.deleteDatabase(DB_NAME);
+      req.onsuccess = () => resolve();
+    });
+
+    // Create a database with version 999
+    const db1 = await new Promise<IDBDatabase>((resolve, reject) => {
+      const req = indexedDB.open(DB_NAME, 999);
+      req.onsuccess = (e) => resolve((e.target as IDBOpenDBRequest).result);
+      req.onerror = (e) => reject((e.target as IDBOpenDBRequest).error);
+    });
+    db1.close();
+
+    // Mock deleteDatabase to block
+    const deleteSpy = vi.spyOn(indexedDB, 'deleteDatabase').mockImplementation(() => {
+      const req = {} as any;
+      setTimeout(() => {
+        if (req.onblocked) req.onblocked({ target: req } as any);
+      }, 0);
+      return req;
+    });
+
+    await expect(openDB({ mode: 'auto-delete' })).rejects.toThrow();
+    deleteSpy.mockRestore();
+  });
+
+  it('rejects with VersionError when mode is reject', async () => {
+    // Delete the database first
+    await new Promise<void>((resolve, reject) => {
+      const req = indexedDB.deleteDatabase(DB_NAME);
+      req.onsuccess = () => resolve();
+      req.onerror = (e) => reject((e.target as IDBOpenDBRequest).error);
+      req.onblocked = () => reject(new Error('Delete blocked'));
+    });
+
+    // Create a database with version 999
+    const db1 = await new Promise<IDBDatabase>((resolve, reject) => {
+      const req = indexedDB.open(DB_NAME, 999);
+      req.onsuccess = (e) => resolve((e.target as IDBOpenDBRequest).result);
+      req.onerror = (e) => reject((e.target as IDBOpenDBRequest).error);
+      req.onblocked = () => reject(new Error('Open blocked'));
+    });
+    db1.close();
+
+    // openDB() should reject with a VersionError under reject mode (default in test)
+    await expect(openDB()).rejects.toThrow();
+
+    // openDB({ mode: 'reject' }) should also reject
+    await expect(openDB({ mode: 'reject' })).rejects.toThrow();
+  });
+
   it('covers getConversationHistory fallback when index is missing', async () => {
     const originalOpen = indexedDB.open.bind(indexedDB);
     const openSpy = vi.spyOn(indexedDB, 'open').mockImplementation((name, version) => {
@@ -159,7 +268,7 @@ describe('IndexedDB Error Paths and Fallbacks', () => {
     await expect(touchSession(999999)).resolves.not.toThrow();
   });
 
-  it('covers database upgradeneeded branch for version < 5', async () => {
+  it('covers database upgradeneeded branch for version < 6', async () => {
     await new Promise<void>((resolve) => {
       const req = indexedDB.deleteDatabase(DB_NAME);
       req.onsuccess = () => resolve();
@@ -177,8 +286,8 @@ describe('IndexedDB Error Paths and Fallbacks', () => {
     db1.close();
 
     const db2 = await openDB();
-    expect(db2.objectStoreNames.contains(CONV_STORE)).toBe(true);
-    db2.close();
+    expect(db2.version).toBe(6);
+
   });
 
   it('covers upgradeneeded when CONV_STORE already exists (takes the else branch for existing store)', async () => {

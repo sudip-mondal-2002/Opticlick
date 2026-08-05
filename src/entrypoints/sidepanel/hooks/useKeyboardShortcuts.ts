@@ -7,7 +7,7 @@ interface ShortcutHandlers {
   onOpenHistory: () => void;
   onOpenTemplates: () => void;
   onNewChat: () => void;
-  onCloseOverlay: () => void;
+  onCloseOverlay: () => boolean;
   onFocusInput: () => void;
   onShowShortcuts: () => void;
 }

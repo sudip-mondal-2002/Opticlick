@@ -23,10 +23,21 @@ describe('langsmith-config', () => {
     for (const key of Object.keys(import.meta.env)) {
       vi.stubEnv(key, '');
     }
+    // Reset globals
+    const g = globalThis as any;
+    delete g.__LANGSMITH_API_KEY__;
+    delete g.__LANGSMITH_PROJECT__;
+    delete g.__LANGSMITH_ENDPOINT__;
+    delete g.__LANGSMITH_TRACING__;
   });
 
   afterEach(() => {
     vi.unstubAllEnvs();
+    const g = globalThis as any;
+    delete g.__LANGSMITH_API_KEY__;
+    delete g.__LANGSMITH_PROJECT__;
+    delete g.__LANGSMITH_ENDPOINT__;
+    delete g.__LANGSMITH_TRACING__;
   });
 
   it('does not initialize tracer if tracing is disabled', () => {
@@ -84,5 +95,49 @@ describe('langsmith-config', () => {
       })
     );
     expect(getLangSmithTracer()).toEqual({ name: 'mocked-tracer' });
+  });
+
+  it('initializes tracer correctly using global overrides', () => {
+    const g = globalThis as any;
+    g.__LANGSMITH_API_KEY__ = 'global-secret-key';
+    g.__LANGSMITH_PROJECT__ = 'global-project';
+    g.__LANGSMITH_ENDPOINT__ = 'https://global.smith.langchain.com';
+    g.__LANGSMITH_TRACING__ = 'true';
+
+    initializeLangSmith();
+
+    expect(Client).toHaveBeenCalledWith(
+      expect.objectContaining({
+        apiKey: 'global-secret-key',
+        apiUrl: 'https://global.smith.langchain.com',
+      })
+    );
+    expect(LangChainTracer).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectName: 'global-project',
+      })
+    );
+    expect(getLangSmithTracer()).toEqual({ name: 'mocked-tracer' });
+  });
+
+  it('treats tracing as enabled if __LANGSMITH_API_KEY__ is set and __LANGSMITH_TRACING__ is not false', () => {
+    const g = globalThis as any;
+    g.__LANGSMITH_API_KEY__ = 'global-secret-key';
+    g.__LANGSMITH_ENDPOINT__ = 'https://global.smith.langchain.com';
+
+    initializeLangSmith();
+
+    expect(getLangSmithTracer()).toEqual({ name: 'mocked-tracer' });
+  });
+
+  it('does not initialize tracer if __LANGSMITH_TRACING__ is set to false', () => {
+    const g = globalThis as any;
+    g.__LANGSMITH_API_KEY__ = 'global-secret-key';
+    g.__LANGSMITH_ENDPOINT__ = 'https://global.smith.langchain.com';
+    g.__LANGSMITH_TRACING__ = 'false';
+
+    initializeLangSmith();
+
+    expect(getLangSmithTracer()).toBeNull();
   });
 });

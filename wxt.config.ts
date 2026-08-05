@@ -35,5 +35,11 @@ export default defineConfig({
         description: 'Open Opticlick side panel',
       },
     },
+    web_accessible_resources: [
+      {
+        matches: ['<all_urls>'],
+        resources: ['assets/*', 'chunks/*', 'content-scripts/*'],
+      },
+    ],
   },
 });
