@@ -24,6 +24,8 @@ import { ChatFeed } from './components/ChatFeed';
 import { SessionsOverlay } from './components/SessionsOverlay';
 import { TemplatesOverlay } from './components/TemplatesOverlay';
 import { CustomInstructionsOverlay } from './components/CustomInstructionsOverlay';
+import { KeyboardShortcutsModal } from './components/KeyboardShortcutsModal';
+import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import type { LogItem, HistoryStep } from './components/ChatFeed';
 
 // ── Parse model turn from IndexedDB ──────────────────────────────────────────
@@ -105,6 +107,7 @@ function AgentUI() {
 
   const [templates, setTemplates] = useState<PromptTemplate[]>([]);
   const [showTemplates, setShowTemplates] = useState(false);
+  const [showShortcuts, setShowShortcuts] = useState(false);
   const [showCustomInstructions, setShowCustomInstructions] = useState(false);
   const [injectedPrompt, setInjectedPrompt] = useState<string | null>(null);
 
@@ -421,6 +424,35 @@ function AgentUI() {
     setHistorySteps(steps);
   };
 
+  useKeyboardShortcuts({
+    isRunning,
+    onStop: handleStop,
+    onOpenSettings: () => setShowApiKeys(true),
+    onOpenHistory: () => setShowSessions(true),
+    onOpenTemplates: () => setShowTemplates(true),
+    onNewChat: handleNewChat,
+    onFocusInput: () => textareaRef.current?.focus(),
+    onShowShortcuts: () => setShowShortcuts(true),
+    onCloseOverlay: () => {
+      const hasOverlay =
+        showApiKeys ||
+        showSessions ||
+        showTemplates ||
+        showCustomInstructions ||
+        showShortcuts;
+
+      if (!hasOverlay) return false;
+
+      setShowApiKeys(false);
+      setShowSessions(false);
+      setShowTemplates(false);
+      setShowCustomInstructions(false);
+      setShowShortcuts(false);
+
+      return true;
+    },
+  });
+
   // ── Render ─────────────────────────────────────────────────────────────────
 
   if (keyLoading) return null;
@@ -494,6 +526,10 @@ function AgentUI() {
           onSave={updateTemplate}
           onDelete={deleteTemplate}
         />
+      )}
+
+      {showShortcuts && (
+        <KeyboardShortcutsModal onClose={() => setShowShortcuts(false)} />
       )}
 
       {showCustomInstructions && (
