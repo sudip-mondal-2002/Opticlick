@@ -1,9 +1,10 @@
 interface Props {
   step: number;
   maxSteps?: number;
+  isPaused?: boolean;
 }
 
-export function StepFooter({ step, maxSteps = 500 }: Props) {
+export function StepFooter({ step, maxSteps = 500, isPaused = false }: Props) {
   const pct = Math.min((step / maxSteps) * 100, 100);
 
   return (
@@ -18,10 +19,18 @@ export function StepFooter({ step, maxSteps = 500 }: Props) {
 
       {/* Step label */}
       <div className="flex items-center justify-center gap-1.5 py-2">
-        <div className="w-1.5 h-1.5 rounded-full bg-sky-400 animate-pip-pulse shadow-[0_0_5px_rgba(14,165,233,0.6)]" />
-        <span className="text-[10px] font-semibold text-sky-500 tracking-[0.3px]">
-          Running
-        </span>
+        {isPaused ? (
+          <span className="text-[10px] font-semibold text-amber-500 tracking-[0.3px]">
+            ⏸ Paused
+          </span>
+        ) : (
+          <>
+            <div className="w-1.5 h-1.5 rounded-full bg-sky-400 animate-pip-pulse shadow-[0_0_5px_rgba(14,165,233,0.6)]" />
+            <span className="text-[10px] font-semibold text-sky-500 tracking-[0.3px]">
+              Running
+            </span>
+          </>
+        )}
         <span className="text-[10px] font-mono text-slate-400 dark:text-slate-600 ml-1">
           step {step}/{maxSteps}
         </span>

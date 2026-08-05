@@ -4,6 +4,7 @@ import {
   shouldPivot,
   scrollDeltaIsSignificant,
   computeScrollDelta,
+  detectLoop,
   MAX_PIVOT_RETRIES,
 } from '@/utils/navigation-guard';
 import { log } from '@/utils/agent-log';
@@ -24,6 +25,7 @@ export async function handleScroll(
 ): Promise<ActionRecord[]> {
   const { tabId, sessionId, step, userPrompt, toolCallId, toolName } = ctx;
   const scrollTargetId = action.scrollTargetId;
+  const currentAction: ActionRecord = { type: 'scroll', targetId: scrollTargetId };
 
   if (shouldPivot(actionHistory, 'scroll', scrollTargetId)) {
     await log(`Scroll pivot: same scroll repeated ${MAX_PIVOT_RETRIES} times with no progress.`, 'warn');
@@ -43,7 +45,6 @@ export async function handleScroll(
       ? `Scrolling ${action.direction} inside element #${scrollTargetId}`
       : `Scrolling page ${action.direction}`;
     await log(label, 'act');
-
     try {
       try { await sendToTab(tabId, { type: 'UNBLOCK_INPUT' }); } catch { /* */ }
       await attachDebugger(tabId);
@@ -62,15 +63,36 @@ export async function handleScroll(
         }) as { result: { value: number } };
         afterY = r?.result?.value ?? 0;
       } catch { /* */ }
-      const feedback = scrollDeltaIsSignificant(beforeY, afterY)
-        ? label
-        : `${label} — page did not move (already at limit or content not scrollable)`;
-      try { await sendToTab(tabId, { type: 'BLOCK_INPUT' }); } catch { /* */ }
-      await appendConversationTurn(
-        sessionId, 'tool',
-        `[Step ${step}] ${feedback}. Task: ${userPrompt}`,
-        { toolCallId, toolName },
+
+      // ── Loop detection ──────────────────────────────────────────────────────
+      const loopHint = detectLoop(
+        actionHistory,
+        currentAction,
+        undefined,
+        undefined,
+        beforeY,
+        afterY,
       );
+
+      if (loopHint) {
+        await log(`Loop detected [${loopHint.type}]: ${loopHint.suggestedStrategies[0]}`, 'warn');
+        await appendConversationTurn(
+          sessionId, 'tool',
+          `[LOOP DETECTED - Step ${step}] Type: ${loopHint.type}. ${loopHint.suggestedStrategies[0]} Task: ${userPrompt}`,
+          { toolCallId, toolName },
+        );
+      } else {
+        const feedback = scrollDeltaIsSignificant(beforeY, afterY)
+          ? label
+          : `${label} — page did not move (already at limit or content not scrollable)`;
+        await appendConversationTurn(
+          sessionId, 'tool',
+          `[Step ${step}] ${feedback}. Task: ${userPrompt}`,
+          { toolCallId, toolName },
+        );
+      }
+
+      try { await sendToTab(tabId, { type: 'BLOCK_INPUT' }); } catch { /* */ }
     } catch (actErr) {
       const errMsg = (actErr as Error).message;
       await log(`Scroll failed: ${errMsg}`, 'warn');
@@ -83,7 +105,6 @@ export async function handleScroll(
       try { await sendToTab(tabId, { type: 'BLOCK_INPUT' }); } catch { /* */ }
     }
   }
-
   await sleep(STEP_DELAY_MS);
-  return [...actionHistory, { type: 'scroll', targetId: scrollTargetId }];
+  return [...actionHistory, currentAction];
 }
