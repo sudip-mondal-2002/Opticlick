@@ -23,16 +23,16 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">97.72% </span>
+                <span class="strong">97.91% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>43/44</span>
+                <span class='fraction'>47/48</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">86.36% </span>
+                <span class="strong">80.76% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>19/22</span>
+                <span class='fraction'>21/26</span>
             </div>
         
             
@@ -46,7 +46,7 @@
             <div class='fl pad1y space-right2'>
                 <span class="strong">100% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>42/42</span>
+                <span class='fraction'>46/46</span>
             </div>
         
             
@@ -135,7 +135,18 @@
 <a name='L70'></a><a href='#L70'>70</a>
 <a name='L71'></a><a href='#L71'>71</a>
 <a name='L72'></a><a href='#L72'>72</a>
-<a name='L73'></a><a href='#L73'>73</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L73'></a><a href='#L73'>73</a>
+<a name='L74'></a><a href='#L74'>74</a>
+<a name='L75'></a><a href='#L75'>75</a>
+<a name='L76'></a><a href='#L76'>76</a>
+<a name='L77'></a><a href='#L77'>77</a>
+<a name='L78'></a><a href='#L78'>78</a>
+<a name='L79'></a><a href='#L79'>79</a>
+<a name='L80'></a><a href='#L80'>80</a>
+<a name='L81'></a><a href='#L81'>81</a>
+<a name='L82'></a><a href='#L82'>82</a>
+<a name='L83'></a><a href='#L83'>83</a>
+<a name='L84'></a><a href='#L84'>84</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">17x</span>
 <span class="cline-any cline-yes">17x</span>
@@ -150,10 +161,10 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">312x</span>
-<span class="cline-any cline-yes">312x</span>
-<span class="cline-any cline-yes">312x</span>
-<span class="cline-any cline-yes">312x</span>
+<span class="cline-any cline-yes">323x</span>
+<span class="cline-any cline-yes">323x</span>
+<span class="cline-any cline-yes">323x</span>
+<span class="cline-any cline-yes">323x</span>
 <span class="cline-any cline-yes">89x</span>
 <span class="cline-any cline-yes">89x</span>
 <span class="cline-any cline-yes">89x</span>
@@ -173,16 +184,27 @@
 <span class="cline-any cline-yes">89x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">89x</span>
 <span class="cline-any cline-yes">88x</span>
-<span class="cline-any cline-yes">88x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">89x</span>
+<span class="cline-any cline-yes">89x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">89x</span>
+<span class="cline-any cline-yes">89x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">89x</span>
 <span class="cline-any cline-yes">88x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">312x</span>
-<span class="cline-any cline-yes">312x</span>
+<span class="cline-any cline-yes">323x</span>
+<span class="cline-any cline-yes">323x</span>
 <span class="cline-any cline-yes">6x</span>
 <span class="cline-any cline-yes">6x</span>
 <span class="cline-any cline-yes">5x</span>
@@ -210,7 +232,7 @@
 <span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">/** Shared IndexedDB handle — open once, reuse across all stores. */
 &nbsp;
 export const DB_NAME = 'OpticlickDB';
-export const DB_VERSION = 5;
+export const DB_VERSION = 6;
 export const SESSIONS_STORE = 'sessions';
 export const CONV_STORE = 'conversations';
 export const CONV_BY_SESSION_INDEX = 'by-session';
@@ -245,10 +267,21 @@ export function openDB(options?: OpenDBOptions): Promise&lt;IDBDatabase&gt; {
         convStore.createIndex(CONV_BY_SESSION_INDEX, 'sessionId', { unique: false });
       }
 &nbsp;
-      if (!db.objectStoreNames.contains(VFS_STORE)) {
-        const vfsStore = db.createObjectStore(VFS_STORE, { keyPath: 'id' });
-        vfsStore.createIndex('by-session', 'sessionId', { unique: false });
-      }
+      let vfsStore: IDBObjectStore;
+&nbsp;
+if (!db.objectStoreNames.contains(VFS_STORE)) {
+  vfsStore = db.createObjectStore(VFS_STORE, { keyPath: 'id' });
+} else {
+  vfsStore = tx.objectStore(VFS_STORE);
+}
+&nbsp;
+<span class="missing-if-branch" title="else path not taken" >E</span>if (!vfsStore.indexNames.contains('by-session')) {
+  vfsStore.createIndex('by-session', 'sessionId', { unique: false });
+}
+&nbsp;
+<span class="missing-if-branch" title="else path not taken" >E</span>if (!vfsStore.indexNames.contains('by-scope')) {
+  vfsStore.createIndex('by-scope', 'scope', { unique: false });
+}
       if (!db.objectStoreNames.contains(MEMORY_STORE)) {
         db.createObjectStore(MEMORY_STORE, { keyPath: 'key' });
       }
@@ -286,7 +319,7 @@ export function openDB(options?: OpenDBOptions): Promise&lt;IDBDatabase&gt; {
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-06-26T12:29:22.999Z
+                at 2026-08-05T12:24:35.897Z
             </div>
         <script src="../../prettify.js"></script>
         <script>
