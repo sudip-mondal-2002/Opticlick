@@ -23,30 +23,30 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0% </span>
+                <span class="strong">100% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>0/7</span>
+                <span class='fraction'>7/7</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0% </span>
+                <span class="strong">100% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>0/4</span>
+                <span class='fraction'>4/4</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0% </span>
+                <span class="strong">100% </span>
                 <span class="quiet">Functions</span>
-                <span class='fraction'>0/3</span>
+                <span class='fraction'>3/3</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0% </span>
+                <span class="strong">100% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>0/7</span>
+                <span class='fraction'>7/7</span>
             </div>
         
             
@@ -61,7 +61,7 @@
             </div>
         </template>
     </div>
-    <div class='status-line low'></div>
+    <div class='status-line high'></div>
     <pre><table class="coverage">
 <tr><td class="line-count quiet"><a name='L1'></a><a href='#L1'>1</a>
 <a name='L2'></a><a href='#L2'>2</a>
@@ -83,36 +83,36 @@
 <a name='L18'></a><a href='#L18'>18</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">61x</span>
+<span class="cline-any cline-yes">61x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">22x</span>
+<span class="cline-any cline-yes">22x</span>
+<span class="cline-any cline-yes">22x</span>
+<span class="cline-any cline-yes">22x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">3x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">import type { AgentState } from './types';
 &nbsp;
-export async function <span class="fstat-no" title="function not covered" >getAgentState(): Promise&lt;AgentState | null&gt; {</span>
-  const { agentState } = <span class="cstat-no" title="statement not covered" >await chrome.storage.session.get('agentState');</span>
-<span class="cstat-no" title="statement not covered" >  return (agentState as AgentState) ?? null;</span>
+export async function getAgentState(): Promise&lt;AgentState | null&gt; {
+  const { agentState } = await chrome.storage.session.get('agentState');
+  return (agentState as AgentState) ?? null;
 }
 &nbsp;
-export async function <span class="fstat-no" title="function not covered" >setAgentState(p</span>atch: Partial&lt;AgentState&gt;): Promise&lt;AgentState&gt; {
-  const current = (<span class="cstat-no" title="statement not covered" >await getAgentState()) ?? ({} as AgentState);</span>
-  const next: AgentState = <span class="cstat-no" title="statement not covered" >{ ...current, ...patch };</span>
-<span class="cstat-no" title="statement not covered" >  await chrome.storage.session.set({ agentState: next });</span>
-<span class="cstat-no" title="statement not covered" >  return next;</span>
+export async function setAgentState(patch: Partial&lt;AgentState&gt;): Promise&lt;AgentState&gt; {
+  const current = (await getAgentState()) ?? ({} as AgentState);
+  const next: AgentState = { ...current, ...patch };
+  await chrome.storage.session.set({ agentState: next });
+  return next;
 }
 &nbsp;
-export async function <span class="fstat-no" title="function not covered" >clearAgentState(): Promise&lt;void&gt; {</span>
-<span class="cstat-no" title="statement not covered" >  await chrome.storage.session.remove(['agentState', 'coordinateMap', 'agentLog']);</span>
+export async function clearAgentState(): Promise&lt;void&gt; {
+  await chrome.storage.session.remove(['agentState', 'coordinateMap', 'agentLog']);
 }
 &nbsp;</pre></td></tr></table></pre>
 
@@ -121,7 +121,7 @@ export async function <span class="fstat-no" title="function not covered" >clear
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-08-05T12:49:21.642Z
+                at 2026-08-05T13:00:33.178Z
             </div>
         <script src="../prettify.js"></script>
         <script>
