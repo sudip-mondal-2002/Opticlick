@@ -77,6 +77,7 @@ function AgentUI() {
 
   const [selectedModel, setSelectedModel] = useState(DEFAULT_MODEL);
   const [ollamaModels, setOllamaModels] = useState<ModelOption[]>([]);
+  const [speechLanguage, setSpeechLanguage] = useState<string>('');
 
   const [submittedPrompt, setSubmittedPrompt] = useState<string | null>(null);
   const [pendingQuestion, setPendingQuestion] = useState<string | null>(null);
@@ -115,7 +116,7 @@ function AgentUI() {
   useEffect(() => {
     (async () => {
       const [stored, ollama] = await Promise.all([
-        chrome.storage.local.get(['geminiApiKey', 'anthropicApiKey', 'openaiApiKey', 'customOpenaiConfigs', 'selectedModel', 'promptTemplates']),
+        chrome.storage.local.get(['geminiApiKey', 'anthropicApiKey', 'openaiApiKey', 'customOpenaiConfigs', 'selectedModel', 'promptTemplates', 'speechLanguage']),
         fetchOllamaModels(),
       ]);
       const gKey = (stored.geminiApiKey as string) || null;
@@ -151,6 +152,7 @@ function AgentUI() {
         }
       }
       setSelectedModel(model);
+      setSpeechLanguage((stored.speechLanguage as string) || '');
       setKeyLoading(false);
     })();
   }, []);
@@ -181,6 +183,12 @@ function AgentUI() {
     const updated = customConfigs.filter((c) => c.id !== configId);
     setCustomConfigs(updated);
     chrome.storage.local.set({ customOpenaiConfigs: updated });
+  };
+
+  const saveSpeechLanguage = (lang: string) => {
+    chrome.storage.local.set({ speechLanguage: lang }).then(() => {
+      setSpeechLanguage(lang);
+    });
   };
 
   const handleModelChange = (modelId: string) => {
@@ -463,6 +471,18 @@ function AgentUI() {
           onSaveCustomConfig={saveCustomConfig}
           onDeleteCustomConfig={deleteCustomConfig}
           onClose={() => setShowApiKeys(false)}
+          speechLanguage={speechLanguage}
+          onSaveSpeechLanguage={saveSpeechLanguage}
+        />
+      )}
+
+      {showTemplates && (
+        <TemplatesOverlay
+          templates={templates}
+          onClose={() => setShowTemplates(false)}
+          onUse={useTemplate}
+          onSave={updateTemplate}
+          onDelete={deleteTemplate}
         />
       )}
 
@@ -588,6 +608,7 @@ function AgentUI() {
         onClearInjectedPrompt={() => setInjectedPrompt(null)}
         templates={templates}
         onSaveTemplate={saveTemplate}
+        speechLanguage={speechLanguage}
       />
 
       <ModelSelector
