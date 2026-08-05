@@ -23,30 +23,30 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0% </span>
+                <span class="strong">100% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>0/26</span>
+                <span class='fraction'>26/26</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0% </span>
+                <span class="strong">100% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>0/8</span>
+                <span class='fraction'>8/8</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0% </span>
+                <span class="strong">100% </span>
                 <span class="quiet">Functions</span>
-                <span class='fraction'>0/11</span>
+                <span class='fraction'>11/11</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0% </span>
+                <span class="strong">100% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>0/20</span>
+                <span class='fraction'>20/20</span>
             </div>
         
             
@@ -61,7 +61,7 @@
             </div>
         </template>
     </div>
-    <div class='status-line low'></div>
+    <div class='status-line high'></div>
     <pre><table class="coverage">
 <tr><td class="line-count quiet"><a name='L1'></a><a href='#L1'>1</a>
 <a name='L2'></a><a href='#L2'>2</a>
@@ -143,38 +143,38 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">29x</span>
+<span class="cline-any cline-yes">29x</span>
+<span class="cline-any cline-yes">29x</span>
+<span class="cline-any cline-yes">29x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">29x</span>
+<span class="cline-any cline-yes">29x</span>
+<span class="cline-any cline-yes">29x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">24x</span>
+<span class="cline-any cline-yes">24x</span>
+<span class="cline-any cline-yes">24x</span>
+<span class="cline-any cline-yes">24x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">24x</span>
+<span class="cline-any cline-yes">22x</span>
+<span class="cline-any cline-yes">22x</span>
+<span class="cline-any cline-yes">22x</span>
+<span class="cline-any cline-yes">22x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">2x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">import { openDB, CONV_STORE, CONV_BY_SESSION_INDEX } from './core';
@@ -190,7 +190,7 @@ export interface ConversationTurn {
   ts: number;
 }
 &nbsp;
-export async function <span class="fstat-no" title="function not covered" >appendConversationTurn(</span>
+export async function appendConversationTurn(
   sessionId: number,
   role: string,
   content: string,
@@ -200,38 +200,38 @@ export async function <span class="fstat-no" title="function not covered" >appen
     toolName?: string;
   },
 ): Promise&lt;void&gt; {
-  const db = <span class="cstat-no" title="statement not covered" >await openDB();</span>
-<span class="cstat-no" title="statement not covered" >  return new Promise(<span class="fstat-no" title="function not covered" >(r</span>esolve, reject) =&gt; {</span>
-    const tx = <span class="cstat-no" title="statement not covered" >db.transaction(CONV_STORE, 'readwrite');</span>
-    const turn: Omit&lt;ConversationTurn, 'id'&gt; = <span class="cstat-no" title="statement not covered" >{</span>
+  const db = await openDB();
+  return new Promise((resolve, reject) =&gt; {
+    const tx = db.transaction(CONV_STORE, 'readwrite');
+    const turn: Omit&lt;ConversationTurn, 'id'&gt; = {
       sessionId, role, content, ts: Date.now(),
       ...(extra?.toolCalls != null &amp;&amp; { toolCalls: extra.toolCalls }),
       ...(extra?.toolCallId != null &amp;&amp; { toolCallId: extra.toolCallId }),
       ...(extra?.toolName != null &amp;&amp; { toolName: extra.toolName }),
     };
-<span class="cstat-no" title="statement not covered" >    tx.objectStore(CONV_STORE).add(turn);</span>
-<span class="cstat-no" title="statement not covered" >    tx.oncomplete = <span class="fstat-no" title="function not covered" >() =&gt; <span class="cstat-no" title="statement not covered" >r</span>esolve();</span></span>
-<span class="cstat-no" title="statement not covered" >    tx.onerror = <span class="fstat-no" title="function not covered" >(e</span>) =&gt; <span class="cstat-no" title="statement not covered" >reject((e.target as IDBTransaction).error);</span></span>
+    tx.objectStore(CONV_STORE).add(turn);
+    tx.oncomplete = () =&gt; resolve();
+    tx.onerror = (e) =&gt; reject((e.target as IDBTransaction).error);
   });
 }
 &nbsp;
-export async function <span class="fstat-no" title="function not covered" >getConversationHistory(s</span>essionId: number): Promise&lt;ConversationTurn[]&gt; {
-  const db = <span class="cstat-no" title="statement not covered" >await openDB();</span>
-<span class="cstat-no" title="statement not covered" >  return new Promise(<span class="fstat-no" title="function not covered" >(r</span>esolve, reject) =&gt; {</span>
-    const tx = <span class="cstat-no" title="statement not covered" >db.transaction(CONV_STORE, 'readonly');</span>
-    const store = <span class="cstat-no" title="statement not covered" >tx.objectStore(CONV_STORE);</span>
+export async function getConversationHistory(sessionId: number): Promise&lt;ConversationTurn[]&gt; {
+  const db = await openDB();
+  return new Promise((resolve, reject) =&gt; {
+    const tx = db.transaction(CONV_STORE, 'readonly');
+    const store = tx.objectStore(CONV_STORE);
 &nbsp;
-<span class="cstat-no" title="statement not covered" >    if (store.indexNames.contains(CONV_BY_SESSION_INDEX)) {</span>
-      const req = <span class="cstat-no" title="statement not covered" >store.index(CONV_BY_SESSION_INDEX).getAll(sessionId);</span>
-<span class="cstat-no" title="statement not covered" >      req.onsuccess = <span class="fstat-no" title="function not covered" >(e</span>) =&gt; <span class="cstat-no" title="statement not covered" >resolve((e.target as IDBRequest).result as ConversationTurn[]);</span></span>
-<span class="cstat-no" title="statement not covered" >      req.onerror = <span class="fstat-no" title="function not covered" >(e</span>) =&gt; <span class="cstat-no" title="statement not covered" >reject((e.target as IDBRequest).error);</span></span>
-<span class="cstat-no" title="statement not covered" >      return;</span>
+    if (store.indexNames.contains(CONV_BY_SESSION_INDEX)) {
+      const req = store.index(CONV_BY_SESSION_INDEX).getAll(sessionId);
+      req.onsuccess = (e) =&gt; resolve((e.target as IDBRequest).result as ConversationTurn[]);
+      req.onerror = (e) =&gt; reject((e.target as IDBRequest).error);
+      return;
     }
 &nbsp;
-    const req = <span class="cstat-no" title="statement not covered" >store.getAll();</span>
-<span class="cstat-no" title="statement not covered" >    req.onsuccess = <span class="fstat-no" title="function not covered" >(e</span>) =&gt;</span>
-<span class="cstat-no" title="statement not covered" >      resolve(((e.target as IDBRequest).result as ConversationTurn[]).filter(<span class="fstat-no" title="function not covered" >(r</span>) =&gt; <span class="cstat-no" title="statement not covered" >r.sessionId === sessionId)</span>);</span>
-<span class="cstat-no" title="statement not covered" >    req.onerror = <span class="fstat-no" title="function not covered" >(e</span>) =&gt; <span class="cstat-no" title="statement not covered" >reject((e.target as IDBRequest).error);</span></span>
+    const req = store.getAll();
+    req.onsuccess = (e) =&gt;
+      resolve(((e.target as IDBRequest).result as ConversationTurn[]).filter((r) =&gt; r.sessionId === sessionId));
+    req.onerror = (e) =&gt; reject((e.target as IDBRequest).error);
   });
 }
 &nbsp;</pre></td></tr></table></pre>
@@ -241,7 +241,7 @@ export async function <span class="fstat-no" title="function not covered" >getCo
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-08-05T12:49:44.358Z
+                at 2026-08-05T13:04:58.797Z
             </div>
         <script src="../../prettify.js"></script>
         <script>

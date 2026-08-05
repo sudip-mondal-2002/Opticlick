@@ -23,9 +23,9 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">53.84% </span>
+                <span class="strong">100% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>7/13</span>
+                <span class='fraction'>13/13</span>
             </div>
         
             
@@ -37,16 +37,16 @@
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0% </span>
+                <span class="strong">100% </span>
                 <span class="quiet">Functions</span>
-                <span class='fraction'>0/6</span>
+                <span class='fraction'>6/6</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">53.84% </span>
+                <span class="strong">100% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>7/13</span>
+                <span class='fraction'>13/13</span>
             </div>
         
             
@@ -61,7 +61,7 @@
             </div>
         </template>
     </div>
-    <div class='status-line medium'></div>
+    <div class='status-line high'></div>
     <pre><table class="coverage">
 <tr><td class="line-count quiet"><a name='L1'></a><a href='#L1'>1</a>
 <a name='L2'></a><a href='#L2'>2</a>
@@ -200,8 +200,8 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">10x</span>
+<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -229,8 +229,8 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">10x</span>
+<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -251,8 +251,8 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">10x</span>
+<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -265,8 +265,8 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">10x</span>
+<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -283,8 +283,8 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">10x</span>
+<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -296,8 +296,8 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">10x</span>
+<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -310,7 +310,7 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-yes">10x</span>
 <span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">/**
  * UI interaction tools — at most one may be called per agent turn.
  *
@@ -325,7 +325,7 @@ import { tool } from '@langchain/core/tools';
 import { z } from 'zod';
 &nbsp;
 export const clickTool = tool(
-<span class="fstat-no" title="function not covered" >  async () =&gt; <span class="cstat-no" title="statement not covered" >'</span>ok',</span>
+  async () =&gt; 'ok',
   {
     name: 'click',
     description:
@@ -354,7 +354,7 @@ export const clickTool = tool(
 );
 &nbsp;
 export const typeTool = tool(
-<span class="fstat-no" title="function not covered" >  async () =&gt; <span class="cstat-no" title="statement not covered" >'</span>ok',</span>
+  async () =&gt; 'ok',
   {
     name: 'type',
     description:
@@ -376,7 +376,7 @@ export const typeTool = tool(
 );
 &nbsp;
 export const navigateTool = tool(
-<span class="fstat-no" title="function not covered" >  async () =&gt; <span class="cstat-no" title="statement not covered" >'</span>ok',</span>
+  async () =&gt; 'ok',
   {
     name: 'navigate',
     description:
@@ -390,7 +390,7 @@ export const navigateTool = tool(
 );
 &nbsp;
 export const scrollTool = tool(
-<span class="fstat-no" title="function not covered" >  async () =&gt; <span class="cstat-no" title="statement not covered" >'</span>ok',</span>
+  async () =&gt; 'ok',
   {
     name: 'scroll',
     description:
@@ -408,7 +408,7 @@ export const scrollTool = tool(
 );
 &nbsp;
 export const pressKeyTool = tool(
-<span class="fstat-no" title="function not covered" >  async () =&gt; <span class="cstat-no" title="statement not covered" >'</span>ok',</span>
+  async () =&gt; 'ok',
   {
     name: 'press_key',
     description:
@@ -421,7 +421,7 @@ export const pressKeyTool = tool(
 );
 &nbsp;
 export const dragAndDropTool = tool(
-<span class="fstat-no" title="function not covered" >  async () =&gt; <span class="cstat-no" title="statement not covered" >'</span>ok',</span>
+  async () =&gt; 'ok',
   {
     name: 'drag_and_drop',
     description: 'Drag an annotated element and drop it onto another annotated element or page coordinates.',
@@ -442,7 +442,7 @@ export const UI_TOOLS = [clickTool, typeTool, navigateTool, scrollTool, pressKey
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-08-05T12:49:44.358Z
+                at 2026-08-05T13:04:58.797Z
             </div>
         <script src="../../prettify.js"></script>
         <script>
