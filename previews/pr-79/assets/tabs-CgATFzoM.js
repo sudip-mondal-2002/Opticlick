@@ -1,1 +1,0 @@
-import{a as e}from"./tabs-CFil42dZ.js";export{e as tabsShim};
