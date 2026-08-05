@@ -1,4 +1,4 @@
-import { fakeBrowser } from 'wxt/testing';
+import { fakeBrowser } from 'wxt/testing/fake-browser';
 import { beforeEach } from 'vitest';
 
 // Installs fakeBrowser as globalThis.chrome so agent-state.ts and other modules
