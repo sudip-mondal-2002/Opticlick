@@ -23,30 +23,30 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">20% </span>
+                <span class="strong">100% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>3/15</span>
+                <span class='fraction'>15/15</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">30% </span>
+                <span class="strong">90% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>3/10</span>
+                <span class='fraction'>9/10</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">0% </span>
+                <span class="strong">100% </span>
                 <span class="quiet">Functions</span>
-                <span class='fraction'>0/4</span>
+                <span class='fraction'>4/4</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">27.27% </span>
+                <span class="strong">100% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>3/11</span>
+                <span class='fraction'>11/11</span>
             </div>
         
             
@@ -61,7 +61,7 @@
             </div>
         </template>
     </div>
-    <div class='status-line low'></div>
+    <div class='status-line high'></div>
     <pre><table class="coverage">
 <tr><td class="line-count quiet"><a name='L1'></a><a href='#L1'>1</a>
 <a name='L2'></a><a href='#L2'>2</a>
@@ -92,56 +92,56 @@
 <a name='L27'></a><a href='#L27'>27</a>
 <a name='L28'></a><a href='#L28'>28</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">21x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">82x</span>
+<span class="cline-any cline-yes">62x</span>
+<span class="cline-any cline-yes">61x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">5x</span>
+<span class="cline-any cline-yes">4x</span>
+<span class="cline-any cline-yes">4x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-yes">1x</span>
-<span class="cline-any cline-no">&nbsp;</span>
+<span class="cline-any cline-yes">46x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">21x</span>
+<span class="cline-any cline-yes">21x</span>
+<span class="cline-any cline-yes">2x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">/** CDP debugger attach/detach with per-tab caching. */
 &nbsp;
 const attachedDebuggers = new Set&lt;number&gt;();
 &nbsp;
-export async function <span class="fstat-no" title="function not covered" >attachDebugger(t</span>abId: number): Promise&lt;void&gt; {
-<span class="cstat-no" title="statement not covered" >  if (attachedDebuggers.has(tabId)) <span class="cstat-no" title="statement not covered" >return;</span></span>
-<span class="cstat-no" title="statement not covered" >  await chrome.debugger.attach({ tabId }, '1.3');</span>
-<span class="cstat-no" title="statement not covered" >  attachedDebuggers.add(tabId);</span>
+export async function attachDebugger(tabId: number): Promise&lt;void&gt; {
+  if (attachedDebuggers.has(tabId)) return;
+  await chrome.debugger.attach({ tabId }, '1.3');
+  attachedDebuggers.add(tabId);
 }
 &nbsp;
-export async function <span class="fstat-no" title="function not covered" >detachDebugger(t</span>abId: number): Promise&lt;void&gt; {
-<span class="cstat-no" title="statement not covered" >  if (!attachedDebuggers.has(tabId)) <span class="cstat-no" title="statement not covered" >return;</span></span>
-<span class="cstat-no" title="statement not covered" >  try { <span class="cstat-no" title="statement not covered" >await chrome.debugger.detach({ tabId }); }</span> catch { /* tab may have closed */ }</span>
-<span class="cstat-no" title="statement not covered" >  attachedDebuggers.delete(tabId);</span>
+export async function detachDebugger(tabId: number): Promise&lt;void&gt; {
+  if (!attachedDebuggers.has(tabId)) return;
+  try { await chrome.debugger.detach({ tabId }); } catch { /* tab may have closed */ }
+  attachedDebuggers.delete(tabId);
 }
 &nbsp;
 /** @internal — test only. Clears the module-level attachedDebuggers Set. */
-export function <span class="fstat-no" title="function not covered" >_resetAttachedDebuggers(): void {</span>
-<span class="cstat-no" title="statement not covered" >  attachedDebuggers.clear();</span>
+export function _resetAttachedDebuggers(): void {
+  attachedDebuggers.clear();
 }
 &nbsp;
 // Auto-clean when Chrome detaches the debugger (tab closed / navigate)
 <span class="missing-if-branch" title="else path not taken" >E</span>if (typeof chrome !== 'undefined' &amp;&amp; chrome?.debugger?.onDetach) {
-  chrome.debugger.onDetach.addListener(<span class="fstat-no" title="function not covered" >({</span> tabId }) =&gt; {
-<span class="cstat-no" title="statement not covered" >    if (tabId != null) <span class="cstat-no" title="statement not covered" >attachedDebuggers.delete(tabId);</span></span>
+  chrome.debugger.onDetach.addListener(({ tabId }) =&gt; {
+    if (tabId != null) attachedDebuggers.delete(tabId);
   });
 }
 &nbsp;</pre></td></tr></table></pre>
@@ -151,7 +151,7 @@ export function <span class="fstat-no" title="function not covered" >_resetAttac
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-08-05T12:49:32.139Z
+                at 2026-08-05T13:00:48.424Z
             </div>
         <script src="../../prettify.js"></script>
         <script>
