@@ -1,0 +1,1 @@
+import{a as e}from"./tabs-Biv_57kw.js";export{e as tabsShim};
