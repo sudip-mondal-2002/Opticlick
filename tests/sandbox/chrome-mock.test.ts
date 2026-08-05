@@ -17,6 +17,76 @@ describe('tabsShim.onCreated', () => {
   });
 });
 
+describe('tabsShim multi-tab operations', () => {
+  it('defines onRemoved event interface with mock methods', () => {
+    expect(tabsShim.onRemoved).toBeDefined();
+    expect(tabsShim.onRemoved.addListener).toBeTypeOf('function');
+    expect(tabsShim.onRemoved.removeListener).toBeTypeOf('function');
+    expect(tabsShim.onRemoved.hasListener).toBeTypeOf('function');
+    expect(tabsShim.onRemoved.hasListener(() => {})).toBe(false);
+  });
+
+  it('correctly creates a new tab, updates active status, and triggers onCreated', async () => {
+    const onCreatedSpy = vi.fn();
+    tabsShim.onCreated.addListener(onCreatedSpy);
+
+    const initialTabs = await tabsShim.query({});
+    const newTab = await tabsShim.create({ url: 'https://github.com/sasidaran-99' });
+
+    expect(newTab).toBeDefined();
+    expect(newTab.url).toBe('https://github.com/sasidaran-99');
+    expect(newTab.title).toBe('github.com');
+    expect(newTab.active).toBe(true);
+    expect(onCreatedSpy).toHaveBeenCalledWith(newTab);
+
+    const currentTabs = await tabsShim.query({});
+    expect(currentTabs.length).toBe(initialTabs.length + 1);
+
+    // Clean up spy
+    tabsShim.onCreated.removeListener(onCreatedSpy);
+  });
+
+  it('correctly updates tab active state and URL via update', async () => {
+    const onUpdatedSpy = vi.fn();
+    tabsShim.onUpdated.addListener(onUpdatedSpy);
+
+    const tabs = await tabsShim.query({});
+    const lastTab = tabs[tabs.length - 1];
+
+    await tabsShim.update(lastTab.id!, { url: 'https://example.org' });
+    expect(lastTab.url).toBe('https://example.org');
+
+    // Trigger active state switch
+    const firstTab = tabs[0];
+    await tabsShim.update(firstTab.id!, { active: true });
+    expect(firstTab.active).toBe(true);
+    expect(lastTab.active).toBe(false);
+
+    // Clean up spy
+    tabsShim.onUpdated.removeListener(onUpdatedSpy);
+  });
+
+  it('correctly removes tabs and triggers onRemoved', async () => {
+    const onRemovedSpy = vi.fn();
+    if (tabsShim.onRemoved) {
+      tabsShim.onRemoved.addListener(onRemovedSpy);
+    }
+
+    const tabs = await tabsShim.query({});
+    const targetTab = tabs[tabs.length - 1];
+    
+    await tabsShim.remove(targetTab.id!);
+    
+    if (tabsShim.onRemoved) {
+      expect(onRemovedSpy).toHaveBeenCalledWith(targetTab.id!, expect.any(Object));
+      tabsShim.onRemoved.removeListener(onRemovedSpy);
+    }
+
+    const currentTabs = await tabsShim.query({});
+    expect(currentTabs.some(t => t.id === targetTab.id)).toBe(false);
+  });
+});
+
 describe('debuggerShim.Runtime.evaluate', () => {
   it('correctly evaluates expression when target window is ready', async () => {
     const mockWindow = {

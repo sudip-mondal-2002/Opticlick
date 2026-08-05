@@ -49,6 +49,23 @@ export async function uiActionNode(
     tabIdRef,
   };
 
-  const update = await handler.execute(uiAction, ctx);
-  return { tabId: tabIdRef.current, ...update };
+const update = await handler.execute(uiAction, ctx);
+
+  if (
+    uiAction.type === 'open_tab' ||
+    uiAction.type === 'switch_tab' ||
+    uiAction.type === 'close_tab' ||
+    uiAction.type === 'list_tabs'
+  ) {
+    return {
+      tabId: tabIdRef.current,
+      done: true,
+      ...update,
+    };
+  }
+
+  return {
+    tabId: tabIdRef.current,
+    ...update,
+  };
 }
