@@ -8,10 +8,14 @@
  */
 
 import { execFile } from 'node:child_process';
+import { createRequire } from 'node:module';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 
 const FRAMES_DIR = path.resolve(process.cwd(), 'evals/results/frames');
+const require = createRequire(import.meta.url);
+const ffmpegPath = require('ffmpeg-static') as string;
+const ffprobePath = (require('ffprobe-static') as { path: string }).path;
 
 function execFileAsync(command: string, args: string[]): Promise<{ stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
@@ -37,7 +41,7 @@ export async function compressVideo(inputPath: string, outputPath: string): Prom
     throw new Error(`Video not found: ${inputPath}`);
   }
 
-  await execFileAsync('ffmpeg', [
+  await execFileAsync(ffmpegPath, [
       '-y',                   // overwrite output if exists
       '-i', inputPath,
       '-vf', 'scale=1280:720',
@@ -58,7 +62,7 @@ export async function getVideoDuration(videoPath: string): Promise<number> {
   if (!fs.existsSync(videoPath)) return 0;
 
   try {
-    const { stdout } = await execFileAsync('ffprobe', [
+    const { stdout } = await execFileAsync(ffprobePath, [
       '-v', 'quiet',
       '-print_format', 'json',
       '-show_streams',
@@ -91,7 +95,7 @@ export async function extractFrames(
   // Get total frame count first
   let countStdout = '';
   try {
-    ({ stdout: countStdout } = await execFileAsync('ffprobe', [
+    ({ stdout: countStdout } = await execFileAsync(ffprobePath, [
       '-v', 'quiet',
       '-select_streams', 'v:0',
       '-count_frames',
@@ -118,7 +122,7 @@ export async function extractFrames(
   // Extract frames using select filter
   const outputPattern = path.join(caseFramesDir, 'frame_%04d.png');
   try {
-    await execFileAsync('ffmpeg', [
+    await execFileAsync(ffmpegPath, [
       '-y',
       '-i', videoPath,
       '-vf', `select=not(mod(n\\,${frameStep}))`,
