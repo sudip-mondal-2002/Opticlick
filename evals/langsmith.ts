@@ -52,7 +52,7 @@ export function exampleToEvalCase(example: Example): EvalCase {
     ? String(rawCaseNumber)
     : (fields.id as string) || example.id;
 
-  const configuredTimeout = Number(process.env.EVAL_CASE_TIMEOUT_MS ?? 480_000);
+  const configuredTimeout = Number(process.env.EVAL_CASE_TIMEOUT_SECONDS ?? 480) * 1000;
   const timeoutMs =
     Number(fields.timeout_ms ?? fields.timeoutMs) || configuredTimeout;
 

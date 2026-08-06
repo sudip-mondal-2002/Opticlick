@@ -89,7 +89,7 @@ jobs:
           EVAL_DIFFICULTY: ${{ inputs.difficulty }}
           EVAL_THRESHOLD: ${{ inputs.threshold }}
           EVAL_MAX_CONCURRENCY: ${{ inputs.max_concurrency }}
-          EVAL_CASE_TIMEOUT_MS: ${{ fromJSON(inputs.case_timeout_seconds) * 1000 }}
+          EVAL_CASE_TIMEOUT_SECONDS: ${{ inputs.case_timeout_seconds }}
           # Isolated test-account state for auth runs; no UI login is attempted.
           STORAGE_STATE_BASE64: ${{ secrets.STORAGE_STATE_BASE64 }}
         # xvfb-run provides a virtual display — required since extensions need headless:false

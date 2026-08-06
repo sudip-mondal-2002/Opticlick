@@ -6,12 +6,12 @@ import type { EvalCase } from '../../evals/types.js';
 afterEach(() => {
   delete process.env.EVAL_AUTH_FILTER;
   delete process.env.EVAL_DIFFICULTY;
-  delete process.env.EVAL_CASE_TIMEOUT_MS;
+  delete process.env.EVAL_CASE_TIMEOUT_SECONDS;
 });
 
 describe('LangSmith eval dataset normalization', () => {
   it('reads benchmark fields from example metadata', () => {
-    process.env.EVAL_CASE_TIMEOUT_MS = '480000';
+    process.env.EVAL_CASE_TIMEOUT_SECONDS = '480';
     const example = {
       id: 'example-uuid',
       inputs: { title: 'Metadata case', prompt: 'do the task' },
@@ -35,7 +35,7 @@ describe('LangSmith eval dataset normalization', () => {
   });
 
   it('honors explicit per-example timeouts over the workflow default', () => {
-    process.env.EVAL_CASE_TIMEOUT_MS = '480000';
+    process.env.EVAL_CASE_TIMEOUT_SECONDS = '480';
     const example = {
       id: 'example-uuid',
       inputs: { prompt: 'do the task' },
