@@ -267,6 +267,7 @@ async function main(): Promise<void> {
       difficulty: process.env.EVAL_DIFFICULTY ?? 'all',
       threshold,
       agent_model: process.env.EVAL_AGENT_MODEL ?? 'gemma-4-31b-it',
+      agent_model_name: process.env.EVAL_AGENT_MODEL_NAME,
       judge_model: process.env.EVAL_JUDGE_MODEL ?? 'gemini-3.1-flash-lite-preview',
       github_repository: process.env.GITHUB_REPOSITORY,
       github_run_id: process.env.GITHUB_RUN_ID,

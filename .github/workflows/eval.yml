@@ -38,7 +38,11 @@ on:
       agent_model:
         description: 'Model used by the browser agent'
         required: false
-        default: 'gemini-3.1-flash-lite-preview'
+        default: 'custom-openai:cerebras'
+      agent_model_name:
+        description: 'Provider-native agent model name'
+        required: false
+        default: 'gpt-oss-120b'
       judge_model:
         description: 'Separate model used for multimodal judging'
         required: false
@@ -95,12 +99,15 @@ jobs:
           EVAL_EXPERIMENT_NAME: ${{ inputs.experiment_name }}
           EVAL_IDS: ${{ inputs.eval_ids }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+          CEREBRAS_BASE_URL: https://api.cerebras.ai/v1
           EVAL_AUTH_FILTER: ${{ inputs.auth_filter }}
           EVAL_DIFFICULTY: ${{ inputs.difficulty }}
           EVAL_THRESHOLD: ${{ inputs.threshold }}
           EVAL_MAX_CONCURRENCY: ${{ inputs.max_concurrency }}
           EVAL_CASE_TIMEOUT_SECONDS: ${{ inputs.case_timeout_seconds }}
           EVAL_AGENT_MODEL: ${{ inputs.agent_model }}
+          EVAL_AGENT_MODEL_NAME: ${{ inputs.agent_model_name }}
           EVAL_JUDGE_MODEL: ${{ inputs.judge_model }}
           # Isolated test-account state for auth runs; no UI login is attempted.
           STORAGE_STATE_BASE64: ${{ secrets.STORAGE_STATE_BASE64 }}

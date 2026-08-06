@@ -88,11 +88,31 @@ async function getServiceWorker(context: BrowserContext) {
 /** Seed API key + model via the Service Worker (has chrome.storage access). */
 async function seedApiKey(context: BrowserContext) {
   const sw = await getServiceWorker(context);
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) throw new Error('GEMINI_API_KEY is not set');
   // Use an object arg — Playwright's evaluate() types tuple args as string[] which
   // is incompatible with [string, string] destructuring. Objects avoid this entirely.
   const model = process.env.EVAL_AGENT_MODEL ?? 'gemma-4-31b-it';
+  if (model === 'custom-openai:cerebras') {
+    const apiKey = process.env.CEREBRAS_API_KEY;
+    if (!apiKey) throw new Error('CEREBRAS_API_KEY is not set');
+    const customConfig = {
+      id: 'cerebras',
+      name: 'Cerebras',
+      baseUrl: process.env.CEREBRAS_BASE_URL ?? 'https://api.cerebras.ai/v1',
+      apiKey,
+      modelName: process.env.EVAL_AGENT_MODEL_NAME ?? 'gpt-oss-120b',
+    };
+    await sw.evaluate(
+      ({ selectedModel, config }) => chrome.storage.local.set({
+        selectedModel,
+        customOpenaiConfigs: [config],
+      }),
+      { selectedModel: model, config: customConfig },
+    );
+    return;
+  }
+
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) throw new Error('GEMINI_API_KEY is not set');
   await sw.evaluate(
     ({ key, model }: { key: string; model: string }) =>
       chrome.storage.local.set({ geminiApiKey: key, selectedModel: model }),
