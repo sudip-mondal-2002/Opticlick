@@ -46,6 +46,18 @@ describe('LangSmith eval dataset normalization', () => {
     expect(exampleToEvalCase(example).timeoutMs).toBe(90000);
   });
 
+  it('treats the workflow timeout as a hard maximum', () => {
+    process.env.EVAL_CASE_TIMEOUT_SECONDS = '480';
+    const example = {
+      id: 'example-uuid',
+      inputs: { prompt: 'do the task' },
+      outputs: {},
+      metadata: { timeout_ms: 1_200_000 },
+    } as unknown as Example;
+
+    expect(exampleToEvalCase(example).timeoutMs).toBe(480000);
+  });
+
   it('excludes auth cases from a non-auth run', () => {
     process.env.EVAL_AUTH_FILTER = 'non-auth';
     process.env.EVAL_DIFFICULTY = 'all';

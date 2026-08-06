@@ -53,8 +53,9 @@ export function exampleToEvalCase(example: Example): EvalCase {
     : (fields.id as string) || example.id;
 
   const configuredTimeout = Number(process.env.EVAL_CASE_TIMEOUT_SECONDS ?? 480) * 1000;
+  const exampleTimeout = Number(fields.timeout_ms ?? fields.timeoutMs);
   const timeoutMs =
-    Number(fields.timeout_ms ?? fields.timeoutMs) || configuredTimeout;
+    Math.min(exampleTimeout || configuredTimeout, configuredTimeout);
 
   const prompt =
     (fields.prompt as string) ||
