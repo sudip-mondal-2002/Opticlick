@@ -266,6 +266,8 @@ async function main(): Promise<void> {
       auth_filter: process.env.EVAL_AUTH_FILTER ?? 'non-auth',
       difficulty: process.env.EVAL_DIFFICULTY ?? 'all',
       threshold,
+      agent_model: process.env.EVAL_AGENT_MODEL ?? 'gemma-4-31b-it',
+      judge_model: process.env.EVAL_JUDGE_MODEL ?? 'gemini-3.1-flash-lite-preview',
       github_repository: process.env.GITHUB_REPOSITORY,
       github_run_id: process.env.GITHUB_RUN_ID,
       github_sha: process.env.GITHUB_SHA,

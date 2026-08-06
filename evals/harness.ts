@@ -92,10 +92,11 @@ async function seedApiKey(context: BrowserContext) {
   if (!apiKey) throw new Error('GEMINI_API_KEY is not set');
   // Use an object arg — Playwright's evaluate() types tuple args as string[] which
   // is incompatible with [string, string] destructuring. Objects avoid this entirely.
+  const model = process.env.EVAL_AGENT_MODEL ?? 'gemma-4-31b-it';
   await sw.evaluate(
     ({ key, model }: { key: string; model: string }) =>
       chrome.storage.local.set({ geminiApiKey: key, selectedModel: model }),
-    { key: apiKey, model: 'gemma-4-31b-it' },
+    { key: apiKey, model },
   );
 }
 
@@ -153,7 +154,8 @@ async function waitForAgentDone(
 }
 
 async function startAgent(sidePanelPage: Page, prompt: string): Promise<void> {
-  const response = await sidePanelPage.evaluate(async ({ taskPrompt }) => {
+  const modelId = process.env.EVAL_AGENT_MODEL ?? 'gemma-4-31b-it';
+  const response = await sidePanelPage.evaluate(async ({ taskPrompt, modelId }) => {
     const tabs = await chrome.tabs.query({ currentWindow: true });
     const target = tabs.find((tab) => tab.active && /^https?:/.test(tab.url ?? ''))
       ?? tabs.find((tab) => /^https?:/.test(tab.url ?? ''));
@@ -163,9 +165,9 @@ async function startAgent(sidePanelPage: Page, prompt: string): Promise<void> {
       type: 'START_AGENT',
       tabId: target.id,
       prompt: taskPrompt,
-      modelId: 'gemma-4-31b-it',
+      modelId,
     }) as Promise<{ started?: boolean; reason?: string } | undefined>;
-  }, { taskPrompt: prompt });
+  }, { taskPrompt: prompt, modelId });
 
   if (!response?.started) {
     throw new Error(`Agent start was rejected${response?.reason ? `: ${response.reason}` : ''}`);

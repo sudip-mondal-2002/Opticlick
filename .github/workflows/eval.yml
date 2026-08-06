@@ -1,4 +1,4 @@
-name: LLM Eval — LangSmith (Gemma 4)
+name: LLM Eval — LangSmith
 
 on:
   workflow_dispatch:
@@ -35,14 +35,22 @@ on:
         description: 'Optional comma-separated case IDs (use for smoke validation)'
         required: false
         default: ''
+      agent_model:
+        description: 'Model used by the browser agent'
+        required: false
+        default: 'gemini-3.1-flash-lite-preview'
+      judge_model:
+        description: 'Separate model used for multimodal judging'
+        required: false
+        default: 'gemma-4-31b-it'
       max_concurrency:
         description: 'Parallel browser cases (1-6)'
         required: false
-        default: '3'
+        default: '1'
       case_timeout_seconds:
         description: 'Per-case hard timeout in seconds'
         required: false
-        default: '480'
+        default: '300'
 
 jobs:
   eval:
@@ -92,7 +100,8 @@ jobs:
           EVAL_THRESHOLD: ${{ inputs.threshold }}
           EVAL_MAX_CONCURRENCY: ${{ inputs.max_concurrency }}
           EVAL_CASE_TIMEOUT_SECONDS: ${{ inputs.case_timeout_seconds }}
-          EVAL_JUDGE_MODEL: gemini-3.1-flash-lite-preview
+          EVAL_AGENT_MODEL: ${{ inputs.agent_model }}
+          EVAL_JUDGE_MODEL: ${{ inputs.judge_model }}
           # Isolated test-account state for auth runs; no UI login is attempted.
           STORAGE_STATE_BASE64: ${{ secrets.STORAGE_STATE_BASE64 }}
         # xvfb-run provides a virtual display — required since extensions need headless:false
