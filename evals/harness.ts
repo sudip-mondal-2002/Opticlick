@@ -41,6 +41,13 @@ function sleep(ms: number) {
   return new Promise<void>((r) => setTimeout(r, ms));
 }
 
+/** Close the page first so Playwright can finalize its video without deadlocking. */
+async function closePageAndGetVideo(page: Page): Promise<string> {
+  const video = page.video();
+  await page.close().catch(() => {});
+  return (await video?.path().catch(() => undefined)) ?? '';
+}
+
 export async function launchWithExtension() {
   if (!fs.existsSync(EXTENSION_PATH)) {
     throw new Error(`Extension not built. Run 'npm run build' first.\nExpected: ${EXTENSION_PATH}`);
@@ -206,8 +213,7 @@ export async function runEvalCase(evalCase: EvalCase): Promise<RunResult> {
     }).catch(() => '');
 
     // Flush video: get path before closing
-    rawVideoPath = (await mainPage.video()?.path()) ?? '';
-    await mainPage.close();
+    rawVideoPath = await closePageAndGetVideo(mainPage);
     mainPage = null;
 
   } catch (err) {
@@ -220,8 +226,7 @@ export async function runEvalCase(evalCase: EvalCase): Promise<RunResult> {
       console.error(`[${evalCase.id}] Harness error:`, (err as Error).message);
     }
     if (mainPage) {
-      rawVideoPath = (await mainPage.video()?.path().catch(() => undefined)) ?? '';
-      await mainPage.close().catch(() => {});
+      rawVideoPath = await closePageAndGetVideo(mainPage);
       mainPage = null;
     }
   } finally {

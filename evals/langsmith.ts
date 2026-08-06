@@ -33,29 +33,32 @@ export function getClient(): Client {
 export function exampleToEvalCase(example: Example): EvalCase {
   const inputs  = (example.inputs  ?? {}) as Record<string, unknown>;
   const outputs = (example.outputs ?? {}) as Record<string, unknown>;
+  const metadata = (example.metadata ?? {}) as Record<string, unknown>;
+  // Dataset table columns such as difficulty/requires_auth are metadata in
+  // LangSmith. Inputs win when a dataset intentionally embeds them there.
+  const fields = { ...metadata, ...inputs };
 
   // LangSmith dataset uses snake_case field names; support both for robustness
-  const rawRequiresAuth = inputs.requires_auth ?? inputs.requiresAuth ?? inputs['Requires Auth'] ?? inputs.Requires_Auth;
+  const rawRequiresAuth = fields.requires_auth ?? fields.requiresAuth ?? fields['Requires Auth'] ?? fields.Requires_Auth;
   const requiresAuth =
     rawRequiresAuth === true || String(rawRequiresAuth).toLowerCase() === 'true';
 
-  const rawDifficulty = (inputs.difficulty ?? inputs.Difficulty ?? 'medium') as string;
+  const rawDifficulty = (fields.difficulty ?? fields.Difficulty ?? 'medium') as string;
   const difficulty = rawDifficulty.toLowerCase() as 'easy' | 'medium' | 'hard';
 
   // case_number is the dataset's numeric ID field; fall back to example.id (UUID)
-  const rawCaseNumber = inputs.case_number ?? inputs.caseNumber ?? inputs['Case Number'] ?? inputs.Case_Number;
+  const rawCaseNumber = fields.case_number ?? fields.caseNumber ?? fields['Case Number'] ?? fields.Case_Number;
   const id = rawCaseNumber != null
     ? String(rawCaseNumber)
-    : (inputs.id as string) || example.id;
+    : (fields.id as string) || example.id;
 
+  const configuredTimeout = Number(process.env.EVAL_CASE_TIMEOUT_MS ?? 480_000);
   const timeoutMs =
-    (inputs.timeout_ms as number) ||
-    (inputs.timeoutMs  as number) ||
-    1_200_000; // 20 minutes
+    Number(fields.timeout_ms ?? fields.timeoutMs) || configuredTimeout;
 
   const prompt =
-    (inputs.prompt as string) ||
-    (inputs.input  as string) || '';
+    (fields.prompt as string) ||
+    (fields.input  as string) || '';
 
   const expectedOutput =
     (outputs.expected_output as string) ||
@@ -64,7 +67,7 @@ export function exampleToEvalCase(example: Example): EvalCase {
 
   return {
     id,
-    title:             (inputs.title as string) || `Case ${id}`,
+    title:             (fields.title as string) || `Case ${id}`,
     difficulty,
     requiresAuth,
     timeoutMs,
@@ -74,7 +77,7 @@ export function exampleToEvalCase(example: Example): EvalCase {
   };
 }
 
-function applyFilter(cases: EvalCase[]): EvalCase[] {
+export function applyFilter(cases: EvalCase[]): EvalCase[] {
   const ids = process.env.EVAL_IDS;
   if (ids) {
     const idSet = new Set(ids.split(',').map((s) => s.trim()));

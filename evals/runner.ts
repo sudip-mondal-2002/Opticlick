@@ -34,7 +34,7 @@ import { runEvalCase } from './harness.js';
 import { compressVideo, extractFrames, cleanupFrames } from './recorder.js';
 import { judgeRun } from './judge.js';
 import { collectMetrics } from './metrics.js';
-import { loadFilteredExamples, getClient, getDatasetId } from './langsmith.js';
+import { loadFilteredExamples, getClient, getDatasetId, exampleToEvalCase } from './langsmith.js';
 
 /**
  * expectedOutput lives in example.outputs (Reference Outputs column), not inputs.
@@ -71,13 +71,6 @@ function buildEvalCase(inputs: Record<string, unknown>): EvalCase {
 const RESULTS_DIR = path.resolve(process.cwd(), 'evals/results');
 const SUMMARY_PATH = path.join(RESULTS_DIR, 'summary.json');
 
-/** Seconds to wait between cases — avoids hitting Gemini rate limits. */
-const BETWEEN_CASE_DELAY_MS = 5_000;
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 function banner(msg: string): void {
   console.log(`\n${'─'.repeat(60)}\n  ${msg}\n${'─'.repeat(60)}`);
 }
@@ -94,18 +87,9 @@ function withTimeout<T>(promise: Promise<T>, ms: number, timeoutMsg: string): Pr
 // Called by evaluate() for each dataset example. Returns outputs that evaluators
 // will score. evaluate() automatically creates a traced run in LangSmith.
 
-let caseIndex = 0; // used to add inter-case delay without changing evaluate() API
-
 async function runAgent(
   inputs: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
-  // Add delay between cases to avoid Gemini rate limits (skip first)
-  if (caseIndex > 0) {
-    console.log(`\n  Waiting ${BETWEEN_CASE_DELAY_MS / 1000}s before next case…`);
-    await sleep(BETWEEN_CASE_DELAY_MS);
-  }
-  caseIndex++;
-
   const evalCase = buildEvalCase(inputs);
 
   console.log(`\n[${evalCase.id}] ▶  ${evalCase.title}  (${evalCase.difficulty})`);
@@ -227,14 +211,28 @@ async function main(): Promise<void> {
     process.exit(1);
   }
   const experimentPrefix = process.env.EVAL_EXPERIMENT_NAME || 'opticlick-eval';
+  const maxConcurrency = Number(process.env.EVAL_MAX_CONCURRENCY ?? '3');
+  if (!Number.isInteger(maxConcurrency) || maxConcurrency < 1 || maxConcurrency > 6) {
+    console.error('❌ EVAL_MAX_CONCURRENCY must be an integer between 1 and 6');
+    process.exit(1);
+  }
   const datasetId = getDatasetId();
   const datasetName = process.env.LANGSMITH_DATASET_NAME || 'Opticlick Eval Test Cases';
 
   // Populate the expectedOutput lookup Map before evaluate() runs.
   // example.outputs = Reference Outputs column; example.inputs = Inputs column.
   for (const ex of examples) {
+    const evalCase = exampleToEvalCase(ex);
     if (ex.inputs) {
-      ex.inputs.langsmithExampleId = ex.id; // inject so runAgent has access to it
+      // evaluate() passes only inputs to the target. Copy normalized metadata
+      // into inputs so filtering, IDs, timeouts, and reporting stay consistent.
+      Object.assign(ex.inputs, {
+        langsmithExampleId: ex.id,
+        case_number: evalCase.id,
+        difficulty: evalCase.difficulty,
+        requires_auth: evalCase.requiresAuth,
+        timeout_ms: evalCase.timeoutMs,
+      });
     }
     const inp = (ex.inputs ?? {}) as Record<string, unknown>;
     const out = (ex.outputs ?? {}) as Record<string, unknown>;
@@ -258,7 +256,7 @@ async function main(): Promise<void> {
     data: examples,          // filtered Example[] — ties runs to the dataset
     evaluators,
     experimentPrefix,        // experiment name shown in LangSmith UI
-    maxConcurrency: 1,       // sequential — avoids Gemini rate limits
+    maxConcurrency,
     description: `Opticlick browser-agent evaluation (${examples.length} cases, ${process.env.EVAL_AUTH_FILTER ?? 'non-auth'} auth filter, ${process.env.EVAL_DIFFICULTY ?? 'all'} difficulty)`,
     metadata: {
       dataset_id: datasetId,

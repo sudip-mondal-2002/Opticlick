@@ -31,6 +31,14 @@ on:
         description: 'Experiment name prefix shown in LangSmith (auto-suffixed with timestamp)'
         required: false
         default: 'opticlick-eval'
+      max_concurrency:
+        description: 'Parallel browser cases (1-6)'
+        required: false
+        default: '3'
+      case_timeout_seconds:
+        description: 'Per-case hard timeout in seconds'
+        required: false
+        default: '480'
 
 jobs:
   eval:
@@ -80,6 +88,8 @@ jobs:
           EVAL_AUTH_FILTER: ${{ inputs.auth_filter }}
           EVAL_DIFFICULTY: ${{ inputs.difficulty }}
           EVAL_THRESHOLD: ${{ inputs.threshold }}
+          EVAL_MAX_CONCURRENCY: ${{ inputs.max_concurrency }}
+          EVAL_CASE_TIMEOUT_MS: ${{ fromJSON(inputs.case_timeout_seconds) * 1000 }}
           # Isolated test-account state for auth runs; no UI login is attempted.
           STORAGE_STATE_BASE64: ${{ secrets.STORAGE_STATE_BASE64 }}
         # xvfb-run provides a virtual display — required since extensions need headless:false
