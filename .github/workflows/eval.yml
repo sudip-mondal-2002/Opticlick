@@ -50,14 +50,14 @@ on:
       case_timeout_seconds:
         description: 'Per-case hard timeout in seconds'
         required: false
-        default: '300'
+        default: '180'
 
 jobs:
   eval:
     name: Run LangSmith Evals
     runs-on: ubuntu-latest
     # Hard cap — prevents a hung test from blocking the runner indefinitely
-    timeout-minutes: 120
+    timeout-minutes: 180
 
     steps:
       - name: Checkout
