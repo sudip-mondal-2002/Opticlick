@@ -27,13 +27,17 @@ const EXPECTED_STEPS: Record<EvalCase['difficulty'], number> = {
   hard: 20,
 };
 
-/** Gemma 4 judge model — temperature 0 for deterministic scoring. */
+/**
+ * Use a separate quota bucket from the agent model. Judging immediately with
+ * Gemma 4 caused deterministic 429s because the agent had just consumed the
+ * model's free-tier input-token allowance.
+ */
 function getJudgeModel(): ChatGoogleGenerativeAI {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error('GEMINI_API_KEY is not set');
 
   return new ChatGoogleGenerativeAI({
-    model: 'gemma-4-31b-it',
+    model: process.env.EVAL_JUDGE_MODEL ?? 'gemini-3.1-flash-lite-preview',
     apiKey,
     temperature: 0,
     maxRetries: 2,

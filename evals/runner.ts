@@ -114,7 +114,9 @@ async function runAgent(
     ? runResult.compressedVideoPath
     : runResult.rawVideoPath;
 
-  const frames = await extractFrames(videoForJudge, evalCase.id, 15);
+  // Six evenly-spaced frames are enough to establish navigation evidence and
+  // keep multimodal judge requests comfortably below provider quota limits.
+  const frames = await extractFrames(videoForJudge, evalCase.id, 6);
   console.log(`     Extracted ${frames.length} frames for judge`);
 
   // ── Step 4: Judge with Gemma 4 ────────────────────────────────────────────

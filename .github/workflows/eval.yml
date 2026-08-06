@@ -92,6 +92,7 @@ jobs:
           EVAL_THRESHOLD: ${{ inputs.threshold }}
           EVAL_MAX_CONCURRENCY: ${{ inputs.max_concurrency }}
           EVAL_CASE_TIMEOUT_SECONDS: ${{ inputs.case_timeout_seconds }}
+          EVAL_JUDGE_MODEL: gemini-3.1-flash-lite-preview
           # Isolated test-account state for auth runs; no UI login is attempted.
           STORAGE_STATE_BASE64: ${{ secrets.STORAGE_STATE_BASE64 }}
         # xvfb-run provides a virtual display — required since extensions need headless:false
