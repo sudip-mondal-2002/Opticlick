@@ -14,7 +14,7 @@
  *  8. mainPage.video().path() → close pages → context.close()
  */
 
-import { chromium, type BrowserContext, type Page } from '@playwright/test';
+import { chromium, type BrowserContext, type Page, type Video } from '@playwright/test';
 import * as path from 'node:path';
 import * as os from 'node:os';
 import * as fs from 'node:fs';
@@ -39,13 +39,6 @@ class EvalTimeoutError extends Error {
 
 function sleep(ms: number) {
   return new Promise<void>((r) => setTimeout(r, ms));
-}
-
-/** Close the page first so Playwright can finalize its video without deadlocking. */
-async function closePageAndGetVideo(page: Page): Promise<string> {
-  const video = page.video();
-  await page.close().catch(() => {});
-  return (await video?.path().catch(() => undefined)) ?? '';
 }
 
 export async function launchWithExtension() {
@@ -171,6 +164,7 @@ export async function runEvalCase(evalCase: EvalCase): Promise<RunResult> {
   let rawVideoPath = '';
   let agentOutput = '';
   let mainPage: Page | null = null;
+  let mainVideo: Video | null = null;
 
   try {
     await seedApiKey(context);
@@ -213,7 +207,8 @@ export async function runEvalCase(evalCase: EvalCase): Promise<RunResult> {
     }).catch(() => '');
 
     // Flush video: get path before closing
-    rawVideoPath = await closePageAndGetVideo(mainPage);
+    mainVideo = mainPage.video();
+    await mainPage.close();
     mainPage = null;
 
   } catch (err) {
@@ -226,13 +221,18 @@ export async function runEvalCase(evalCase: EvalCase): Promise<RunResult> {
       console.error(`[${evalCase.id}] Harness error:`, (err as Error).message);
     }
     if (mainPage) {
-      rawVideoPath = await closePageAndGetVideo(mainPage);
+      mainVideo = mainPage.video();
+      await mainPage.close().catch(() => {});
       mainPage = null;
     }
   } finally {
     await context.close().catch(() => {});
     fs.rmSync(userDataDir, { recursive: true, force: true });
   }
+
+  // Persistent-context videos are finalized only after the context closes.
+  // Resolving path() earlier can add several minutes to every case.
+  rawVideoPath = (await mainVideo?.path().catch(() => undefined)) ?? '';
 
   const durationSeconds = (Date.now() - startTime) / 1000;
 
