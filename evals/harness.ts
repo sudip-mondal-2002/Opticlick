@@ -99,7 +99,7 @@ async function seedApiKey(context: BrowserContext) {
       name: 'Cerebras',
       baseUrl: process.env.CEREBRAS_BASE_URL ?? 'https://api.cerebras.ai/v1',
       apiKey,
-      modelName: process.env.EVAL_AGENT_MODEL_NAME ?? 'gpt-oss-120b',
+      modelName: process.env.EVAL_AGENT_MODEL_NAME ?? 'gemma-4-31b',
     };
     await sw.evaluate(
       ({ selectedModel, config }) => chrome.storage.local.set({
