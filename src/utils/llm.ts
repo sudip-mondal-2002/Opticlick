@@ -130,7 +130,7 @@ export function createOpenAIModel(apiKey: string, modelId: string): ChatOpenAI {
 export function createCustomOpenAIModel(config: CustomOpenAIConfig): ChatOpenAI {
   return new ChatOpenAI({
     model: config.modelName,
-    openAIApiKey: config.apiKey || 'not-needed',
+    apiKey: config.apiKey || 'not-needed',
     temperature: 0.1,
     maxRetries: 0,
     configuration: { baseURL: config.baseUrl },
