@@ -152,6 +152,43 @@ async function waitForAgentDone(
   return Promise.race([poll(), timeout]);
 }
 
+async function startAgent(sidePanelPage: Page, prompt: string): Promise<void> {
+  const response = await sidePanelPage.evaluate(async ({ taskPrompt }) => {
+    const tabs = await chrome.tabs.query({ currentWindow: true });
+    const target = tabs.find((tab) => tab.active && /^https?:/.test(tab.url ?? ''))
+      ?? tabs.find((tab) => /^https?:/.test(tab.url ?? ''));
+    if (target?.id == null) throw new Error('No injectable HTTP(S) target tab found');
+
+    return chrome.runtime.sendMessage({
+      type: 'START_AGENT',
+      tabId: target.id,
+      prompt: taskPrompt,
+      modelId: 'gemma-4-31b-it',
+    }) as Promise<{ started?: boolean; reason?: string } | undefined>;
+  }, { taskPrompt: prompt });
+
+  if (!response?.started) {
+    throw new Error(`Agent start was rejected${response?.reason ? `: ${response.reason}` : ''}`);
+  }
+
+  await sidePanelPage.waitForFunction(async () => {
+    const { agentState } = (await chrome.storage.session.get('agentState')) as {
+      agentState?: { status?: string };
+    };
+    return agentState?.status === 'running' || agentState?.status === 'done' || agentState?.status === 'error';
+  }, undefined, { timeout: 15_000 });
+}
+
+async function stopAgent(sidePanelPage: Page): Promise<void> {
+  await sidePanelPage.evaluate(() => chrome.runtime.sendMessage({ type: 'STOP_AGENT' })).catch(() => {});
+  await sidePanelPage.waitForFunction(async () => {
+    const { agentState } = (await chrome.storage.session.get('agentState')) as {
+      agentState?: { status?: string };
+    };
+    return agentState?.status !== 'running';
+  }, undefined, { timeout: 10_000 }).catch(() => {});
+}
+
 /** Run one eval case end-to-end. */
 export async function runEvalCase(evalCase: EvalCase): Promise<RunResult> {
   const { context, userDataDir } = await launchWithExtension();
@@ -165,6 +202,7 @@ export async function runEvalCase(evalCase: EvalCase): Promise<RunResult> {
   let agentOutput = '';
   let mainPage: Page | null = null;
   let mainVideo: Video | null = null;
+  let sidePanelPage: Page | null = null;
 
   try {
     await seedApiKey(context);
@@ -175,16 +213,17 @@ export async function runEvalCase(evalCase: EvalCase): Promise<RunResult> {
     await mainPage.goto('https://example.com', { waitUntil: 'domcontentloaded' });
 
     // Side panel as a second tab (direct URL — no user-gesture required)
-    const sidePanelPage = await openSidePanelPage(context);
+    sidePanelPage = await openSidePanelPage(context);
 
     // CRITICAL: make google.com the "active" tab.
     // When the sidebar's handleRun() calls chrome.tabs.query({ active: true, currentWindow: true })
     // it must find google.com — not the side panel tab — as the target for the agent.
     await mainPage.bringToFront();
 
-    // Playwright operates on the target page regardless of which tab Chrome considers active
-    await sidePanelPage.fill(SELECTORS.textarea, evalCase.prompt);
-    await sidePanelPage.click(SELECTORS.runButton);
+    // Start through the extension message API and require an acknowledgement. Clicking
+    // the background side-panel tab introduced a focus race and could leave the harness
+    // polling forever even though START_AGENT was never accepted.
+    await startAgent(sidePanelPage, evalCase.prompt);
 
     const result = await waitForAgentDone(sidePanelPage, evalCase.id, evalCase.timeoutMs);
     finishReason = result.status as RunResult['finishReason'];
@@ -215,6 +254,7 @@ export async function runEvalCase(evalCase: EvalCase): Promise<RunResult> {
     if (err instanceof EvalTimeoutError) {
       timedOut = true;
       finishReason = 'timeout';
+      if (sidePanelPage) await stopAgent(sidePanelPage);
     } else {
       errorOccurred = true;
       finishReason = 'error';

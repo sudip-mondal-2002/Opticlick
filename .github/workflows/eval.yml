@@ -31,6 +31,10 @@ on:
         description: 'Experiment name prefix shown in LangSmith (auto-suffixed with timestamp)'
         required: false
         default: 'opticlick-eval'
+      eval_ids:
+        description: 'Optional comma-separated case IDs (use for smoke validation)'
+        required: false
+        default: ''
       max_concurrency:
         description: 'Parallel browser cases (1-6)'
         required: false
@@ -81,6 +85,7 @@ jobs:
           LANGSMITH_DATASET_NAME: ${{ inputs.dataset_name }}
           LANGSMITH_DATASET_ID: ${{ inputs.dataset_id }}
           EVAL_EXPERIMENT_NAME: ${{ inputs.experiment_name }}
+          EVAL_IDS: ${{ inputs.eval_ids }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           EVAL_AUTH_FILTER: ${{ inputs.auth_filter }}
           EVAL_DIFFICULTY: ${{ inputs.difficulty }}
