@@ -128,13 +128,15 @@ export function createOpenAIModel(apiKey: string, modelId: string): ChatOpenAI {
 }
 
 export function createCustomOpenAIModel(config: CustomOpenAIConfig): ChatOpenAI {
-  return new ChatOpenAI({
+  const model = new ChatOpenAI({
     model: config.modelName,
     apiKey: config.apiKey || 'not-needed',
     temperature: 0.1,
     maxRetries: 0,
     configuration: { baseURL: config.baseUrl },
   });
+  Object.assign(model, { supportsVision: !config.baseUrl.includes('api.cerebras.ai') });
+  return model;
 }
 
 /** Unified factory — returns the appropriate LangChain model based on the model ID. */
@@ -181,11 +183,12 @@ export async function callModel(
 ): Promise<LLMResult> {
   // Only Gemini uses native image format; all others use OpenAI-compatible image_url format
   const useImageUrlFormat = !(model instanceof ChatGoogleGenerativeAI);
+  const includeScreenshot = (model as AnyModel & { supportsVision?: boolean }).supportsVision !== false;
   const systemContent = await buildSystemMessage();
   const messages: BaseMessage[] = [
     new SystemMessage(systemContent),
     ...buildHistory(history),
-    buildUserMessage(userPrompt, vfsFiles, currentTodo, inlineImages, base64Image, memoryEntries, scratchpadEntries, useImageUrlFormat, coordinateMap),
+    buildUserMessage(userPrompt, vfsFiles, currentTodo, inlineImages, base64Image, memoryEntries, scratchpadEntries, useImageUrlFormat, coordinateMap, includeScreenshot),
   ];
   const modelWithTools = model.bindTools([...AGENT_TOOLS]);
   const { reasoning, thinking, actions, rawToolCalls } = await streamWithRetry(modelWithTools, messages, logFn, config, onThinkingDelta);

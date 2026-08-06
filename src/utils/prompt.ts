@@ -99,6 +99,7 @@ export function buildUserMessage(
   scratchpadEntries: ScratchpadEntry[] = [],
   useImageUrlFormat = false,
   coordinateMap: CoordinateEntry[] = [],
+  includeScreenshot = true,
 ): HumanMessage {
   const { taskPrompt, contextUrl } = extractContextFromPrompt(userPrompt);
 
@@ -151,9 +152,11 @@ export function buildUserMessage(
 
   content.push({
     type: 'text',
-    text: `\n\nAnalyze the annotated screenshot and call the appropriate tools.${annotatedElementsBlock(coordinateMap)}`,
+    text: includeScreenshot
+      ? `\n\nAnalyze the annotated screenshot and call the appropriate tools.${annotatedElementsBlock(coordinateMap)}`
+      : `\n\nUse the annotated page-element list and call the appropriate tools.${annotatedElementsBlock(coordinateMap)}`,
   });
-  content.push(imageBlock(`data:image/png;base64,${base64Image}`));
+  if (includeScreenshot) content.push(imageBlock(`data:image/png;base64,${base64Image}`));
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return new HumanMessage({ content: content as any });
