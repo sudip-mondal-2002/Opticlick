@@ -189,6 +189,21 @@ async function stopAgent(sidePanelPage: Page): Promise<void> {
   }, undefined, { timeout: 10_000 }).catch(() => {});
 }
 
+async function readAgentSnapshot(sidePanelPage: Page): Promise<{ numSteps: number; output: string }> {
+  return sidePanelPage.evaluate(async () => {
+    const { agentState, agentLog } = (await chrome.storage.session.get(['agentState', 'agentLog'])) as {
+      agentState?: { step?: number };
+      agentLog?: Array<{ message: string; level: string }>;
+    };
+    return {
+      numSteps: agentState?.step ?? 0,
+      output: Array.isArray(agentLog)
+        ? agentLog.slice(-40).map((entry) => `[${entry.level}] ${entry.message}`).join('\n')
+        : '',
+    };
+  }).catch(() => ({ numSteps: 0, output: '' }));
+}
+
 /** Run one eval case end-to-end. */
 export async function runEvalCase(evalCase: EvalCase): Promise<RunResult> {
   const { context, userDataDir } = await launchWithExtension();
@@ -233,17 +248,7 @@ export async function runEvalCase(evalCase: EvalCase): Promise<RunResult> {
     // Read the agent's log from session storage — this is the agent's actual text output
     // (reasoning steps, final answer) that the judge needs to evaluate output_correctness.
     // The main tab video only shows navigation; the sidebar text shows what the agent found.
-    agentOutput = await sidePanelPage.evaluate(async () => {
-      const { agentLog } = (await chrome.storage.session.get('agentLog')) as {
-        agentLog?: Array<{ message: string; level: string }>;
-      };
-      if (!Array.isArray(agentLog)) return '';
-      // Take the last 40 entries to capture the final answer without exceeding token limits
-      return agentLog
-        .slice(-40)
-        .map((e) => `[${e.level}] ${e.message}`)
-        .join('\n');
-    }).catch(() => '');
+    agentOutput = (await readAgentSnapshot(sidePanelPage)).output;
 
     // Flush video: get path before closing
     mainVideo = mainPage.video();
@@ -254,7 +259,12 @@ export async function runEvalCase(evalCase: EvalCase): Promise<RunResult> {
     if (err instanceof EvalTimeoutError) {
       timedOut = true;
       finishReason = 'timeout';
-      if (sidePanelPage) await stopAgent(sidePanelPage);
+      if (sidePanelPage) {
+        const snapshot = await readAgentSnapshot(sidePanelPage);
+        numSteps = snapshot.numSteps;
+        agentOutput = snapshot.output;
+        await stopAgent(sidePanelPage);
+      }
     } else {
       errorOccurred = true;
       finishReason = 'error';
