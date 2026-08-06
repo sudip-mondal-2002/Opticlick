@@ -7,11 +7,23 @@
  *  - Getting video duration via ffprobe
  */
 
-import { spawnSync } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 
 const FRAMES_DIR = path.resolve(process.cwd(), 'evals/results/frames');
+
+function execFileAsync(command: string, args: string[]): Promise<{ stdout: string; stderr: string }> {
+  return new Promise((resolve, reject) => {
+    execFile(command, args, { maxBuffer: 20 * 1024 * 1024 }, (error, stdout, stderr) => {
+      if (error) {
+        reject(new Error(`${command} failed: ${stderr || error.message}`));
+        return;
+      }
+      resolve({ stdout, stderr });
+    });
+  });
+}
 
 /**
  * Compress a WebM video to a smaller MP4.
@@ -20,14 +32,12 @@ const FRAMES_DIR = path.resolve(process.cwd(), 'evals/results/frames');
  * - CRF 28 (good compression, acceptable quality for vision LLM)
  * - No audio
  */
-export function compressVideo(inputPath: string, outputPath: string): void {
+export async function compressVideo(inputPath: string, outputPath: string): Promise<void> {
   if (!fs.existsSync(inputPath)) {
     throw new Error(`Video not found: ${inputPath}`);
   }
 
-  const result = spawnSync(
-    'ffmpeg',
-    [
+  await execFileAsync('ffmpeg', [
       '-y',                   // overwrite output if exists
       '-i', inputPath,
       '-vf', 'scale=1280:720',
@@ -37,36 +47,24 @@ export function compressVideo(inputPath: string, outputPath: string): void {
       '-preset', 'fast',
       '-an',                  // no audio
       outputPath,
-    ],
-    { stdio: 'pipe' },
-  );
-
-  if (result.status !== 0) {
-    const stderr = result.stderr?.toString() ?? '';
-    throw new Error(`ffmpeg compression failed:\n${stderr}`);
-  }
+    ]);
 }
 
 /**
  * Get video duration in seconds using ffprobe.
  * Returns 0 if ffprobe fails (non-fatal).
  */
-export function getVideoDuration(videoPath: string): number {
+export async function getVideoDuration(videoPath: string): Promise<number> {
   if (!fs.existsSync(videoPath)) return 0;
 
-  const result = spawnSync(
-    'ffprobe',
-    [
+  try {
+    const { stdout } = await execFileAsync('ffprobe', [
       '-v', 'quiet',
       '-print_format', 'json',
       '-show_streams',
       videoPath,
-    ],
-    { stdio: 'pipe' },
-  );
-
-  try {
-    const json = JSON.parse(result.stdout?.toString() ?? '{}');
+    ]);
+    const json = JSON.parse(stdout || '{}');
     const duration = parseFloat(json.streams?.[0]?.duration ?? '0');
     return isNaN(duration) ? 0 : duration;
   } catch {
@@ -80,33 +78,34 @@ export function getVideoDuration(videoPath: string): number {
  *
  * Returns array of base64 strings (no data-URL prefix).
  */
-export function extractFrames(
+export async function extractFrames(
   videoPath: string,
   caseId: string,
   maxFrames = 15,
-): string[] {
+): Promise<string[]> {
   if (!fs.existsSync(videoPath)) return [];
 
   const caseFramesDir = path.join(FRAMES_DIR, caseId);
   fs.mkdirSync(caseFramesDir, { recursive: true });
 
   // Get total frame count first
-  const countResult = spawnSync(
-    'ffprobe',
-    [
+  let countStdout = '';
+  try {
+    ({ stdout: countStdout } = await execFileAsync('ffprobe', [
       '-v', 'quiet',
       '-select_streams', 'v:0',
       '-count_frames',
       '-show_entries', 'stream=nb_read_frames',
       '-print_format', 'json',
       videoPath,
-    ],
-    { stdio: 'pipe' },
-  );
+    ]));
+  } catch {
+    // use fallback frame count
+  }
 
   let totalFrames = 60; // fallback
   try {
-    const json = JSON.parse(countResult.stdout?.toString() ?? '{}');
+    const json = JSON.parse(countStdout || '{}');
     const nb = parseInt(json.streams?.[0]?.nb_read_frames ?? '0', 10);
     if (nb > 0) totalFrames = nb;
   } catch {
@@ -118,20 +117,16 @@ export function extractFrames(
 
   // Extract frames using select filter
   const outputPattern = path.join(caseFramesDir, 'frame_%04d.png');
-  const extractResult = spawnSync(
-    'ffmpeg',
-    [
+  try {
+    await execFileAsync('ffmpeg', [
       '-y',
       '-i', videoPath,
       '-vf', `select=not(mod(n\\,${frameStep}))`,
       '-vsync', '0',
       '-q:v', '2',
       outputPattern,
-    ],
-    { stdio: 'pipe' },
-  );
-
-  if (extractResult.status !== 0) {
+    ]);
+  } catch {
     console.warn(`[recorder] Frame extraction failed for ${caseId}`);
     return [];
   }

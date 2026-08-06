@@ -23,10 +23,10 @@ export interface ProgrammaticMetrics {
   error_occurred: boolean;
 }
 
-export function collectMetrics(runResult: RunResult): ProgrammaticMetrics {
+export async function collectMetrics(runResult: RunResult): Promise<ProgrammaticMetrics> {
   const video_duration_seconds = runResult.compressedVideoPath
-    ? getVideoDuration(runResult.compressedVideoPath)
-    : getVideoDuration(runResult.rawVideoPath);
+    ? await getVideoDuration(runResult.compressedVideoPath)
+    : await getVideoDuration(runResult.rawVideoPath);
 
   return {
     time_to_completion_seconds: runResult.durationSeconds,

@@ -102,7 +102,7 @@ async function runAgent(
   // ── Step 2: Compress video ────────────────────────────────────────────────
   if (fs.existsSync(runResult.rawVideoPath)) {
     try {
-      compressVideo(runResult.rawVideoPath, runResult.compressedVideoPath);
+      await compressVideo(runResult.rawVideoPath, runResult.compressedVideoPath);
       console.log(`     Video compressed → ${path.basename(runResult.compressedVideoPath)}`);
     } catch (e) {
       console.warn(`     ⚠ Video compression failed: ${(e as Error).message}`);
@@ -114,7 +114,7 @@ async function runAgent(
     ? runResult.compressedVideoPath
     : runResult.rawVideoPath;
 
-  const frames = extractFrames(videoForJudge, evalCase.id, 15);
+  const frames = await extractFrames(videoForJudge, evalCase.id, 15);
   console.log(`     Extracted ${frames.length} frames for judge`);
 
   // ── Step 4: Judge with Gemma 4 ────────────────────────────────────────────
@@ -161,7 +161,7 @@ async function runAgent(
     ...judgeResult,
     passed,
     // Include programmatic metrics in outputs for LangSmith trace
-    ...collectMetrics(runResult),
+    ...await collectMetrics(runResult),
   };
 }
 
