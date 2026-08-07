@@ -11,7 +11,7 @@ import { ChatAnthropic } from '@langchain/anthropic';
 import { ChatOpenAI } from '@langchain/openai';
 import { SystemMessage, type BaseMessage } from '@langchain/core/messages';
 import type { RunnableConfig } from '@langchain/core/runnables';
-import { AGENT_TOOLS, TEXT_AGENT_TOOLS } from './tools';
+import { AGENT_TOOLS, TEXT_AGENT_TOOLS, TEXT_FINISH_TOOLS } from './tools';
 import type { AgentAction, TodoItem, CoordinateEntry, RawToolCall } from './types';
 import type { VFSFile, MemoryEntry, ConversationTurn } from './db';
 import type { ScratchpadEntry } from './scratchpad';
@@ -182,6 +182,7 @@ export async function callModel(
   config?: RunnableConfig,
   onThinkingDelta?: (delta: string) => void,
   pageText = '',
+  forceFinish = false,
 ): Promise<LLMResult> {
   // Only Gemini uses native image format; all others use OpenAI-compatible image_url format
   const useImageUrlFormat = !(model instanceof ChatGoogleGenerativeAI);
@@ -189,13 +190,18 @@ export async function callModel(
   const systemContent = includeScreenshot
     ? await buildSystemMessage()
     : COMPACT_TEXT_AGENT_INSTRUCTIONS;
-  const boundedHistory = includeScreenshot ? history : history.slice(-4);
+  const boundedHistory = includeScreenshot ? history : history.slice(-2);
   const messages: BaseMessage[] = [
     new SystemMessage(systemContent),
     ...buildHistory(boundedHistory),
     buildUserMessage(userPrompt, vfsFiles, currentTodo, inlineImages, base64Image, memoryEntries, scratchpadEntries, useImageUrlFormat, coordinateMap, includeScreenshot, pageText),
   ];
-  const modelWithTools = model.bindTools(includeScreenshot ? [...AGENT_TOOLS] : [...TEXT_AGENT_TOOLS]);
+  const tools = includeScreenshot
+    ? [...AGENT_TOOLS]
+    : forceFinish
+      ? [...TEXT_FINISH_TOOLS]
+      : [...TEXT_AGENT_TOOLS];
+  const modelWithTools = model.bindTools(tools);
   const { reasoning, thinking, actions, rawToolCalls } = await streamWithRetry(modelWithTools, messages, logFn, config, onThinkingDelta);
   return { reasoning, thinking, actions, done: actions.some((a: AgentAction) => a.type === 'finish'), rawToolCalls };
 }

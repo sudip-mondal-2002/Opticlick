@@ -69,10 +69,13 @@ export async function reasonNode(state: AgentState, config: RunnableConfig): Pro
   await log('Sending to LLM…', 'observe');
 
   // Adjust prompt when there are no interactable elements
-  const prompt =
+  let prompt =
     state.coordinateMap.length === 0
       ? `${state.anchoredPrompt}\n\n[SYSTEM NOTE: No interactable elements detected. Decide whether to navigate, scroll, press a key, or call finish if the goal is already achieved. Do NOT call click — there are no annotated elements.]`
       : state.anchoredPrompt;
+  if (state.navigationBlocked) {
+    prompt += '\n\n[SYSTEM NOTE: A navigation loop was blocked. Do not interact further. Call finish now with the facts collected from the current page and prior context.]';
+  }
 
   // Broadcast thinking deltas to the sidebar for live streaming
   const onThinkingDelta = (delta: string) => {
@@ -96,6 +99,7 @@ export async function reasonNode(state: AgentState, config: RunnableConfig): Pro
       config,
       onThinkingDelta,
       state.pageText,
+      state.navigationBlocked,
     );
   } catch (err) {
     await log(`LLM call failed: ${(err as Error).message}. Will retry step.`, 'error');

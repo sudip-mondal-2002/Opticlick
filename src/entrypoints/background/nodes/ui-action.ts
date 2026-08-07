@@ -55,7 +55,7 @@ export async function uiActionNode(
         toolCallId: rawToolCalls[uiActionIdx]?.id ?? '',
         toolName: rawToolCalls[uiActionIdx]?.name ?? uiAction.type,
       });
-      return { tabId };
+      return { tabId, navigationBlocked: true };
     }
   }
   const handler = uiActionRegistry.get(uiAction.type);

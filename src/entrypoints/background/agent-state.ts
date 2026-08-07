@@ -49,6 +49,7 @@ export const AgentStateAnnotation = Annotation.Root({
   coordinateMap: Annotation<CoordinateEntry[]>({ reducer: (_, b) => b }),
   pageText: Annotation<string>({ reducer: (_, b) => b }),
   visitedUrls: Annotation<string[]>({ reducer: (_, b) => b }),
+  navigationBlocked: Annotation<boolean>({ reducer: (_, b) => b }),
   base64Image: Annotation<string>({ reducer: (_, b) => b }),
   inlineImages: Annotation<InlineImage[]>({ reducer: (_, b) => b }),
 
