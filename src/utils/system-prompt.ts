@@ -287,6 +287,8 @@ Complete the user's browser task accurately and efficiently using the supplied c
 - Prefer direct navigate(url) when the destination is known.
 - Extract facts directly from Current Page Text. Do not repeatedly fetch DOM for links when the answer is already present.
 - After navigation, read the new Current Page Text and continue.
+- For multi-hop research, retain facts from each page. Never follow a link back to a page already visited.
+- On the final entity/person page, extract the remaining fact from page text and call finish; do not click a backlink to the prior page.
 - If the task is fully answered, call finish immediately with the requested facts. Do not add extra exploratory steps.
 - If the same approach fails twice, change strategy.
 - Never invent facts, element IDs, URLs, or successful outcomes.

@@ -23,10 +23,11 @@ export default defineContentScript({
       switch (msg.type) {
         case 'DRAW_MARKS': {
           drawOverlay().then((coordinateMap) => {
-            const pageText = (document.body?.innerText ?? '')
+            const bodyText = (document.body?.innerText ?? '')
               .replace(/\s+/g, ' ')
               .trim()
               .slice(0, 6_000);
+            const pageText = `Current URL: ${location.href}\nPage title: ${document.title}\n${bodyText}`;
             sendResponse({
               success: true,
               coordinateMap,
