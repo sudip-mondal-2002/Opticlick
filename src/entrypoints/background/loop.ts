@@ -34,7 +34,8 @@ import {
   retryTabUpdate,
 } from '@/utils/tab-helpers';
 import { attachDebugger, detachDebugger } from '@/utils/cdp';
-import { getLangSmithTracer } from '@/utils/langsmith-config';
+import { getLangSmithParentRunId, getLangSmithTracer } from '@/utils/langsmith-config';
+import { CallbackManager } from '@langchain/core/callbacks/manager';
 import type { AttachedFile } from '@/utils/types';
 import { buildAgentGraph } from './agent-graph';
 import type { AgentState } from './agent-graph';
@@ -213,11 +214,17 @@ export async function runAgentLoop(
     };
 
     const tracer = getLangSmithTracer();
+    const callbacks = tracer
+      ? new CallbackManager(getLangSmithParentRunId(), {
+          handlers: [tracer],
+          inheritableHandlers: [tracer],
+        })
+      : undefined;
     const runConfig = {
       // LangGraph counts each node execution toward the recursion limit.
       // MAX_STEPS=500 steps × ~8 nodes per step = 4000 minimum.
       recursionLimit: 5000,
-      ...(tracer ? { callbacks: [tracer] } : {}),
+      ...(callbacks ? { callbacks } : {}),
     };
 
     try {

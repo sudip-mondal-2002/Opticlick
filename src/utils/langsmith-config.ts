@@ -11,6 +11,7 @@ import { RunTree } from 'langsmith/run_trees';
 
 let _tracer: LangChainTracer | null = null;
 let _client: Client | null = null;
+let _parentRunId: string | undefined;
 
 export function initializeLangSmith(): void {
   const globalObj = typeof globalThis !== 'undefined' ? globalThis : (typeof window !== 'undefined' ? window : {});
@@ -42,9 +43,11 @@ export function initializeLangSmith(): void {
     try {
       const parent = RunTree.fromHeaders(JSON.parse(parentHeadersRaw) as Record<string, string>, {
         client,
-        project_name: project,
       });
-      if (parent) _tracer.updateFromRunTree(parent);
+      if (parent) {
+        _parentRunId = parent.id;
+        _tracer.updateFromRunTree(parent);
+      }
     } catch (error) {
       console.warn('[LangSmith] Invalid distributed parent headers:', error);
     }
@@ -55,6 +58,10 @@ export function initializeLangSmith(): void {
 /** Returns the active LangChainTracer, or null if tracing is disabled. */
 export function getLangSmithTracer(): LangChainTracer | null {
   return _tracer;
+}
+
+export function getLangSmithParentRunId(): string | undefined {
+  return _parentRunId;
 }
 
 // The Playwright eval harness injects ephemeral LangSmith credentials after

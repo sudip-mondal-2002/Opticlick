@@ -116,14 +116,11 @@ export async function streamWithRetry(
   for (let attempt = 1; attempt <= MAX_API_RETRIES; attempt++) {
     try {
       const tracer = getLangSmithTracer();
-      // When config comes from a LangGraph node, strip its callbacks to prevent
-      // fragmented thinking traces in LangSmith. The node itself is still traced
-      // at the graph level with the consolidated thinking in its output.
-      // For standalone calls (no config), use the tracer directly.
+      // Preserve LangGraph callbacks so each model call remains nested under
+      // its reasoning node and the distributed dataset trace.
       let streamConfig: RunnableConfig;
       if (config) {
-        const { callbacks: _stripped, ...rest } = config;
-        streamConfig = rest;
+        streamConfig = config;
       } else {
         streamConfig = tracer ? { callbacks: [tracer] } : {};
       }
