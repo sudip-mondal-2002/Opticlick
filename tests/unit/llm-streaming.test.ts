@@ -8,12 +8,22 @@
 
 import { describe, it, expect, vi, type Mock } from 'vitest';
 import { AIMessageChunk } from '@langchain/core/messages';
-import { thinkingFlushPoint, thinkingDeltaOf } from '@/utils/llm-stream';
+import { thinkingFlushPoint, thinkingDeltaOf, retryAfterMs } from '@/utils/llm-stream';
 import { createModel, callModel } from '@/utils/llm';
 
 vi.mock('@/utils/sleep', () => ({
   sleep: vi.fn().mockResolvedValue(undefined),
 }));
+
+describe('retryAfterMs', () => {
+  it('parses Groq millisecond retry hints', () => {
+    expect(retryAfterMs('Please try again in 224.999999ms.')).toBe(225);
+  });
+
+  it('parses second retry hints', () => {
+    expect(retryAfterMs('retry in 1.5s')).toBe(1500);
+  });
+});
 
 // ── thinkingFlushPoint ────────────────────────────────────────────────────────
 

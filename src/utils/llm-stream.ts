@@ -17,6 +17,15 @@ import { sleep } from './sleep';
 const MAX_API_RETRIES = 5;
 const RATE_LIMIT_DELAY_MS = 10_000;
 
+/** Parse provider retry hints such as "try again in 225ms" or "in 1.5s". */
+export function retryAfterMs(message: string): number | undefined {
+  const match = message.match(/(?:try again|retry)\s+in\s+([\d.]+)\s*(ms|s|seconds?)/i);
+  if (!match) return undefined;
+  const value = Number(match[1]);
+  if (!Number.isFinite(value) || value < 0) return undefined;
+  return match[2].toLowerCase() === 'ms' ? Math.ceil(value) : Math.ceil(value * 1000);
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type BoundModel = any;
 type LogFn = (msg: string, level?: string) => Promise<void>;
@@ -169,7 +178,13 @@ export async function streamWithRetry(
       const isRateLimit = lastError.message.includes('429') || lastError.message.toLowerCase().includes('rate limit');
       if (attempt < MAX_API_RETRIES) {
         if (isRateLimit) {
-          const delay = RATE_LIMIT_DELAY_MS * attempt;
+          // Groq returns precise sub-second retry hints; Cerebras often does
+          // not. Honor the provider hint and retain conservative fallback
+          // backoff when no hint is available.
+          const hintedDelay = retryAfterMs(lastError.message);
+          const delay = hintedDelay === undefined
+            ? RATE_LIMIT_DELAY_MS * attempt
+            : Math.max(300, hintedDelay + 100);
           await logFn(`Rate limited (attempt ${attempt}/${MAX_API_RETRIES}). Waiting ${delay / 1000}s…`, 'warn');
           await sleep(delay);
         } else {
