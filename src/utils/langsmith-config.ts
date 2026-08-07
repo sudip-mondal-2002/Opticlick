@@ -7,8 +7,10 @@
 
 import { LangChainTracer } from '@langchain/core/tracers/tracer_langchain';
 import { Client } from 'langsmith';
+import { RunTree } from 'langsmith/run_trees';
 
 let _tracer: LangChainTracer | null = null;
+let _client: Client | null = null;
 
 export function initializeLangSmith(): void {
   const globalObj = typeof globalThis !== 'undefined' ? globalThis : (typeof window !== 'undefined' ? window : {});
@@ -33,7 +35,20 @@ export function initializeLangSmith(): void {
   }
 
   const client = new Client({ apiKey, apiUrl: endpoint });
+  _client = client;
   _tracer = new LangChainTracer({ projectName: project, client });
+  const parentHeadersRaw = g.__LANGSMITH_PARENT_HEADERS__;
+  if (parentHeadersRaw) {
+    try {
+      const parent = RunTree.fromHeaders(JSON.parse(parentHeadersRaw) as Record<string, string>, {
+        client,
+        project_name: project,
+      });
+      if (parent) _tracer.updateFromRunTree(parent);
+    } catch (error) {
+      console.warn('[LangSmith] Invalid distributed parent headers:', error);
+    }
+  }
   console.log('[LangSmith] Tracer initialized ✓');
 }
 
@@ -47,6 +62,12 @@ export function getLangSmithTracer(): LangChainTracer | null {
 // detailed graph/model/tool traces are enabled without baking secrets into the
 // extension bundle.
 if (typeof globalThis !== 'undefined') {
-  (globalThis as typeof globalThis & { __OPTICLICK_INITIALIZE_LANGSMITH__?: () => void })
-    .__OPTICLICK_INITIALIZE_LANGSMITH__ = initializeLangSmith;
+  const runtime = globalThis as typeof globalThis & {
+    __OPTICLICK_INITIALIZE_LANGSMITH__?: () => void;
+    __OPTICLICK_FLUSH_LANGSMITH__?: () => Promise<void>;
+  };
+  runtime.__OPTICLICK_INITIALIZE_LANGSMITH__ = initializeLangSmith;
+  runtime.__OPTICLICK_FLUSH_LANGSMITH__ = async () => {
+    await _client?.awaitPendingTraceBatches();
+  };
 }

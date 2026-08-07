@@ -27,6 +27,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { evaluate } from 'langsmith/evaluation';
+import { getCurrentRunTree } from 'langsmith/traceable';
 import type { EvaluationResult } from 'langsmith/evaluation';
 import type { Run, Example } from 'langsmith/schemas';
 import type { EvalCase, EvalResult, EvalSummary, JudgeResult } from './types.js';
@@ -96,7 +97,11 @@ async function runAgent(
   console.log(`     Timeout: ${evalCase.timeoutMs / 1000}s`);
 
   // ── Step 1: Run Playwright harness ────────────────────────────────────────
-  const runResult = await runEvalCase(evalCase);
+  // Propagate the dataset example's distributed trace context into the Chrome
+  // extension process so LangGraph/model/tool spans appear as children of this
+  // exact runAgent row in the LangSmith experiment.
+  const traceHeaders = getCurrentRunTree()?.toHeaders();
+  const runResult = await runEvalCase(evalCase, traceHeaders);
   console.log(`     Finish reason: ${runResult.finishReason} | Steps: ${runResult.numSteps} | Duration: ${runResult.durationSeconds.toFixed(1)}s`);
 
   // ── Step 2: Compress video ────────────────────────────────────────────────

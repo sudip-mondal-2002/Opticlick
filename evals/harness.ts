@@ -86,7 +86,10 @@ async function getServiceWorker(context: BrowserContext) {
 }
 
 /** Seed API key + model via the Service Worker (has chrome.storage access). */
-async function seedApiKey(context: BrowserContext) {
+async function seedApiKey(
+  context: BrowserContext,
+  traceHeaders?: Record<string, string>,
+) {
   const sw = await getServiceWorker(context);
   // Use an object arg — Playwright's evaluate() types tuple args as string[] which
   // is incompatible with [string, string] destructuring. Objects avoid this entirely.
@@ -116,24 +119,29 @@ async function seedApiKey(context: BrowserContext) {
     const langSmithApiKey = process.env.LANGSMITH_API_KEY;
     if (langSmithApiKey) {
       await sw.evaluate(
-        ({ key, endpoint, project }) => {
+        ({ key, endpoint, project, parentHeaders }) => {
           const runtime = globalThis as typeof globalThis & {
             __LANGSMITH_API_KEY__?: string;
             __LANGSMITH_ENDPOINT__?: string;
             __LANGSMITH_PROJECT__?: string;
             __LANGSMITH_TRACING__?: string;
             __OPTICLICK_INITIALIZE_LANGSMITH__?: () => void;
+            __LANGSMITH_PARENT_HEADERS__?: string;
           };
           runtime.__LANGSMITH_API_KEY__ = key;
           runtime.__LANGSMITH_ENDPOINT__ = endpoint;
           runtime.__LANGSMITH_PROJECT__ = project;
           runtime.__LANGSMITH_TRACING__ = 'true';
+          runtime.__LANGSMITH_PARENT_HEADERS__ = parentHeaders
+            ? JSON.stringify(parentHeaders)
+            : undefined;
           runtime.__OPTICLICK_INITIALIZE_LANGSMITH__?.();
         },
         {
           key: langSmithApiKey,
           endpoint: process.env.LANGSMITH_ENDPOINT ?? 'https://api.smith.langchain.com',
           project: process.env.LANGSMITH_PROJECT ?? 'opticlick-evals',
+          parentHeaders: traceHeaders,
         },
       );
     }
@@ -256,7 +264,10 @@ async function readAgentSnapshot(sidePanelPage: Page): Promise<{ numSteps: numbe
 }
 
 /** Run one eval case end-to-end. */
-export async function runEvalCase(evalCase: EvalCase): Promise<RunResult> {
+export async function runEvalCase(
+  evalCase: EvalCase,
+  traceHeaders?: Record<string, string>,
+): Promise<RunResult> {
   const { context, userDataDir } = await launchWithExtension();
   const startTime = Date.now();
 
@@ -271,7 +282,7 @@ export async function runEvalCase(evalCase: EvalCase): Promise<RunResult> {
   let sidePanelPage: Page | null = null;
 
   try {
-    await seedApiKey(context);
+    await seedApiKey(context, traceHeaders);
 
     // Neutral starting page — satisfies chrome.tabs.query({ active:true }) requirement
     // (needs an http/https tab) without pre-loading Google which triggers CAPTCHA.
@@ -327,6 +338,15 @@ export async function runEvalCase(evalCase: EvalCase): Promise<RunResult> {
       mainPage = null;
     }
   } finally {
+    const sw = context.serviceWorkers()[0];
+    if (sw) {
+      await sw.evaluate(async () => {
+        const runtime = globalThis as typeof globalThis & {
+          __OPTICLICK_FLUSH_LANGSMITH__?: () => Promise<void>;
+        };
+        await runtime.__OPTICLICK_FLUSH_LANGSMITH__?.();
+      }).catch(() => {});
+    }
     await context.close().catch(() => {});
     fs.rmSync(userDataDir, { recursive: true, force: true });
   }
