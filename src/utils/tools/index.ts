@@ -20,6 +20,9 @@ import { MEMORY_TOOLS } from './memory';
 import { TODO_TOOLS } from './todo';
 import { SCRATCHPAD_TOOLS } from './scratchpad';
 import { CONTROL_TOOLS } from './control';
+import { clickTool, typeTool, navigateTool, scrollTool, pressKeyTool } from './ui';
+import { fetchDOMTool } from './dom';
+import { finishTool, waitTool } from './control';
 import type { AgentAction, TodoItem } from '../types';
 
 /**
@@ -40,6 +43,18 @@ export const AGENT_TOOLS = [
   ...DOM_TOOLS,
   ...UI_TOOLS,
   ...CONTROL_TOOLS,
+] as const;
+
+/** Minimal browser tool set for low-TPM text-only providers. */
+export const TEXT_AGENT_TOOLS = [
+  fetchDOMTool,
+  clickTool,
+  typeTool,
+  navigateTool,
+  scrollTool,
+  pressKeyTool,
+  finishTool,
+  waitTool,
 ] as const;
 
 // ─────────────────────────────────────────────────────────────────────────────

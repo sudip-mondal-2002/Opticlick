@@ -100,8 +100,26 @@ async function runAgent(
   // Propagate the dataset example's distributed trace context into the Chrome
   // extension process so LangGraph/model/tool spans appear as children of this
   // exact runAgent row in the LangSmith experiment.
-  const traceHeaders = getCurrentRunTree()?.toHeaders();
+  const parentRun = getCurrentRunTree();
+  const traceHeaders = parentRun?.toHeaders();
   const runResult = await runEvalCase(evalCase, traceHeaders);
+  let nestedSpanCount = 0;
+  if (parentRun) {
+    await getClient().awaitPendingTraceBatches();
+    // LangSmith ingestion is asynchronous. Verify the exact dataset trace has
+    // children before accepting the case, rather than merely emitting a
+    // separate project trace that the experiment UI cannot expand.
+    for (let attempt = 0; attempt < 5 && nestedSpanCount === 0; attempt++) {
+      if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, 1000));
+      for await (const span of getClient().listRuns({ traceId: parentRun.trace_id })) {
+        if (span.id !== parentRun.id && span.parent_run_id) nestedSpanCount++;
+      }
+    }
+    console.log(`     LangSmith nested spans: ${nestedSpanCount} (trace ${parentRun.trace_id})`);
+    if (nestedSpanCount === 0) {
+      throw new Error(`No nested agent spans found under dataset trace ${parentRun.trace_id}`);
+    }
+  }
   console.log(`     Finish reason: ${runResult.finishReason} | Steps: ${runResult.numSteps} | Duration: ${runResult.durationSeconds.toFixed(1)}s`);
 
   // ── Step 2: Compress video ────────────────────────────────────────────────
@@ -165,6 +183,7 @@ async function runAgent(
   // Return all outputs — evaluators below will extract individual scores
   return {
     ...runResult,
+    nestedSpanCount,
     ...judgeResult,
     passed,
     // Include programmatic metrics in outputs for LangSmith trace
