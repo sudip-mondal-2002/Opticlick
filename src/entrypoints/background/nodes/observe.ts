@@ -95,6 +95,7 @@ export async function reasonNode(state: AgentState, config: RunnableConfig): Pro
       state.coordinateMap,
       config,
       onThinkingDelta,
+      state.pageText,
     );
   } catch (err) {
     await log(`LLM call failed: ${(err as Error).message}. Will retry step.`, 'error');

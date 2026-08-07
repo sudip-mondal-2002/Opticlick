@@ -180,6 +180,7 @@ export async function callModel(
   coordinateMap: CoordinateEntry[] = [],
   config?: RunnableConfig,
   onThinkingDelta?: (delta: string) => void,
+  pageText = '',
 ): Promise<LLMResult> {
   // Only Gemini uses native image format; all others use OpenAI-compatible image_url format
   const useImageUrlFormat = !(model instanceof ChatGoogleGenerativeAI);
@@ -188,7 +189,7 @@ export async function callModel(
   const messages: BaseMessage[] = [
     new SystemMessage(systemContent),
     ...buildHistory(history),
-    buildUserMessage(userPrompt, vfsFiles, currentTodo, inlineImages, base64Image, memoryEntries, scratchpadEntries, useImageUrlFormat, coordinateMap, includeScreenshot),
+    buildUserMessage(userPrompt, vfsFiles, currentTodo, inlineImages, base64Image, memoryEntries, scratchpadEntries, useImageUrlFormat, coordinateMap, includeScreenshot, pageText),
   ];
   const modelWithTools = model.bindTools([...AGENT_TOOLS]);
   const { reasoning, thinking, actions, rawToolCalls } = await streamWithRetry(modelWithTools, messages, logFn, config, onThinkingDelta);

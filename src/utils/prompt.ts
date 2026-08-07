@@ -100,6 +100,7 @@ export function buildUserMessage(
   useImageUrlFormat = false,
   coordinateMap: CoordinateEntry[] = [],
   includeScreenshot = true,
+  pageText = '',
 ): HumanMessage {
   const { taskPrompt, contextUrl } = extractContextFromPrompt(userPrompt);
 
@@ -154,7 +155,7 @@ export function buildUserMessage(
     type: 'text',
     text: includeScreenshot
       ? `\n\nAnalyze the annotated screenshot and call the appropriate tools.${annotatedElementsBlock(coordinateMap)}`
-      : `\n\nUse the annotated page-element list and call the appropriate tools.${annotatedElementsBlock(coordinateMap)}`,
+      : `\n\nUse the current page text and annotated page-element list below. Extract requested facts directly from the page text; do not repeatedly inspect links. If the task is satisfied, call finish immediately.\n\n**Current Page Text**\n\n${pageText || '(no page text available)'}${annotatedElementsBlock(coordinateMap)}`,
   });
   if (includeScreenshot) content.push(imageBlock(`data:image/png;base64,${base64Image}`));
 

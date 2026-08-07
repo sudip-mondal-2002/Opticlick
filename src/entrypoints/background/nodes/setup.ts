@@ -98,7 +98,7 @@ export async function drawAnnotationsNode(state: AgentState): Promise<Partial<Ag
     return { stopped: true, coordinateMap: [] };
   }
 
-  const { coordinateMap } = drawResult;
+  const { coordinateMap, pageText = '' } = drawResult;
 
   if (!coordinateMap || coordinateMap.length === 0) {
     const newEmptyRetries = state.emptyRetries + 1;
@@ -109,14 +109,14 @@ export async function drawAnnotationsNode(state: AgentState): Promise<Partial<Ag
         'warn',
       );
       await sleep(waitMs);
-      return { coordinateMap: [], emptyRetries: newEmptyRetries, retryStep: true };
+      return { coordinateMap: [], pageText, emptyRetries: newEmptyRetries, retryStep: true };
     }
     // Exhausted retries — proceed with empty coordinate map (plain screenshot path)
     await log('No interactable elements found after retries. Sending screenshot to LLM for guidance…', 'warn');
     await chrome.storage.session.set({ coordinateMap: [] });
-    return { coordinateMap: [], emptyRetries: newEmptyRetries };
+    return { coordinateMap: [], pageText, emptyRetries: newEmptyRetries };
   }
 
   await chrome.storage.session.set({ coordinateMap });
-  return { coordinateMap, emptyRetries: 0 };
+  return { coordinateMap, pageText, emptyRetries: 0 };
 }

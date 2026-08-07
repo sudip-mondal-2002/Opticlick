@@ -19,6 +19,7 @@ export interface CoordinateEntry {
 export interface DrawMarksResult {
   success: boolean;
   coordinateMap: CoordinateEntry[];
+  pageText?: string;
   dpr: number;
 }
 
