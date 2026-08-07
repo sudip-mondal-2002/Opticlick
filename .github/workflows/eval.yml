@@ -38,15 +38,15 @@ on:
       agent_model:
         description: 'Model used by the browser agent'
         required: false
-        default: 'custom-openai:cerebras'
+        default: 'custom-openai:groq'
       agent_model_name:
         description: 'Provider-native agent model name'
         required: false
-        default: 'gemma-4-31b'
+        default: 'openai/gpt-oss-120b'
       judge_model:
         description: 'Separate model used for multimodal judging'
         required: false
-        default: 'gemma-4-31b-it'
+        default: 'openai/gpt-oss-20b'
       max_concurrency:
         description: 'Parallel browser cases (1-6)'
         required: false
@@ -101,6 +101,8 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
           CEREBRAS_BASE_URL: https://api.cerebras.ai/v1
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GROQ_BASE_URL: https://api.groq.com/openai/v1
           EVAL_AUTH_FILTER: ${{ inputs.auth_filter }}
           EVAL_DIFFICULTY: ${{ inputs.difficulty }}
           EVAL_THRESHOLD: ${{ inputs.threshold }}

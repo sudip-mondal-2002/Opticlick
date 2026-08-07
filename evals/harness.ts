@@ -91,15 +91,19 @@ async function seedApiKey(context: BrowserContext) {
   // Use an object arg — Playwright's evaluate() types tuple args as string[] which
   // is incompatible with [string, string] destructuring. Objects avoid this entirely.
   const model = process.env.EVAL_AGENT_MODEL ?? 'gemma-4-31b-it';
-  if (model === 'custom-openai:cerebras') {
-    const apiKey = process.env.CEREBRAS_API_KEY;
-    if (!apiKey) throw new Error('CEREBRAS_API_KEY is not set');
+  if (model === 'custom-openai:cerebras' || model === 'custom-openai:groq') {
+    const isGroq = model.endsWith(':groq');
+    const configId = isGroq ? 'groq' : 'cerebras';
+    const apiKey = process.env[isGroq ? 'GROQ_API_KEY' : 'CEREBRAS_API_KEY'];
+    if (!apiKey) throw new Error(`${isGroq ? 'GROQ' : 'CEREBRAS'}_API_KEY is not set`);
     const customConfig = {
-      id: 'cerebras',
-      name: 'Cerebras',
-      baseUrl: process.env.CEREBRAS_BASE_URL ?? 'https://api.cerebras.ai/v1',
+      id: configId,
+      name: isGroq ? 'Groq' : 'Cerebras',
+      baseUrl: isGroq
+        ? (process.env.GROQ_BASE_URL ?? 'https://api.groq.com/openai/v1')
+        : (process.env.CEREBRAS_BASE_URL ?? 'https://api.cerebras.ai/v1'),
       apiKey,
-      modelName: process.env.EVAL_AGENT_MODEL_NAME ?? 'gemma-4-31b',
+      modelName: process.env.EVAL_AGENT_MODEL_NAME ?? (isGroq ? 'openai/gpt-oss-120b' : 'gemma-4-31b'),
     };
     await sw.evaluate(
       ({ selectedModel, config }) => chrome.storage.local.set({
@@ -108,6 +112,31 @@ async function seedApiKey(context: BrowserContext) {
       }),
       { selectedModel: model, config: customConfig },
     );
+
+    const langSmithApiKey = process.env.LANGSMITH_API_KEY;
+    if (langSmithApiKey) {
+      await sw.evaluate(
+        ({ key, endpoint, project }) => {
+          const runtime = globalThis as typeof globalThis & {
+            __LANGSMITH_API_KEY__?: string;
+            __LANGSMITH_ENDPOINT__?: string;
+            __LANGSMITH_PROJECT__?: string;
+            __LANGSMITH_TRACING__?: string;
+            __OPTICLICK_INITIALIZE_LANGSMITH__?: () => void;
+          };
+          runtime.__LANGSMITH_API_KEY__ = key;
+          runtime.__LANGSMITH_ENDPOINT__ = endpoint;
+          runtime.__LANGSMITH_PROJECT__ = project;
+          runtime.__LANGSMITH_TRACING__ = 'true';
+          runtime.__OPTICLICK_INITIALIZE_LANGSMITH__?.();
+        },
+        {
+          key: langSmithApiKey,
+          endpoint: process.env.LANGSMITH_ENDPOINT ?? 'https://api.smith.langchain.com',
+          project: process.env.LANGSMITH_PROJECT ?? 'opticlick-evals',
+        },
+      );
+    }
     return;
   }
 

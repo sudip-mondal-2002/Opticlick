@@ -17,6 +17,7 @@
  */
 
 import { ChatGoogleGenerativeAI } from '@langchain/google-genai';
+import { ChatOpenAI } from '@langchain/openai';
 import { HumanMessage } from '@langchain/core/messages';
 import type { EvalCase, JudgeResult, RunResult } from './types.js';
 
@@ -32,16 +33,32 @@ const EXPECTED_STEPS: Record<EvalCase['difficulty'], number> = {
  * Gemma 4 caused deterministic 429s because the agent had just consumed the
  * model's free-tier input-token allowance.
  */
-function getJudgeModel(): ChatGoogleGenerativeAI {
+function getJudgeModel(): { model: ChatGoogleGenerativeAI | ChatOpenAI; supportsVision: boolean } {
+  const groqKey = process.env.GROQ_API_KEY;
+  if (groqKey) {
+    return {
+      model: new ChatOpenAI({
+        model: process.env.EVAL_JUDGE_MODEL ?? 'openai/gpt-oss-20b',
+        apiKey: groqKey,
+        temperature: 0,
+        maxRetries: 2,
+        configuration: { baseURL: process.env.GROQ_BASE_URL ?? 'https://api.groq.com/openai/v1' },
+      }),
+      supportsVision: false,
+    };
+  }
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error('GEMINI_API_KEY is not set');
 
-  return new ChatGoogleGenerativeAI({
-    model: process.env.EVAL_JUDGE_MODEL ?? 'gemini-3.1-flash-lite-preview',
-    apiKey,
-    temperature: 0,
-    maxRetries: 2,
-  });
+  return {
+    model: new ChatGoogleGenerativeAI({
+      model: process.env.EVAL_JUDGE_MODEL ?? 'gemini-3.1-flash-lite-preview',
+      apiKey,
+      temperature: 0,
+      maxRetries: 2,
+    }),
+    supportsVision: true,
+  };
 }
 
 const JUDGE_SYSTEM_PROMPT = `You are an impartial evaluator for an autonomous web agent called Opticlick.
@@ -53,6 +70,7 @@ function buildJudgePrompt(
   evalCase: EvalCase,
   frames: string[],
   agentOutput: string,
+  includeFrames = true,
 ): HumanMessage {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const content: Array<any> = [
@@ -97,7 +115,7 @@ Scoring guide:
   ];
 
   // Add frames as inline images (Google GenAI format)
-  for (let i = 0; i < frames.length; i++) {
+  for (let i = 0; includeFrames && i < frames.length; i++) {
     content.push({ type: 'text', text: `--- Frame ${i + 1} of ${frames.length} ---` });
     content.push({ type: 'image', url: `data:image/png;base64,${frames[i]}` });
   }
@@ -162,8 +180,8 @@ export async function judgeRun(
     };
   }
 
-  const model = getJudgeModel();
-  const message = buildJudgePrompt(evalCase, frames, runResult.agentOutput ?? '');
+  const { model, supportsVision } = getJudgeModel();
+  const message = buildJudgePrompt(evalCase, frames, runResult.agentOutput ?? '', supportsVision);
 
   const response = await model.invoke([message]);
 

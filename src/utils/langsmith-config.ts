@@ -41,3 +41,12 @@ export function initializeLangSmith(): void {
 export function getLangSmithTracer(): LangChainTracer | null {
   return _tracer;
 }
+
+// The Playwright eval harness injects ephemeral LangSmith credentials after
+// the MV3 service worker has loaded. Expose a narrow re-initialization hook so
+// detailed graph/model/tool traces are enabled without baking secrets into the
+// extension bundle.
+if (typeof globalThis !== 'undefined') {
+  (globalThis as typeof globalThis & { __OPTICLICK_INITIALIZE_LANGSMITH__?: () => void })
+    .__OPTICLICK_INITIALIZE_LANGSMITH__ = initializeLangSmith;
+}

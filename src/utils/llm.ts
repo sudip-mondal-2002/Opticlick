@@ -135,7 +135,8 @@ export function createCustomOpenAIModel(config: CustomOpenAIConfig): ChatOpenAI 
     maxRetries: 0,
     configuration: { baseURL: config.baseUrl },
   });
-  Object.assign(model, { supportsVision: !config.baseUrl.includes('api.cerebras.ai') });
+  const textOnlyProvider = /api\.(cerebras\.ai|groq\.com)/.test(config.baseUrl);
+  Object.assign(model, { supportsVision: !textOnlyProvider });
   return model;
 }
 
