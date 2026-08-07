@@ -183,6 +183,12 @@ export async function streamWithRetry(
       if (lastError.message.includes('413') || lastError.message.toLowerCase().includes('request too large')) {
         throw lastError;
       }
+      // A daily quota cannot recover inside a case's timeout. Retrying it made
+      // every remaining benchmark case burn ~4 minutes after the first TPD
+      // exhaustion. Propagate immediately so the harness records the blocker.
+      if (/tokens per day|\bTPD\b/i.test(lastError.message)) {
+        throw lastError;
+      }
       const isRateLimit = lastError.message.includes('429') || lastError.message.toLowerCase().includes('rate limit');
       if (attempt < MAX_API_RETRIES) {
         if (isRateLimit) {
