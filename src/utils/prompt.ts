@@ -62,7 +62,8 @@ function annotatedElementsBlock(coordinateMap: CoordinateEntry[], limit = coordi
   const rows = coordinateMap.slice(0, limit)
     .map((e) => {
       const type = e.inputType ? `${e.tag}(${e.inputType})` : e.tag;
-      return `\`[${e.id}]\` \`${type}\` — "${e.text}"`;
+      const text = e.text.length > 80 ? `${e.text.slice(0, 77)}...` : e.text;
+      return `\`[${e.id}]\` \`${type}\` — "${text}"`;
     })
     .join('\n');
   return `\n\n---\n\n**Annotated Elements**\n\n${rows}`;
@@ -105,7 +106,7 @@ export function buildUserMessage(
   const { taskPrompt, contextUrl } = extractContextFromPrompt(userPrompt);
 
   if (!includeScreenshot) {
-    const compactText = `# Task\n${taskPrompt}\n\n# Current page\n${pageText || '(no page text available)'}\n\nUse the annotated page-element list below only when interaction is needed.${annotatedElementsBlock(coordinateMap, 60)}\n\nUse the page text directly. Call one appropriate tool now; call finish as soon as all requested facts are known.`;
+    const compactText = `# Task\n${taskPrompt}\n\n# Current page\n${pageText || '(no page text available)'}\n\nUse the annotated page-element list below only when interaction is needed.${annotatedElementsBlock(coordinateMap, 25)}\n\nUse the page text directly. Call one appropriate tool now; call finish as soon as all requested facts are known.`;
     return new HumanMessage({ content: [{ type: 'text', text: compactText }] as any });
   }
 

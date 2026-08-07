@@ -17,13 +17,15 @@ import { sleep } from './sleep';
 const MAX_API_RETRIES = 5;
 const RATE_LIMIT_DELAY_MS = 10_000;
 
-/** Parse provider retry hints such as "try again in 225ms" or "in 1.5s". */
+/** Parse provider retry hints such as "225ms", "1.5s", or "18m6.048s". */
 export function retryAfterMs(message: string): number | undefined {
-  const match = message.match(/(?:try again|retry)\s+in\s+([\d.]+)\s*(ms|s|seconds?)/i);
+  const match = message.match(/(?:try again|retry)\s+in\s+(?:(\d+(?:\.\d+)?)m)?\s*(\d+(?:\.\d+)?)\s*(ms|s|seconds?)/i);
   if (!match) return undefined;
-  const value = Number(match[1]);
-  if (!Number.isFinite(value) || value < 0) return undefined;
-  return match[2].toLowerCase() === 'ms' ? Math.ceil(value) : Math.ceil(value * 1000);
+  const minutes = Number(match[1] ?? 0);
+  const value = Number(match[2]);
+  if (!Number.isFinite(minutes) || !Number.isFinite(value) || minutes < 0 || value < 0) return undefined;
+  const unitMs = match[3].toLowerCase() === 'ms' ? value : value * 1000;
+  return Math.ceil(minutes * 60_000 + unitMs);
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

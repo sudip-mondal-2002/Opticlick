@@ -23,6 +23,10 @@ describe('retryAfterMs', () => {
   it('parses second retry hints', () => {
     expect(retryAfterMs('retry in 1.5s')).toBe(1500);
   });
+
+  it('parses compound minute and second retry hints', () => {
+    expect(retryAfterMs('Please try again in 18m6.048s.')).toBe(1_086_048);
+  });
 });
 
 // ── thinkingFlushPoint ────────────────────────────────────────────────────────
