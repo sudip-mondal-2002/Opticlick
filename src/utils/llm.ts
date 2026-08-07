@@ -129,6 +129,7 @@ export function createOpenAIModel(apiKey: string, modelId: string): ChatOpenAI {
 
 export function createCustomOpenAIModel(config: CustomOpenAIConfig): ChatOpenAI {
   const isGroq = /api\.groq\.com/.test(config.baseUrl);
+  const isGroqGptOss = isGroq && config.modelName.startsWith('openai/gpt-oss-');
   const model = new ChatOpenAI({
     model: config.modelName,
     apiKey: config.apiKey || 'not-needed',
@@ -136,7 +137,8 @@ export function createCustomOpenAIModel(config: CustomOpenAIConfig): ChatOpenAI 
     // Browser decisions should be a short tool call, not a long essay.  This
     // also bounds failed no-tool responses so they cannot consume thousands
     // of completion tokens before the retry loop rejects them.
-    ...(isGroq ? { maxTokens: 512, modelKwargs: { reasoning_effort: 'low' } } : {}),
+    ...(isGroq ? { maxTokens: 512 } : {}),
+    ...(isGroqGptOss ? { modelKwargs: { reasoning_effort: 'low' } } : {}),
     maxRetries: 0,
     configuration: { baseURL: config.baseUrl },
   });
