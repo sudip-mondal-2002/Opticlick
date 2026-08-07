@@ -128,10 +128,15 @@ export function createOpenAIModel(apiKey: string, modelId: string): ChatOpenAI {
 }
 
 export function createCustomOpenAIModel(config: CustomOpenAIConfig): ChatOpenAI {
+  const isGroq = /api\.groq\.com/.test(config.baseUrl);
   const model = new ChatOpenAI({
     model: config.modelName,
     apiKey: config.apiKey || 'not-needed',
     temperature: 0.1,
+    // Browser decisions should be a short tool call, not a long essay.  This
+    // also bounds failed no-tool responses so they cannot consume thousands
+    // of completion tokens before the retry loop rejects them.
+    ...(isGroq ? { maxTokens: 512, modelKwargs: { reasoning_effort: 'low' } } : {}),
     maxRetries: 0,
     configuration: { baseURL: config.baseUrl },
   });
@@ -201,7 +206,12 @@ export async function callModel(
     : forceFinish
       ? [...TEXT_FINISH_TOOLS]
       : [...TEXT_AGENT_TOOLS];
-  const modelWithTools = model.bindTools(tools);
+  // A turn without a tool call is unusable to the agent loop and used to be
+  // retried as a fresh LLM request.  Requiring a tool makes one reasoning
+  // decision map to one provider call and avoids the token/429 cascade.
+  const modelWithTools = includeScreenshot
+    ? model.bindTools(tools)
+    : model.bindTools(tools, { tool_choice: 'required' });
   const { reasoning, thinking, actions, rawToolCalls } = await streamWithRetry(modelWithTools, messages, logFn, config, onThinkingDelta);
   return { reasoning, thinking, actions, done: actions.some((a: AgentAction) => a.type === 'finish'), rawToolCalls };
 }
