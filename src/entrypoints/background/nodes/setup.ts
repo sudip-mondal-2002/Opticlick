@@ -103,7 +103,7 @@ export async function drawAnnotationsNode(state: AgentState): Promise<Partial<Ag
   const priorUrls = state.visitedUrls ?? [];
   const priorPageText = state.pageTextHistory ?? [];
   const pageTextHistory = currentUrl && !priorUrls.includes(currentUrl)
-    ? [...priorPageText, pageText.slice(0, 1_000)].slice(-3)
+    ? [...priorPageText, pageText.slice(0, 700)].slice(-3)
     : priorPageText;
   const visitedUrls = currentUrl && !priorUrls.includes(currentUrl)
     ? [...priorUrls, currentUrl]

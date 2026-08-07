@@ -106,7 +106,7 @@ export function buildUserMessage(
   const { taskPrompt, contextUrl } = extractContextFromPrompt(userPrompt);
 
   if (!includeScreenshot) {
-    const compactText = `# Task\n${taskPrompt}\n\n# Current page\n${pageText || '(no page text available)'}\n\nUse the annotated page-element list below only when interaction is needed.${annotatedElementsBlock(coordinateMap, 25)}\n\nUse the page text directly. Call one appropriate tool now; call finish as soon as all requested facts are known.`;
+    const compactText = `# Task\n${taskPrompt}\n\n# Current page\n${pageText || '(no page text available)'}\n\nUse the annotated page-element list below only when interaction is needed.${annotatedElementsBlock(coordinateMap, 18)}\n\nUse the page text directly. Call one appropriate tool now; call finish as soon as all requested facts are known.`;
     return new HumanMessage({ content: [{ type: 'text', text: compactText }] as any });
   }
 
