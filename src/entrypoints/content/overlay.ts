@@ -96,6 +96,7 @@ export async function drawOverlay(): Promise<CoordinateEntry[]> {
       id,
       tag,
       text: getLabel(el),
+      ...(tag === 'a' && { href: (el as HTMLAnchorElement).href }),
       ...(tag === 'input' && { inputType: ((el as HTMLInputElement).type || 'text').toLowerCase() }),
       rect: {
         x: Math.round(x + w / 2),
