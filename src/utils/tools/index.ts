@@ -20,8 +20,8 @@ import { MEMORY_TOOLS } from './memory';
 import { TODO_TOOLS } from './todo';
 import { SCRATCHPAD_TOOLS } from './scratchpad';
 import { CONTROL_TOOLS } from './control';
-import { clickTool, typeTool, navigateTool, scrollTool, pressKeyTool } from './ui';
-import { finishTool } from './control';
+import { tool } from '@langchain/core/tools';
+import { z } from 'zod';
 import type { AgentAction, TodoItem } from '../types';
 
 /**
@@ -44,17 +44,45 @@ export const AGENT_TOOLS = [
   ...CONTROL_TOOLS,
 ] as const;
 
-/** Minimal browser tool set for low-TPM text-only providers. */
+// Compact equivalents used only by text models.  Names and argument shapes
+// intentionally match the full tools so parseToolCall remains the sole parser.
+// Keeping descriptions terse materially reduces every uncached Groq request.
+const textClickTool = tool(async () => 'ok', {
+  name: 'click', description: 'Click annotated element ID.',
+  schema: z.object({ targetId: z.number().int().min(1) }),
+});
+const textTypeTool = tool(async () => 'ok', {
+  name: 'type', description: 'Type into focused element.',
+  schema: z.object({ text: z.string(), clearField: z.boolean().optional() }),
+});
+const textNavigateTool = tool(async () => 'ok', {
+  name: 'navigate', description: 'Open full HTTP(S) URL.',
+  schema: z.object({ url: z.string() }),
+});
+const textScrollTool = tool(async () => 'ok', {
+  name: 'scroll', description: 'Scroll current page.',
+  schema: z.object({ direction: z.enum(['up', 'down', 'left', 'right']) }),
+});
+const textPressKeyTool = tool(async () => 'ok', {
+  name: 'press_key', description: 'Press one keyboard key.',
+  schema: z.object({ key: z.string() }),
+});
+const textFinishTool = tool(async () => 'ok', {
+  name: 'finish', description: 'Return final answer when task is complete.',
+  schema: z.object({ summary: z.string() }),
+});
+
+/** Minimal, cache-stable browser tool set for low-TPM text-only providers. */
 export const TEXT_AGENT_TOOLS = [
-  clickTool,
-  typeTool,
-  navigateTool,
-  scrollTool,
-  pressKeyTool,
-  finishTool,
+  textClickTool,
+  textTypeTool,
+  textNavigateTool,
+  textScrollTool,
+  textPressKeyTool,
+  textFinishTool,
 ] as const;
 
-export const TEXT_FINISH_TOOLS = [finishTool] as const;
+export const TEXT_FINISH_TOOLS = [textFinishTool] as const;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Tool-call parser

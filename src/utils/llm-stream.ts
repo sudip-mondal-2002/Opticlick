@@ -157,6 +157,15 @@ export async function streamWithRetry(
 
       const final = chunks.reduce((acc, c) => acc.concat(c));
 
+      const usage = final.usage_metadata;
+      if (usage) {
+        const cached = usage.input_token_details?.cache_read ?? 0;
+        await logFn(
+          `LLM tokens: input=${usage.input_tokens ?? 0}, cached=${cached}, output=${usage.output_tokens ?? 0}`,
+          'debug',
+        );
+      }
+
       // Preserve collected thinking in the final chunk's additional_kwargs
       // so it stays unified as a single trace attribute in LangSmith
       if (collectedThinking.trim()) {
