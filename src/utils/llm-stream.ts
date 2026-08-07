@@ -161,6 +161,11 @@ export async function streamWithRetry(
       return { ...parsed, thinking: collectedThinking.trim() };
     } catch (err) {
       lastError = err as Error;
+      // Payload/token-limit errors are deterministic. Retrying the identical
+      // request only burns the case timeout and provider quota.
+      if (lastError.message.includes('413') || lastError.message.toLowerCase().includes('request too large')) {
+        throw lastError;
+      }
       const isRateLimit = lastError.message.includes('429') || lastError.message.toLowerCase().includes('rate limit');
       if (attempt < MAX_API_RETRIES) {
         if (isRateLimit) {

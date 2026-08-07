@@ -25,7 +25,7 @@ import {
   getProviderForModel,
 } from './models';
 import type { CustomOpenAIConfig } from './models';
-import { CORE_INSTRUCTIONS, SECURITY_INSTRUCTIONS } from './system-prompt';
+import { CORE_INSTRUCTIONS, SECURITY_INSTRUCTIONS, COMPACT_TEXT_AGENT_INSTRUCTIONS } from './system-prompt';
 import { getCustomSystemPrompt, isCustomPromptEffective } from './custom-system-prompt';
 import { buildHistory, buildUserMessage } from './prompt';
 import { streamWithRetry } from './llm-stream';
@@ -186,10 +186,13 @@ export async function callModel(
   // Only Gemini uses native image format; all others use OpenAI-compatible image_url format
   const useImageUrlFormat = !(model instanceof ChatGoogleGenerativeAI);
   const includeScreenshot = (model as AnyModel & { supportsVision?: boolean }).supportsVision !== false;
-  const systemContent = await buildSystemMessage();
+  const systemContent = includeScreenshot
+    ? await buildSystemMessage()
+    : COMPACT_TEXT_AGENT_INSTRUCTIONS;
+  const boundedHistory = includeScreenshot ? history : history.slice(-8);
   const messages: BaseMessage[] = [
     new SystemMessage(systemContent),
-    ...buildHistory(history),
+    ...buildHistory(boundedHistory),
     buildUserMessage(userPrompt, vfsFiles, currentTodo, inlineImages, base64Image, memoryEntries, scratchpadEntries, useImageUrlFormat, coordinateMap, includeScreenshot, pageText),
   ];
   const modelWithTools = model.bindTools([...AGENT_TOOLS]);

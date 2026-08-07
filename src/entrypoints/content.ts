@@ -26,7 +26,7 @@ export default defineContentScript({
             const pageText = (document.body?.innerText ?? '')
               .replace(/\s+/g, ' ')
               .trim()
-              .slice(0, 12_000);
+              .slice(0, 6_000);
             sendResponse({
               success: true,
               coordinateMap,
