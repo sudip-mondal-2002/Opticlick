@@ -101,6 +101,10 @@ export async function drawAnnotationsNode(state: AgentState): Promise<Partial<Ag
   const { coordinateMap, pageText = '' } = drawResult;
   const currentUrl = (await chrome.tabs.get(state.tabId)).url;
   const priorUrls = state.visitedUrls ?? [];
+  const priorPageText = state.pageTextHistory ?? [];
+  const pageTextHistory = currentUrl && !priorUrls.includes(currentUrl)
+    ? [...priorPageText, pageText.slice(0, 1_000)].slice(-3)
+    : priorPageText;
   const visitedUrls = currentUrl && !priorUrls.includes(currentUrl)
     ? [...priorUrls, currentUrl]
     : priorUrls;
@@ -114,14 +118,14 @@ export async function drawAnnotationsNode(state: AgentState): Promise<Partial<Ag
         'warn',
       );
       await sleep(waitMs);
-      return { coordinateMap: [], pageText, visitedUrls, emptyRetries: newEmptyRetries, retryStep: true };
+      return { coordinateMap: [], pageText, pageTextHistory, visitedUrls, emptyRetries: newEmptyRetries, retryStep: true };
     }
     // Exhausted retries — proceed with empty coordinate map (plain screenshot path)
     await log('No interactable elements found after retries. Sending screenshot to LLM for guidance…', 'warn');
     await chrome.storage.session.set({ coordinateMap: [] });
-    return { coordinateMap: [], pageText, visitedUrls, emptyRetries: newEmptyRetries };
+    return { coordinateMap: [], pageText, pageTextHistory, visitedUrls, emptyRetries: newEmptyRetries };
   }
 
   await chrome.storage.session.set({ coordinateMap });
-  return { coordinateMap, pageText, visitedUrls, emptyRetries: 0 };
+  return { coordinateMap, pageText, pageTextHistory, visitedUrls, emptyRetries: 0 };
 }

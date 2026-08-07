@@ -199,6 +199,7 @@ export async function runAgentLoop(
       retryStep: false,
       coordinateMap: [],
       pageText: '',
+      pageTextHistory: [],
       visitedUrls: [],
       navigationBlocked: false,
       base64Image: '',

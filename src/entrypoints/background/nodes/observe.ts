@@ -98,7 +98,9 @@ export async function reasonNode(state: AgentState, config: RunnableConfig): Pro
       state.coordinateMap,
       config,
       onThinkingDelta,
-      state.pageText,
+      (state.pageTextHistory?.length ?? 0) > 1
+        ? `Prior page evidence:\n${state.pageTextHistory[state.pageTextHistory.length - 2]}\n\nCurrent page:\n${state.pageText}`
+        : state.pageText,
       state.navigationBlocked,
     );
   } catch (err) {
