@@ -24,6 +24,19 @@ if (!fs.existsSync(summaryPath)) {
   ].join('\n');
 } else {
   const summary = JSON.parse(fs.readFileSync(summaryPath, 'utf8')) as EvalSummary;
+  let inputTokens = 0;
+  let cachedTokens = 0;
+  let outputTokens = 0;
+  let rateLimits = 0;
+  for (const result of summary.results) {
+    for (const match of result.agentOutput.matchAll(/LLM tokens: input=(\d+), cached=(\d+), output=(\d+)/g)) {
+      inputTokens += Number(match[1]);
+      cachedTokens += Number(match[2]);
+      outputTokens += Number(match[3]);
+    }
+    rateLimits += (result.agentOutput.match(/Rate limited \(attempt/g) ?? []).length;
+  }
+  const cacheRate = inputTokens === 0 ? 0 : cachedTokens / inputTokens * 100;
   const status = summary.belowThreshold ? '❌ Below threshold' : '✅ Passed threshold';
   const rows = summary.results.map((result) =>
     `| ${result.caseId || 'unknown'} | ${result.passed ? '✅' : '❌'} | ${result.finishReason} | ${result.numSteps} | ${result.durationSeconds.toFixed(1)}s | ${result.reasoning.replace(/\|/g, '\\|').replace(/\s+/g, ' ').trim()} |`,
@@ -35,6 +48,8 @@ if (!fs.existsSync(summaryPath)) {
     '',
     `- Dataset: ${link(summary.datasetName, summary.datasetUrl)}`,
     `- LangSmith experiment: ${link(summary.experimentName, summary.experimentUrl)}`,
+    `- Agent tokens: **${inputTokens} input** / **${cachedTokens} cached (${cacheRate.toFixed(1)}%)** / **${outputTokens} output**`,
+    `- Provider rate-limit retries: **${rateLimits}**`,
     `- Failed: **${summary.failed}** · Timed out: **${summary.timedOut}**`,
     '',
     '<details><summary>Per-case results</summary>',
