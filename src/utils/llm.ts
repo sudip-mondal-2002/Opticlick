@@ -139,7 +139,7 @@ export function createCustomOpenAIModel(config: CustomOpenAIConfig): ChatOpenAI 
     // Browser decisions should be a short tool call, not a long essay.  This
     // also bounds failed no-tool responses so they cannot consume thousands
     // of completion tokens before the retry loop rejects them.
-    ...(isGroq ? { maxTokens: isGroqLlama ? 96 : isGroqCompound ? 768 : 512 } : {}),
+    ...(isGroq ? { maxTokens: isGroqLlama ? 384 : isGroqCompound ? 768 : 512 } : {}),
     ...(isGroqGptOss ? { modelKwargs: { reasoning_effort: 'low' } } : {}),
     maxRetries: 0,
     configuration: { baseURL: config.baseUrl },
@@ -231,10 +231,7 @@ export async function callModel(
     // the response before it reaches our parser. Force the one advertised
     // function by name so every provider response uses the compact schema.
     : textCommandMode
-      // Normal browser decisions stay capped at 96 completion tokens. A final
-      // evidence synthesis may need a compact multi-item answer, so override
-      // only that one invocation without expanding every navigation call.
-      ? forceFinish ? model.bind({ max_tokens: 384 }) : model
+      ? model
       : researchAnswerMode
         ? model
       : model.bindTools(tools as typeof TEXT_AGENT_TOOLS[number][], { tool_choice: 'browser_action' as const });
