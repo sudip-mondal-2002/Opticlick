@@ -48,9 +48,17 @@ export const AGENT_TOOLS = [
 // providers. parseToolCall expands it into the existing internal action union.
 const textBrowserActionTool = tool(async () => 'ok', {
   name: 'browser_action',
-  description: 'Perform exactly one action: click ID, type TEXT, go URL, scroll DIRECTION, key KEY, or finish ANSWER.',
+  description: 'Perform exactly one browser action. Put only the selected action data in params.',
   schema: z.object({
-    command: z.string().describe('One command only, for example: click 12 or finish The factual answer.'),
+    command: z.enum(['click', 'type', 'go', 'scroll', 'key', 'finish']),
+    params: z.object({
+      id: z.number().optional(),
+      text: z.string().optional(),
+      url: z.string().optional(),
+      direction: z.enum(['up', 'down', 'left', 'right']).optional(),
+      key: z.string().optional(),
+      summary: z.string().optional(),
+    }),
   }),
 });
 const textFinishActionTool = tool(async () => 'ok', {
@@ -77,6 +85,18 @@ const parsers: Record<string, (args: Record<string, any>) => AgentAction> = {
     if (typeof args.summary === 'string' && args.action === undefined) {
       return { type: 'finish', summary: args.summary };
     }
+    if (typeof args.command === 'string' && args.params && typeof args.params === 'object') {
+      const params = args.params as Record<string, unknown>;
+      switch (args.command.toLowerCase()) {
+        case 'click': return { type: 'click', targetId: Number(params.id ?? params.targetId) };
+        case 'type': return { type: 'type', text: String(params.text ?? ''), clearField: true };
+        case 'go':
+        case 'navigate': return { type: 'navigate', url: String(params.url ?? '') };
+        case 'scroll': return { type: 'scroll', direction: String(params.direction ?? 'down') as ScrollDirection };
+        case 'key': return { type: 'press_key', key: String(params.key ?? '') };
+        case 'finish': return { type: 'finish', summary: String(params.summary ?? params.text ?? '') };
+      }
+    }
     if (typeof args.command === 'string') {
       const match = args.command.trim().match(/^(\S+)(?:\s+([\s\S]*))?$/);
       const verb = match?.[1]?.toLowerCase();
@@ -86,7 +106,7 @@ const parsers: Record<string, (args: Record<string, any>) => AgentAction> = {
         case 'click': return { type: 'click', targetId: Number.parseInt(firstValue, 10) };
         case 'type': return { type: 'type', text: value, clearField: true };
         case 'go':
-        case 'navigate': return { type: 'navigate', url: firstValue };
+        case 'navigate': return { type: 'navigate', url: firstValue.replace(/^URL\s+/i, '') };
         case 'scroll': return { type: 'scroll', direction: (firstValue || 'down') as ScrollDirection };
         case 'key': return { type: 'press_key', key: firstValue };
         case 'finish': return { type: 'finish', summary: value };

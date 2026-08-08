@@ -19,6 +19,20 @@ describe('parseToolCall', () => {
       .toEqual({ type: 'finish', summary: 'The answer is 1991.' });
   });
 
+  it('parses the compact command and params form used by small models', () => {
+    expect(parseToolCall('browser_action', { command: 'click', params: { id: 42 } }))
+      .toMatchObject({ type: 'click', targetId: 42 });
+    expect(parseToolCall('browser_action', { command: 'go', params: { url: 'https://example.com' } }))
+      .toMatchObject({ type: 'navigate', url: 'https://example.com' });
+    expect(parseToolCall('browser_action', { command: 'finish', params: { summary: 'The answer is 1991.' } }))
+      .toMatchObject({ type: 'finish', summary: 'The answer is 1991.' });
+  });
+
+  it('strips a copied URL label from legacy command output', () => {
+    expect(parseToolCall('browser_action', { command: 'go URL https://example.com' }))
+      .toMatchObject({ type: 'navigate', url: 'https://example.com' });
+  });
+
   it('parses the required finish summary form', () => {
     expect(parseToolCall('browser_action', { summary: 'Python was first released in 1991.' }))
       .toEqual({ type: 'finish', summary: 'Python was first released in 1991.' });

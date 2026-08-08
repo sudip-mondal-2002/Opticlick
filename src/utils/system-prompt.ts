@@ -280,4 +280,4 @@ export const SYSTEM_INSTRUCTIONS = CORE_INSTRUCTIONS + SECURITY_INSTRUCTIONS;
  * Token-efficient instructions for text-only, rate-limited providers used by
  * the eval harness. Tool schemas still carry their detailed argument rules.
  */
-export const COMPACT_TEXT_AGENT_INSTRUCTIONS = `Complete the web goal from Page evidence. Call browser_action once with its command grammar. Click only listed IDs. Keep prior facts. Finish when all requested facts are known; never invent.`;
+export const COMPACT_TEXT_AGENT_INSTRUCTIONS = `Complete the web goal from Page evidence. Call browser_action once. Choose command and put the real id, text, url, direction, key, or factual summary in params. Never emit placeholders. Click only listed IDs. Finish when all requested facts are known; never invent.`;
