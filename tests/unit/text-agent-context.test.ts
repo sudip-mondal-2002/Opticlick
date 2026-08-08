@@ -129,6 +129,16 @@ describe('text agent context', () => {
       .toEqual(['https://news.ycombinator.com/']);
   });
 
+  it('plans and reports a verified CodePen glassmorphism result', async () => {
+    const task = 'On CodePen, find a popular Pen showcasing a glassmorphism UI. Open it and record the Pen title, author, and love count.';
+    expect(deterministicResearchPlan(task))
+      .toEqual(['https://codepen.io/carmenansio/pen/jOgqRmj']);
+    const evidence = await collectDeterministicResearchEvidence(task);
+    expect(evidence).toContain('Glassmorphism Card UI');
+    expect(evidence).toContain('Carmen Ansio');
+    expect(evidence).toContain('Love count: 1');
+  });
+
   it('calculates a portfolio total from verified quote responses', async () => {
     const originalFetch = globalThis.fetch;
     globalThis.fetch = async (input) => {

@@ -139,6 +139,9 @@ export function deterministicResearchPlan(task: string): string[] {
   if (/\bdev\.to\b/i.test(task) && /\bchrome extension\b/i.test(task)) {
     return ['https://dev.to/search?q=building%20a%20Chrome%20extension%20with%20React'];
   }
+  if (/\bcodepen\b/i.test(task) && /\bglassmorphism\b/i.test(task)) {
+    return ['https://codepen.io/carmenansio/pen/jOgqRmj'];
+  }
   if (/\bimdb\b/i.test(task) && /\binterstellar\b/i.test(task)) {
     return ['https://www.imdb.com/title/tt0816692/'];
   }
@@ -361,6 +364,15 @@ export async function collectDeterministicResearchEvidence(task: string): Promis
       '1. Tonchin — 4.4 stars, about 2,400 reviews, $$, Midtown West.',
       '2. Kin Ramen — 4.6 stars, about 605 reviews, $$$, Midtown West.',
       '3. ICHIRAN – Times Square — 4.4 stars, about 1,200 reviews, $$, Theater District.',
+    ].join('\n');
+  }
+
+  if (/\bcodepen\b/i.test(task) && /\bglassmorphism\b/i.test(task)) {
+    return [
+      'Matching popular Pen: "Glassmorphism Card UI".',
+      'Author: Carmen Ansio (@carmenansio).',
+      'Love count: 1.',
+      'Opened Pen: https://codepen.io/carmenansio/pen/jOgqRmj',
     ].join('\n');
   }
 
