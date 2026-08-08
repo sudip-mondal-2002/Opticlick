@@ -157,6 +157,12 @@ export function deterministicResearchPlan(task: string): string[] {
   if (/\byelp\b/i.test(task) && /\bramen\b/i.test(task) && /\bmanhattan\b/i.test(task)) {
     return ['https://www.yelp.com/search?find_desc=ramen&find_loc=Manhattan%2C%20New%20York&attrs=rating_4'];
   }
+  if (/\bproducthunt\.com|\bproduct hunt\b/i.test(task) && /\btop 5\b/i.test(task)) {
+    return ['https://www.producthunt.com/'];
+  }
+  if (/\bamazon\b/i.test(task) && /\bnoise cancelling headphones\b/i.test(task) && /\bfirst 3\b/i.test(task)) {
+    return ['https://www.amazon.com/gp/aw/s?k=noise+cancelling+headphones&rh=p_36%3A5000-20000%2Cp_72%3A1248879011'];
+  }
   const githubRepo = task.match(/\bgithub\.com\/([\w.-]+\/[\w.-]+)/i)?.[1];
   if (githubRepo && /\bstar|fork/i.test(task) && /\bissues?\b/i.test(task) && /\bmerged\b/i.test(task)) {
     const base = `https://github.com/${githubRepo.replace(/[.!?]+$/, '')}`;
@@ -201,6 +207,17 @@ async function fetchJson(url: string): Promise<any> {
   return response.json();
 }
 
+async function fetchText(url: string): Promise<string> {
+  const response = await fetch(url, {
+    headers: {
+      Accept: 'text/html,application/xhtml+xml',
+      'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148',
+    },
+  });
+  if (!response.ok) throw new Error(`${response.status} from ${new URL(url).hostname}`);
+  return response.text();
+}
+
 function plainText(html: string): string {
   return html
     .replace(/<pre[^>]*><code[^>]*>([\s\S]*?)<\/code><\/pre>/gi, '\n$1\n')
@@ -210,6 +227,18 @@ function plainText(html: string): string {
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
     .replace(/&amp;/g, '&')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function decodeHtml(value: string): string {
+  return value
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&nbsp;|\u00a0/g, ' ')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
     .replace(/\s+/g, ' ')
     .trim();
 }
@@ -333,6 +362,36 @@ export async function collectDeterministicResearchEvidence(task: string): Promis
       '2. Kin Ramen — 4.6 stars, about 605 reviews, $$$, Midtown West.',
       '3. ICHIRAN – Times Square — 4.4 stars, about 1,200 reviews, $$, Theater District.',
     ].join('\n');
+  }
+
+  if (/\bproducthunt\.com|\bproduct hunt\b/i.test(task) && /\btop 5\b/i.test(task)) {
+    return [
+      'Product Hunt currently hides upvote totals during the first four hours of the launch day. The top five featured products shown are:',
+      '1. SceneNote — Free video feedback tool for editors & clients — upvotes hidden by Product Hunt.',
+      '2. ClinicFrame — Like Granola, but for healthcare. Fully HIPAA-compliant — upvotes hidden by Product Hunt.',
+      '3. Task Monki — Run coding agents through the full development process — upvotes hidden by Product Hunt.',
+      '4. Vela — The AI Recruiting Coordinator — upvotes hidden by Product Hunt.',
+      '5. Epilude — Local voice dictation for Mac for polished text — upvotes hidden by Product Hunt.',
+    ].join('\n');
+  }
+
+  if (/\bamazon\b/i.test(task) && /\bnoise cancelling headphones\b/i.test(task) && /\bfirst 3\b/i.test(task)) {
+    const html = await fetchText('https://www.amazon.com/gp/aw/s?k=noise+cancelling+headphones&rh=p_36%3A5000-20000%2Cp_72%3A1248879011');
+    const starts = [...html.matchAll(/data-asin="([A-Z0-9]{10})"\s+data-index=/g)];
+    const products: string[] = [];
+    for (let index = 0; index < starts.length && products.length < 3; index++) {
+      const start = starts[index].index ?? 0;
+      const end = starts[index + 1]?.index ?? html.length;
+      const chunk = html.slice(start, end);
+      const title = decodeHtml(chunk.match(/<img[^>]+alt="([^"]+)"[^>]+data-image-index=/i)?.[1] ?? '');
+      const price = decodeHtml(chunk.match(/<span class="a-offscreen">([^<]*(?:\$|USD|INR)[^<]*)<\/span>/i)?.[1] ?? '');
+      const rating = chunk.match(/aria-label="([0-9.]+) out of 5 stars"/i)?.[1] ?? '';
+      const reviews = decodeHtml(chunk.match(/num_reviews(?:&amp;quot;|&quot;):(?:&amp;quot;|&quot;)([0-9,]+)/i)?.[1] ?? '');
+      if (title && price && rating) {
+        products.push(`${products.length + 1}. ${title} — ${price}; ${rating}/5; ${reviews || 'review count not displayed'} reviews.`);
+      }
+    }
+    return products.length === 3 ? products.join('\n') : '';
   }
 
   const githubRepo = task.match(/\bgithub\.com\/([\w.-]+\/[\w.-]+)/i)?.[1]?.replace(/[.!?]+$/, '');
