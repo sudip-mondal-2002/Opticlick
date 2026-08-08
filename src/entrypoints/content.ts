@@ -23,9 +23,16 @@ export default defineContentScript({
       switch (msg.type) {
         case 'DRAW_MARKS': {
           drawOverlay().then((coordinateMap) => {
+            const semanticRoot = document.querySelector('main, article, [role="main"]');
+            const bodyText = ((semanticRoot as HTMLElement | null)?.innerText ?? document.body?.innerText ?? '')
+              .replace(/\s+/g, ' ')
+              .trim()
+              .slice(0, 1_800);
+            const pageText = `Current URL: ${location.href}\nPage title: ${document.title}\n${bodyText}`;
             sendResponse({
               success: true,
               coordinateMap,
+              pageText,
               dpr: window.devicePixelRatio || 1,
             });
           });

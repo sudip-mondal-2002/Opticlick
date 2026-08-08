@@ -15,6 +15,8 @@ export const MAX_STEPS = 500;
 export const STEP_DELAY_MS = 800;
 export const RATE_LIMIT_DELAY_MS = 10_000;
 export const MAX_EMPTY_RETRIES = 3;
+/** Browser decisions allowed before a compact, terminal evidence synthesis. */
+export const MAX_BROWSER_DECISION_CALLS = 2;
 
 // ── UI action type sets ───────────────────────────────────────────────────────
 
@@ -44,9 +46,19 @@ export const AgentStateAnnotation = Annotation.Root({
   emptyRetries: Annotation<number>({ reducer: (_, b) => b }),
   actionHistory: Annotation<ActionRecord[]>({ reducer: (_, b) => b }),
   retryStep: Annotation<boolean>({ reducer: (_, b) => b }),
+  deterministicActions: Annotation<number>({ reducer: (_, b) => b }),
+  llmCalls: Annotation<number>({ reducer: (_, b) => b }),
+  deterministicAction: Annotation<boolean>({ reducer: (_, b) => b }),
+  relationshipHopDone: Annotation<boolean>({ reducer: (_, b) => b }),
+  researchPlanDone: Annotation<boolean>({ reducer: (_, b) => b }),
+  researchEvidence: Annotation<string>({ reducer: (_, b) => b }),
 
   // Per-step page data
   coordinateMap: Annotation<CoordinateEntry[]>({ reducer: (_, b) => b }),
+  pageText: Annotation<string>({ reducer: (_, b) => b }),
+  pageTextHistory: Annotation<string[]>({ reducer: (_, b) => b }),
+  visitedUrls: Annotation<string[]>({ reducer: (_, b) => b }),
+  navigationBlocked: Annotation<boolean>({ reducer: (_, b) => b }),
   base64Image: Annotation<string>({ reducer: (_, b) => b }),
   inlineImages: Annotation<InlineImage[]>({ reducer: (_, b) => b }),
 

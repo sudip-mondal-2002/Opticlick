@@ -3,6 +3,52 @@ import { dragAndDropTool, parseToolCall } from '@/utils/tools/index';
 import type { AgentAction, TodoItem } from '@/utils/types';
 
 describe('parseToolCall', () => {
+  it('parses the token-efficient command form', () => {
+    expect(parseToolCall('browser_action', { command: 'click 42' }))
+      .toEqual({ type: 'click', targetId: 42 });
+    expect(parseToolCall('browser_action', { command: 'go https://example.com/a' }))
+      .toEqual({ type: 'navigate', url: 'https://example.com/a' });
+    expect(parseToolCall('browser_action', { command: 'finish The answer is 1991.' }))
+      .toEqual({ type: 'finish', summary: 'The answer is 1991.' });
+  });
+
+  it('parses the compact command and params form used by small models', () => {
+    expect(parseToolCall('browser_action', { command: 'click', params: { id: 42 } }))
+      .toMatchObject({ type: 'click', targetId: 42 });
+    expect(parseToolCall('browser_action', { command: 'click', params: { id: '42' } }))
+      .toMatchObject({ type: 'click', targetId: 42 });
+    expect(parseToolCall('browser_action', { command: 'go', params: { url: 'https://example.com' } }))
+      .toMatchObject({ type: 'navigate', url: 'https://example.com' });
+    expect(parseToolCall('browser_action', { command: 'type', params: { text: 'Ada Lovelace' } }))
+      .toEqual({ type: 'type', text: 'Ada Lovelace', clearField: true });
+    expect(parseToolCall('browser_action', { command: 'scroll', params: {} }))
+      .toEqual({ type: 'scroll', direction: 'down' });
+    expect(parseToolCall('browser_action', { command: 'key', params: { key: 'Enter' } }))
+      .toEqual({ type: 'press_key', key: 'Enter' });
+    expect(parseToolCall('browser_action', { command: 'finish', params: { summary: 'The answer is 1991.' } }))
+      .toMatchObject({ type: 'finish', summary: 'The answer is 1991.' });
+  });
+
+  it('strips a copied URL label from legacy command output', () => {
+    expect(parseToolCall('browser_action', { command: 'go URL https://example.com' }))
+      .toMatchObject({ type: 'navigate', url: 'https://example.com' });
+  });
+
+  it('parses the required finish summary form', () => {
+    expect(parseToolCall('browser_action', { summary: 'Python was first released in 1991.' }))
+      .toEqual({ type: 'finish', summary: 'Python was first released in 1991.' });
+  });
+
+  it('keeps only the first accidentally chained navigation command', () => {
+    expect(parseToolCall('browser_action', {
+      command: 'go https://github.com/vercel/next.js; click 39; finish',
+    })).toEqual({ type: 'navigate', url: 'https://github.com/vercel/next.js' });
+  });
+
+  it('falls back to a safe finish for malformed compact calls', () => {
+    expect(parseToolCall('browser_action', {})).toEqual({ type: 'finish', summary: '' });
+  });
+
   it('returns null for unknown tool name', () => {
     expect(parseToolCall('unknown_tool', {})).toBeNull();
   });
@@ -263,10 +309,10 @@ describe('parseToolCall', () => {
     expect(result.summary).toBe('Task complete');
   });
 
-  it('parses "finish" without summary (undefined)', () => {
+  it('parses "finish" without summary as an empty string', () => {
     const result = parseToolCall('finish', {}) as AgentAction & { type: 'finish' };
     expect(result.type).toBe('finish');
-    expect(result.summary).toBeUndefined();
+    expect(result.summary).toBe('');
   });
 
   it('parses "wait"', () => {

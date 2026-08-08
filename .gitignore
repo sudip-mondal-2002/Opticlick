@@ -24,6 +24,14 @@ graphify-out/
 npm-debug.log*
 coverage/
 
+# Eval artifacts (generated at runtime — never commit)
+evals/results/
+evals/auth/state.json
+evals/auth/state.trimmed.json
+# Local-only auth utility scripts (run manually, not part of CI)
+evals/auth/export-cookies.ts
+evals/auth/trim-state.ts
+
 # Generated icons
 /public/icon-16.png
 /public/icon-32.png

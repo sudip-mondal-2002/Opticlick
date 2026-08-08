@@ -23,7 +23,8 @@ import { sendToTab } from '@/utils/tab-helpers';
 import { captureScreenshot } from '@/utils/screenshot';
 import { sleep } from '@/utils/sleep';
 import type { AgentState } from '../agent-state';
-import { RATE_LIMIT_DELAY_MS } from '../agent-state';
+import { MAX_BROWSER_DECISION_CALLS, RATE_LIMIT_DELAY_MS } from '../agent-state';
+import { fallbackClickTargetId } from '@/utils/text-agent-context';
 
 // ── Node: captureAndDestroy ───────────────────────────────────────────────────
 
@@ -64,15 +65,26 @@ export async function captureAndDestroyNode(state: AgentState): Promise<Partial<
 // ── Node: reason ──────────────────────────────────────────────────────────────
 
 export async function reasonNode(state: AgentState, config: RunnableConfig): Promise<Partial<AgentState>> {
-  const history = await getConversationHistory(state.sessionId);
-  const vfsFiles = await listAccessibleVFSFiles(state.sessionId);
+  const textOnly = (state.model as typeof state.model & { supportsVision?: boolean }).supportsVision === false;
+  const llmCalls = state.llmCalls ?? 0;
+  const browserDecisionBudgetReached = textOnly && llmCalls >= MAX_BROWSER_DECISION_CALLS;
+  const forceEvidenceSynthesis = state.navigationBlocked
+    || (textOnly && (state.relationshipHopDone || state.researchPlanDone || browserDecisionBudgetReached));
+  const history = textOnly ? [] : await getConversationHistory(state.sessionId);
+  const vfsFiles = textOnly ? [] : await listAccessibleVFSFiles(state.sessionId);
   await log('Sending to LLM…', 'observe');
 
   // Adjust prompt when there are no interactable elements
-  const prompt =
+  let prompt =
     state.coordinateMap.length === 0
       ? `${state.anchoredPrompt}\n\n[SYSTEM NOTE: No interactable elements detected. Decide whether to navigate, scroll, press a key, or call finish if the goal is already achieved. Do NOT call click — there are no annotated elements.]`
       : state.anchoredPrompt;
+  if (state.navigationBlocked) {
+    prompt += '\n\n[SYSTEM NOTE: A navigation loop was blocked. Do not interact further. Call finish now with the facts collected from the current page and prior context.]';
+  }
+  if (browserDecisionBudgetReached) {
+    await log('Browser decision budget reached; synthesizing the best answer from collected evidence', 'observe');
+  }
 
   // Broadcast thinking deltas to the sidebar for live streaming
   const onThinkingDelta = (delta: string) => {
@@ -95,14 +107,33 @@ export async function reasonNode(state: AgentState, config: RunnableConfig): Pro
       state.coordinateMap,
       config,
       onThinkingDelta,
+      state.researchEvidence
+        ? `Verified data from visited sites:\n${state.researchEvidence}`
+        : (state.pageTextHistory?.length ?? 0) > 1
+          ? state.pageTextHistory.join('\n')
+          : state.pageText,
+      forceEvidenceSynthesis,
     );
   } catch (err) {
+    if (/tokens per day|\bTPD\b|tool call validation failed|attempted to call tool/i.test((err as Error).message)) throw err;
     await log(`LLM call failed: ${(err as Error).message}. Will retry step.`, 'error');
     await sleep(RATE_LIMIT_DELAY_MS);
     return { llmFailed: true };
   }
 
-  const { reasoning, thinking, actions, done, rawToolCalls } = result;
+  const { reasoning, thinking, rawToolCalls } = result;
+  let recoveredTargetId: number | undefined;
+  const actions = result.actions.map((action) => {
+    if (action.type !== 'click' || Number.isFinite(action.targetId)) return action;
+    const targetId = fallbackClickTargetId(state.coordinateMap, state.userPrompt, state.pageText);
+    if (targetId === undefined) return action;
+    recoveredTargetId = targetId;
+    return { ...action, targetId };
+  });
+  if (recoveredTargetId !== undefined) {
+    await log(`Resolved placeholder click to element #${recoveredTargetId}`, 'act');
+  }
+  const done = actions.some((action) => action.type === 'finish');
   // Signal thinking stream is complete so the sidebar finalizes the block
   if (thinking) chrome.runtime.sendMessage({ type: 'AGENT_THINKING_DONE' }).catch(() => {});
   if (reasoning) await log(reasoning, 'info');
@@ -114,5 +145,13 @@ export async function reasonNode(state: AgentState, config: RunnableConfig): Pro
   await appendToSessionSearchText(state.sessionId, `${state.userPrompt} ${reasoning ?? ''}`);
   await touchSession(state.sessionId);
 
-  return { actions, rawToolCalls, reasoning: reasoning || '', thinking: thinking || '', done, llmFailed: false };
+  return {
+    actions,
+    rawToolCalls,
+    reasoning: reasoning || '',
+    thinking: thinking || '',
+    done,
+    llmFailed: false,
+    llmCalls: llmCalls + 1,
+  };
 }

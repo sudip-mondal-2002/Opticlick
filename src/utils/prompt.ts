@@ -14,6 +14,7 @@ import { formatTodoForPrompt } from './todo';
 import { formatMemoryForPrompt } from './memory';
 import { formatScratchpadForPrompt } from './scratchpad';
 import type { InlineImage } from './llm';
+import { selectRelevantElements, selectRelevantPageText } from './text-agent-context';
 
 // ── History ───────────────────────────────────────────────────────────────────
 
@@ -57,12 +58,13 @@ function todoContextBlock(todo: TodoItem[]): string {
   return `\n\n**Todo List**\n\n${formatTodoForPrompt(todo)}`;
 }
 
-function annotatedElementsBlock(coordinateMap: CoordinateEntry[]): string {
+function annotatedElementsBlock(coordinateMap: CoordinateEntry[], limit = coordinateMap.length): string {
   if (coordinateMap.length === 0) return '';
-  const rows = coordinateMap
+  const rows = coordinateMap.slice(0, limit)
     .map((e) => {
       const type = e.inputType ? `${e.tag}(${e.inputType})` : e.tag;
-      return `\`[${e.id}]\` \`${type}\` — "${e.text}"`;
+      const text = e.text.length > 48 ? `${e.text.slice(0, 45)}...` : e.text;
+      return `\`[${e.id}]\` \`${type}\` — "${text}"`;
     })
     .join('\n');
   return `\n\n---\n\n**Annotated Elements**\n\n${rows}`;
@@ -99,8 +101,37 @@ export function buildUserMessage(
   scratchpadEntries: ScratchpadEntry[] = [],
   useImageUrlFormat = false,
   coordinateMap: CoordinateEntry[] = [],
+  includeScreenshot = true,
+  pageText = '',
 ): HumanMessage {
   const { taskPrompt, contextUrl } = extractContextFromPrompt(userPrompt);
+
+  if (!includeScreenshot) {
+    const pageCount = (pageText.match(/^Current URL:/gm) ?? []).length;
+    const verifiedMarker = 'Verified data from visited sites:\n';
+    const verifiedEvidence = pageText.includes(verifiedMarker)
+      ? pageText.slice(pageText.lastIndexOf(verifiedMarker) + verifiedMarker.length).trim()
+      : '';
+    const evidenceSource = pageCount > 1
+      ? pageText
+          .replace(/^Current URL:/gm, 'Visited URL:')
+          .replace(/^Page title:/gm, 'Visited title:')
+      : pageText;
+    // A terminal multi-page research call receives a slightly wider ledger so
+    // no requested fact is dropped. It is still far smaller than replaying
+    // chat/tool history and is used by only one model call.
+    const evidence = verifiedEvidence
+      // Preserve complete list answers (for example top-10 stories) while
+      // remaining well below one thousand input tokens for the terminal call.
+      ? `Verified data from visited sites:\n${verifiedEvidence.slice(0, 2500)}`
+      : selectRelevantPageText(evidenceSource, taskPrompt, pageCount > 1 ? 900 : 300);
+    // Evidence often reveals the next entity in a multi-hop task (for
+    // example, a creator's name). Include those terms while ranking links so
+    // the useful hop survives the five-element token budget.
+    const elements = selectRelevantElements(coordinateMap, `${taskPrompt} ${evidence}`);
+    const compactText = `Goal:${taskPrompt}\nPage:${evidence || '-'}${annotatedElementsBlock(elements, 4)}\nAct once; finish if complete.`;
+    return new HumanMessage({ content: [{ type: 'text', text: compactText }] as any });
+  }
 
   // Build markdown-like text content with proper sections and separators
   let textContent = '';
@@ -151,9 +182,11 @@ export function buildUserMessage(
 
   content.push({
     type: 'text',
-    text: `\n\nAnalyze the annotated screenshot and call the appropriate tools.${annotatedElementsBlock(coordinateMap)}`,
+    text: includeScreenshot
+      ? `\n\nAnalyze the annotated screenshot and call the appropriate tools.${annotatedElementsBlock(coordinateMap)}`
+      : `\n\nUse the current page text and annotated page-element list below. Extract requested facts directly from the page text; do not repeatedly inspect links. If the task is satisfied, call finish immediately.\n\n**Current Page Text**\n\n${pageText || '(no page text available)'}${annotatedElementsBlock(coordinateMap)}`,
   });
-  content.push(imageBlock(`data:image/png;base64,${base64Image}`));
+  if (includeScreenshot) content.push(imageBlock(`data:image/png;base64,${base64Image}`));
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return new HumanMessage({ content: content as any });

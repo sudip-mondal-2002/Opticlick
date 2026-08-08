@@ -23,6 +23,7 @@ import { captureAndDestroyNode, reasonNode } from './nodes/observe';
 import { sideEffectsNode } from './nodes/side-effects';
 import { uiActionNode } from './nodes/ui-action';
 import { awaitUserNode, completeNode } from './nodes/control';
+import { fastPathNode } from './nodes/fast-path';
 
 // Re-export so loop.ts can use the type without importing agent-state directly
 export type { AgentState } from './agent-state';
@@ -35,7 +36,12 @@ function routeAfterSetup(state: AgentState): string {
 
 function routeAfterDraw(state: AgentState): string {
   if (state.stopped) return END;
-  return state.retryStep ? 'stepSetup' : 'captureAndDestroy';
+  return state.retryStep ? 'stepSetup' : 'fastPath';
+}
+
+function routeAfterFastPath(state: AgentState): string {
+  if (state.done) return 'complete';
+  return state.deterministicAction ? 'uiAction' : 'captureAndDestroy';
 }
 
 function routeAfterCapture(state: AgentState): string {
@@ -79,6 +85,7 @@ export function buildAgentGraph(tabIdRef: { current: number }) {
     .addNode('stepSetup', stepSetupNode)
     .addNode('drawAnnotations', drawAnnotationsNode)
     .addNode('captureAndDestroy', captureAndDestroyNode)
+    .addNode('fastPath', fastPathNode)
     .addNode('reason', reasonNode)
     .addNode('sideEffects', sideEffectsNode)
     .addNode('uiAction', uiActionNodeBound)
@@ -87,6 +94,7 @@ export function buildAgentGraph(tabIdRef: { current: number }) {
     .addEdge('__start__', 'stepSetup')
     .addConditionalEdges('stepSetup', routeAfterSetup)
     .addConditionalEdges('drawAnnotations', routeAfterDraw)
+    .addConditionalEdges('fastPath', routeAfterFastPath)
     .addConditionalEdges('captureAndDestroy', routeAfterCapture)
     .addConditionalEdges('reason', routeAfterReason)
     .addConditionalEdges('sideEffects', routeAfterSideEffects)

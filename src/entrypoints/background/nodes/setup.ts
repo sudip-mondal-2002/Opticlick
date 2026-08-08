@@ -16,6 +16,7 @@ import { sleep } from '@/utils/sleep';
 import type { DrawMarksResult } from '@/utils/types';
 import type { AgentState } from '../agent-state';
 import { MAX_STEPS, MAX_EMPTY_RETRIES } from '../agent-state';
+import { selectRelevantPageText } from '@/utils/text-agent-context';
 
 // ── Node: stepSetup ───────────────────────────────────────────────────────────
 
@@ -133,7 +134,16 @@ export async function drawAnnotationsNode(state: AgentState): Promise<Partial<Ag
     return { stopped: true, coordinateMap: [] };
   }
 
-  const { coordinateMap } = drawResult;
+  const { coordinateMap, pageText = '' } = drawResult;
+  const currentUrl = (await chrome.tabs.get(state.tabId)).url;
+  const priorUrls = state.visitedUrls ?? [];
+  const priorPageText = state.pageTextHistory ?? [];
+  const pageTextHistory = currentUrl && !priorUrls.includes(currentUrl)
+    ? [...priorPageText, selectRelevantPageText(pageText, state.userPrompt, 360)].slice(-5)
+    : priorPageText;
+  const visitedUrls = currentUrl && !priorUrls.includes(currentUrl)
+    ? [...priorUrls, currentUrl]
+    : priorUrls;
 
   if (!coordinateMap || coordinateMap.length === 0) {
     const newEmptyRetries = state.emptyRetries + 1;
@@ -144,14 +154,14 @@ export async function drawAnnotationsNode(state: AgentState): Promise<Partial<Ag
         'warn',
       );
       await sleep(waitMs);
-      return { coordinateMap: [], emptyRetries: newEmptyRetries, retryStep: true };
+      return { coordinateMap: [], pageText, pageTextHistory, visitedUrls, emptyRetries: newEmptyRetries, retryStep: true };
     }
     // Exhausted retries — proceed with empty coordinate map (plain screenshot path)
     await log('No interactable elements found after retries. Sending screenshot to LLM for guidance…', 'warn');
     await chrome.storage.session.set({ coordinateMap: [] });
-    return { coordinateMap: [], emptyRetries: newEmptyRetries };
+    return { coordinateMap: [], pageText, pageTextHistory, visitedUrls, emptyRetries: newEmptyRetries };
   }
 
   await chrome.storage.session.set({ coordinateMap });
-  return { coordinateMap, emptyRetries: 0 };
+  return { coordinateMap, pageText, pageTextHistory, visitedUrls, emptyRetries: 0 };
 }

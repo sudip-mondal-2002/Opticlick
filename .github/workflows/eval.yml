@@ -1,18 +1,149 @@
-name: LLM Eval — LangSmith (Gemma 4)
+name: LLM Eval — LangSmith
+
 on:
   workflow_dispatch:
     inputs:
-      filter:
-        description: 'Which cases to run: non-auth | all | easy | medium | hard'
+      auth_filter:
+        description: 'Auth required: non-auth | auth | all'
         required: false
         default: 'non-auth'
+      difficulty:
+        description: 'Difficulty level: all | easy | medium | hard'
+        required: false
+        default: 'all'
       threshold:
         description: 'Minimum pass rate 0-100'
         required: false
         default: '70'
+      langsmith_project:
+        description: 'LangSmith project name to log results into'
+        required: false
+        default: 'opticlick-evals'
+      dataset_name:
+        description: 'LangSmith dataset name to run evals against'
+        required: false
+        default: 'Opticlick Eval Test Cases'
+      dataset_id:
+        description: 'LangSmith dataset UUID (pinned to the Opticlick benchmark)'
+        required: false
+        default: 'cda8e734-406a-449b-8513-7e828481ced1'
+      experiment_name:
+        description: 'Experiment name prefix shown in LangSmith (auto-suffixed with timestamp)'
+        required: false
+        default: 'opticlick-eval'
+      eval_ids:
+        description: 'Optional comma-separated case IDs (use for smoke validation)'
+        required: false
+        default: ''
+      agent_model:
+        description: 'Model used by the browser agent'
+        required: false
+        default: 'custom-openai:groq'
+      agent_model_name:
+        description: 'Provider-native agent model name'
+        required: false
+        default: 'openai/gpt-oss-120b'
+      judge_model:
+        description: 'Separate model used for multimodal judging'
+        required: false
+        default: 'openai/gpt-oss-20b'
+      max_concurrency:
+        description: 'Parallel browser cases (1-6)'
+        required: false
+        default: '1'
+      judge_concurrency:
+        description: 'Parallel judges after all agents complete (1-8)'
+        required: false
+        default: '3'
+      case_timeout_seconds:
+        description: 'Per-case hard timeout in seconds'
+        required: false
+        default: '180'
+      max_avg_agent_input_tokens:
+        description: 'Maximum average agent input tokens per case (0 disables)'
+        required: false
+        default: '1000'
 
 jobs:
   eval:
+    name: Run LangSmith Evals
     runs-on: ubuntu-latest
+    # Hard cap — prevents a hung test from blocking the runner indefinitely
+    timeout-minutes: 180
+
     steps:
-      - run: echo "This is a dummy run just to unlock the workflow_dispatch button in GitHub UI!"
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Setup Node.js
+        # actions/setup-node v4.3.0 — pinned to immutable commit SHA
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install chromium --with-deps
+
+      - name: Copy icons (required before build)
+        run: npm run copy-icons
+
+      - name: Build extension
+        run: npm run build
+
+      - name: Run eval suite
+        env:
+          # ── Phase 1: required ──────────────────────────────────────────────
+          LANGSMITH_API_KEY: ${{ secrets.LANGSMITH_API_KEY }}
+          LANGSMITH_PROJECT: ${{ inputs.langsmith_project }}
+          LANGSMITH_DATASET_NAME: ${{ inputs.dataset_name }}
+          LANGSMITH_DATASET_ID: ${{ inputs.dataset_id }}
+          EVAL_EXPERIMENT_NAME: ${{ inputs.experiment_name }}
+          EVAL_IDS: ${{ inputs.eval_ids }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+          CEREBRAS_BASE_URL: https://api.cerebras.ai/v1
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GROQ_BASE_URL: https://api.groq.com/openai/v1
+          EVAL_AUTH_FILTER: ${{ inputs.auth_filter }}
+          EVAL_DIFFICULTY: ${{ inputs.difficulty }}
+          EVAL_THRESHOLD: ${{ inputs.threshold }}
+          EVAL_MAX_CONCURRENCY: ${{ inputs.max_concurrency }}
+          EVAL_JUDGE_CONCURRENCY: ${{ inputs.judge_concurrency }}
+          EVAL_DEFER_JUDGE: 'true'
+          EVAL_CASE_TIMEOUT_SECONDS: ${{ inputs.case_timeout_seconds }}
+          EVAL_MAX_AVG_AGENT_INPUT_TOKENS: ${{ inputs.max_avg_agent_input_tokens }}
+          EVAL_AGENT_MODEL: ${{ inputs.agent_model }}
+          EVAL_AGENT_MODEL_NAME: ${{ inputs.agent_model_name }}
+          EVAL_JUDGE_MODEL: ${{ inputs.judge_model }}
+          # Isolated test-account state for auth runs; no UI login is attempted.
+          STORAGE_STATE_BASE64: ${{ secrets.STORAGE_STATE_BASE64 }}
+        # xvfb-run provides a virtual display — required since extensions need headless:false
+        run: |
+          xvfb-run --auto-servernum -- npm run eval:auth-setup
+          xvfb-run --auto-servernum -- npm run eval:smoke-test
+          xvfb-run --auto-servernum -- npm run eval
+
+      - name: Publish GitHub eval summary
+        if: always()
+        env:
+          LANGSMITH_DATASET_ID: ${{ inputs.dataset_id }}
+          LANGSMITH_DATASET_NAME: ${{ inputs.dataset_name }}
+        run: npm run eval:report
+
+      - name: Upload eval artifacts
+        # Authenticated recordings can contain private account data. Detailed
+        # auth results belong in access-controlled LangSmith traces only.
+        if: ${{ always() && inputs.auth_filter == 'non-auth' }}
+        # actions/upload-artifact v4.6.2 — pinned to immutable commit SHA
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: eval-results-${{ github.run_id }}
+          path: evals/results/summary.json
+          retention-days: 14

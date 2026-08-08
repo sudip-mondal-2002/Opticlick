@@ -275,3 +275,19 @@ Do NOT call finish() when:
 // ── Legacy convenience export (unchanged external API) ───────────────────────
 /** Full built-in prompt without any custom instructions. */
 export const SYSTEM_INSTRUCTIONS = CORE_INSTRUCTIONS + SECURITY_INSTRUCTIONS;
+
+/**
+ * Token-efficient instructions for text-only, rate-limited providers used by
+ * the eval harness. Tool schemas still carry their detailed argument rules.
+ */
+export const COMPACT_TEXT_AGENT_INSTRUCTIONS = `Complete the web goal from Page evidence. Call browser_action once. Choose command and put the real id, text, url, direction, key, or factual summary in params. Never emit placeholders. Click only listed IDs. Finish when all requested facts are known; never invent.`;
+
+// Small Groq Llama models are substantially more reliable with a literal
+// command line than with an OpenAI function schema. Besides removing the
+// schema tokens, this prevents the model from copying schema placeholders
+// such as "ID" into a tool call.
+export const COMPACT_TEXT_COMMAND_INSTRUCTIONS = `Reply with exactly one command and no explanation. Examples: CLICK 42 or TYPE Ada Lovelace or GO https://example.com or SCROLL down or KEY Enter or DONE complete factual answer. Never list multiple commands. Use a real listed id, never a placeholder. DONE only when Page contains every requested fact; never invent.`;
+
+export const COMPACT_RESEARCH_ANSWER_INSTRUCTIONS = `Answer the Goal with current, verifiable facts. Use your built-in web search or website visit when needed. Return only the complete final answer, with every requested field. Never describe browser actions and never invent missing values.`;
+
+export const COMPACT_EVIDENCE_SYNTHESIS_INSTRUCTIONS = `Answer the Goal using only the verified Page evidence. Return only the complete factual answer, preserving every requested item and value. Do not output commands, discuss browser actions, or invent facts.`;

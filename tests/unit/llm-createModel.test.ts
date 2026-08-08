@@ -210,7 +210,7 @@ describe('createCustomOpenAIModel', () => {
     expect(ChatOpenAI).toHaveBeenCalledWith(
       expect.objectContaining({
         model: 'meta-llama/Llama-3-70b',
-        openAIApiKey: 'together-key',
+        apiKey: 'together-key',
         configuration: { baseURL: 'https://api.together.xyz/v1' },
       }),
     );
@@ -225,7 +225,7 @@ describe('createCustomOpenAIModel', () => {
     });
     expect(ChatOpenAI).toHaveBeenCalledWith(
       expect.objectContaining({
-        openAIApiKey: 'not-needed',
+        apiKey: 'not-needed',
       }),
     );
   });

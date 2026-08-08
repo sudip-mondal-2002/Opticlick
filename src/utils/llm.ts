@@ -11,7 +11,7 @@ import { ChatAnthropic } from '@langchain/anthropic';
 import { ChatOpenAI } from '@langchain/openai';
 import { SystemMessage, type BaseMessage } from '@langchain/core/messages';
 import type { RunnableConfig } from '@langchain/core/runnables';
-import { AGENT_TOOLS } from './tools';
+import { AGENT_TOOLS, TEXT_AGENT_TOOLS, TEXT_FINISH_TOOLS } from './tools';
 import type { AgentAction, TodoItem, CoordinateEntry, RawToolCall } from './types';
 import type { VFSFile, MemoryEntry, ConversationTurn } from './db';
 import type { ScratchpadEntry } from './scratchpad';
@@ -25,7 +25,7 @@ import {
   getProviderForModel,
 } from './models';
 import type { CustomOpenAIConfig } from './models';
-import { CORE_INSTRUCTIONS, SECURITY_INSTRUCTIONS } from './system-prompt';
+import { CORE_INSTRUCTIONS, SECURITY_INSTRUCTIONS, COMPACT_TEXT_AGENT_INSTRUCTIONS, COMPACT_TEXT_COMMAND_INSTRUCTIONS, COMPACT_RESEARCH_ANSWER_INSTRUCTIONS, COMPACT_EVIDENCE_SYNTHESIS_INSTRUCTIONS } from './system-prompt';
 import { getCustomSystemPrompt, isCustomPromptEffective } from './custom-system-prompt';
 import { buildHistory, buildUserMessage } from './prompt';
 import { streamWithRetry } from './llm-stream';
@@ -128,13 +128,29 @@ export function createOpenAIModel(apiKey: string, modelId: string): ChatOpenAI {
 }
 
 export function createCustomOpenAIModel(config: CustomOpenAIConfig): ChatOpenAI {
-  return new ChatOpenAI({
+  const isGroq = /api\.groq\.com/.test(config.baseUrl);
+  const isGroqGptOss = isGroq && config.modelName.startsWith('openai/gpt-oss-');
+  const isGroqLlama = isGroq && config.modelName.startsWith('llama-');
+  const isGroqCompound = isGroq && config.modelName.startsWith('groq/compound');
+  const model = new ChatOpenAI({
     model: config.modelName,
-    openAIApiKey: config.apiKey || 'not-needed',
+    apiKey: config.apiKey || 'not-needed',
     temperature: 0.1,
+    // Browser decisions should be a short tool call, not a long essay.  This
+    // also bounds failed no-tool responses so they cannot consume thousands
+    // of completion tokens before the retry loop rejects them.
+    ...(isGroq ? { maxTokens: isGroqLlama ? 384 : isGroqCompound ? 768 : 512 } : {}),
+    ...(isGroqGptOss ? { modelKwargs: { reasoning_effort: 'low' } } : {}),
     maxRetries: 0,
     configuration: { baseURL: config.baseUrl },
   });
+  const textOnlyProvider = /api\.(cerebras\.ai|groq\.com)/.test(config.baseUrl);
+  Object.assign(model, {
+    supportsVision: !textOnlyProvider,
+    textCommandMode: isGroqLlama,
+    researchAnswerMode: isGroqCompound,
+  });
+  return model;
 }
 
 /** Unified factory — returns the appropriate LangChain model based on the model ID. */
@@ -178,16 +194,65 @@ export async function callModel(
   coordinateMap: CoordinateEntry[] = [],
   config?: RunnableConfig,
   onThinkingDelta?: (delta: string) => void,
+  pageText = '',
+  forceFinish = false,
 ): Promise<LLMResult> {
   // Only Gemini uses native image format; all others use OpenAI-compatible image_url format
   const useImageUrlFormat = !(model instanceof ChatGoogleGenerativeAI);
-  const systemContent = await buildSystemMessage();
+  const includeScreenshot = (model as AnyModel & { supportsVision?: boolean }).supportsVision !== false;
+  const textCommandMode = !includeScreenshot && (model as AnyModel & { textCommandMode?: boolean }).textCommandMode === true;
+  const researchAnswerMode = !includeScreenshot && (model as AnyModel & { researchAnswerMode?: boolean }).researchAnswerMode === true;
+  const evidenceSynthesisMode = !includeScreenshot && forceFinish;
+  const systemContent = includeScreenshot
+    ? await buildSystemMessage()
+    : evidenceSynthesisMode
+      ? COMPACT_EVIDENCE_SYNTHESIS_INSTRUCTIONS
+    : researchAnswerMode
+      ? COMPACT_RESEARCH_ANSWER_INSTRUCTIONS
+      : textCommandMode ? COMPACT_TEXT_COMMAND_INSTRUCTIONS : COMPACT_TEXT_AGENT_INSTRUCTIONS;
+  // Text agents receive a compact state ledger in the current user message.
+  // Replaying prior chat/tool turns multiplied input usage without adding
+  // information and prevented a simple three-step task from fitting in quota.
+  const boundedHistory = includeScreenshot ? history : [];
   const messages: BaseMessage[] = [
     new SystemMessage(systemContent),
-    ...buildHistory(history),
-    buildUserMessage(userPrompt, vfsFiles, currentTodo, inlineImages, base64Image, memoryEntries, scratchpadEntries, useImageUrlFormat, coordinateMap),
+    ...buildHistory(boundedHistory),
+    buildUserMessage(userPrompt, vfsFiles, currentTodo, inlineImages, base64Image, memoryEntries, scratchpadEntries, useImageUrlFormat, forceFinish ? [] : coordinateMap, includeScreenshot, pageText),
   ];
-  const modelWithTools = model.bindTools([...AGENT_TOOLS]);
-  const { reasoning, thinking, actions, rawToolCalls } = await streamWithRetry(modelWithTools, messages, logFn, config, onThinkingDelta);
+  const tools = includeScreenshot
+    ? [...AGENT_TOOLS]
+    : forceFinish
+      ? [...TEXT_FINISH_TOOLS]
+      : [...TEXT_AGENT_TOOLS];
+  // A turn without a tool call is unusable to the agent loop and used to be
+  // retried as a fresh LLM request.  Requiring a tool makes one reasoning
+  // decision map to one provider call and avoids the token/429 cascade.
+  const modelWithTools = includeScreenshot
+    ? model.bindTools(tools)
+    // `required` still lets small OpenAI-compatible models invent a different
+    // function name (for example `click` or `brave_search`). Groq then rejects
+    // the response before it reaches our parser. Force the one advertised
+    // function by name so every provider response uses the compact schema.
+    : evidenceSynthesisMode
+      ? model
+    : textCommandMode
+      ? model
+      : researchAnswerMode
+        ? model
+      : model.bindTools(tools as typeof TEXT_AGENT_TOOLS[number][], { tool_choice: 'browser_action' as const });
+  const streamed = await streamWithRetry(
+    modelWithTools,
+    messages,
+    logFn,
+    config,
+    onThinkingDelta,
+    evidenceSynthesisMode || researchAnswerMode ? 'research-answer' : textCommandMode ? 'text-command' : 'tools',
+  );
+  // Some small models emit several function calls despite the instruction to
+  // choose one. Execute only the first decision; otherwise a trailing generic
+  // `finish` can mark a task done before the preceding browser action runs.
+  const actions = includeScreenshot ? streamed.actions : streamed.actions.slice(0, 1);
+  const rawToolCalls = includeScreenshot ? streamed.rawToolCalls : streamed.rawToolCalls.slice(0, 1);
+  const { reasoning, thinking } = streamed;
   return { reasoning, thinking, actions, done: actions.some((a: AgentAction) => a.type === 'finish'), rawToolCalls };
 }

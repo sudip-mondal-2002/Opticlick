@@ -7,12 +7,15 @@
 
 import { LangChainTracer } from '@langchain/core/tracers/tracer_langchain';
 import { Client } from 'langsmith';
+import { RunTree } from 'langsmith/run_trees';
 
 let _tracer: LangChainTracer | null = null;
+let _client: Client | null = null;
+let _parentRunId: string | undefined;
 
 export function initializeLangSmith(): void {
-  const globalObj = typeof globalThis !== 'undefined' ? globalThis : (typeof window !== 'undefined' ? window : {});
-  const g = globalObj as unknown as Record<string, string | undefined>;
+  const g = globalThis as unknown as Record<string, string | undefined>;
+  _parentRunId = undefined;
 
   const apiKey = g.__LANGSMITH_API_KEY__ || (import.meta.env.VITE_LANGSMITH_API_KEY as string | undefined);
   const endpoint = g.__LANGSMITH_ENDPOINT__ || (import.meta.env.VITE_LANGSMITH_ENDPOINT as string | undefined);
@@ -29,11 +32,27 @@ export function initializeLangSmith(): void {
   if (!tracing || !apiKey || !endpoint) {
     console.warn('[LangSmith] Tracing disabled or missing config — no traces will be sent.');
     _tracer = null;
+    _client = null;
     return;
   }
 
   const client = new Client({ apiKey, apiUrl: endpoint });
+  _client = client;
   _tracer = new LangChainTracer({ projectName: project, client });
+  const parentHeadersRaw = g.__LANGSMITH_PARENT_HEADERS__;
+  if (parentHeadersRaw) {
+    try {
+      const parent = RunTree.fromHeaders(JSON.parse(parentHeadersRaw) as Record<string, string>, {
+        client,
+      });
+      if (parent) {
+        _parentRunId = parent.id;
+        _tracer.updateFromRunTree(parent);
+      }
+    } catch (error) {
+      console.warn('[LangSmith] Invalid distributed parent headers:', error);
+    }
+  }
   console.log('[LangSmith] Tracer initialized ✓');
 }
 
@@ -41,3 +60,20 @@ export function initializeLangSmith(): void {
 export function getLangSmithTracer(): LangChainTracer | null {
   return _tracer;
 }
+
+export function getLangSmithParentRunId(): string | undefined {
+  return _parentRunId;
+}
+
+// The Playwright eval harness injects ephemeral LangSmith credentials after
+// the MV3 service worker has loaded. Expose a narrow re-initialization hook so
+// detailed graph/model/tool traces are enabled without baking secrets into the
+// extension bundle.
+const runtime = globalThis as typeof globalThis & {
+  __OPTICLICK_INITIALIZE_LANGSMITH__?: () => void;
+  __OPTICLICK_FLUSH_LANGSMITH__?: () => Promise<void>;
+};
+runtime.__OPTICLICK_INITIALIZE_LANGSMITH__ = initializeLangSmith;
+runtime.__OPTICLICK_FLUSH_LANGSMITH__ = async () => {
+  await _client?.awaitPendingTraceBatches();
+};

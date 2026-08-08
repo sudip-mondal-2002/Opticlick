@@ -69,6 +69,27 @@ describe('buildHistory', () => {
 });
 
 describe('buildUserMessage', () => {
+  it('omits image payloads for text-only providers while preserving element context', () => {
+    const coordinates = [{ id: 1, x: 10, y: 20, tag: 'button', text: 'Search' }];
+    const msg = buildUserMessage('prompt', [], [], [], fakeBase64, [], [], true, coordinates, false);
+    const content = msg.content as Array<{ type: string; text?: string }>;
+    expect(content.some((part) => part.type === 'image_url')).toBe(false);
+    expect(content.map((part) => part.text ?? '').join(' ')).toContain('Annotated Elements');
+    expect(content.map((part) => part.text ?? '').join(' ')).toContain('Search');
+  });
+
+  it('preserves complete verified evidence for one terminal LLM synthesis call', () => {
+    const items = Array.from({ length: 10 }, (_, index) => `${index + 1}. Story ${index + 1} — ${100 - index} points`).join('\n');
+    const msg = buildUserMessage(
+      'Return the top 10 stories', [], [], [], fakeBase64, [], [], true, [], false,
+      `Verified data from visited sites:\n${items}`,
+    );
+    const text = (msg.content as Array<{ text?: string }>).map((part) => part.text ?? '').join(' ');
+    expect(text).toContain('1. Story 1');
+    expect(text).toContain('10. Story 10');
+    expect(text.length).toBeLessThan(3000);
+  });
+
   const fakeBase64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
 
   it('assembles human message with prompt, empty lists, and screenshot', () => {

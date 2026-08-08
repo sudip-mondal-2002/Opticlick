@@ -20,6 +20,8 @@ import { MEMORY_TOOLS } from './memory';
 import { TODO_TOOLS } from './todo';
 import { SCRATCHPAD_TOOLS } from './scratchpad';
 import { CONTROL_TOOLS } from './control';
+import { tool } from '@langchain/core/tools';
+import { z } from 'zod';
 import type { AgentAction, TodoItem } from '../types';
 
 /**
@@ -42,6 +44,36 @@ export const AGENT_TOOLS = [
   ...CONTROL_TOOLS,
 ] as const;
 
+// One compact schema replaces six repeated function definitions for text-only
+// providers. parseToolCall expands it into the existing internal action union.
+const textBrowserActionTool = tool(async () => 'ok', {
+  name: 'browser_action',
+  description: 'Perform exactly one browser action. Put only the selected action data in params.',
+  schema: z.object({
+    command: z.enum(['click', 'type', 'go', 'scroll', 'key', 'finish']),
+    params: z.object({
+      // Small OpenAI-compatible models frequently serialize numeric element
+      // IDs as JSON strings. Accept both and normalize in parseToolCall.
+      id: z.union([z.number(), z.string()]).optional(),
+      text: z.string().optional(),
+      url: z.string().optional(),
+      direction: z.enum(['up', 'down', 'left', 'right']).optional(),
+      key: z.string().optional(),
+      summary: z.string().optional(),
+    }),
+  }),
+});
+const textFinishActionTool = tool(async () => 'ok', {
+  name: 'browser_action',
+  description: 'Finish by returning every requested fact from the supplied evidence.',
+  schema: z.object({
+    summary: z.string().min(12).describe('Complete factual answer, not a placeholder'),
+  }),
+});
+
+export const TEXT_AGENT_TOOLS = [textBrowserActionTool] as const;
+export const TEXT_FINISH_TOOLS = [textFinishActionTool] as const;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Tool-call parser
 // ─────────────────────────────────────────────────────────────────────────────
@@ -51,6 +83,39 @@ type TodoUpdateItem = (AgentAction & { type: 'todo_update' })['updates'][number]
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const parsers: Record<string, (args: Record<string, any>) => AgentAction> = {
+  browser_action: (args) => {
+    if (typeof args.summary === 'string' && args.action === undefined) {
+      return { type: 'finish', summary: args.summary };
+    }
+    if (typeof args.command === 'string' && args.params && typeof args.params === 'object') {
+      const params = args.params as Record<string, unknown>;
+      switch (args.command.toLowerCase()) {
+        case 'click': return { type: 'click', targetId: Number(params.id ?? params.targetId) };
+        case 'type': return { type: 'type', text: String(params.text ?? ''), clearField: true };
+        case 'go': return { type: 'navigate', url: String(params.url ?? '') };
+        case 'scroll': return { type: 'scroll', direction: String(params.direction ?? 'down') as ScrollDirection };
+        case 'key': return { type: 'press_key', key: String(params.key ?? '') };
+        case 'finish': return { type: 'finish', summary: String(params.summary ?? params.text ?? '') };
+      }
+    }
+    if (typeof args.command === 'string') {
+      const match = args.command.trim().match(/^(\S+)(?:\s+([\s\S]*))?$/);
+      const verb = match?.[1]?.toLowerCase();
+      const value = match?.[2]?.trim() ?? '';
+      const firstValue = value.split(/[;\r\n]/, 1)[0].trim();
+      switch (verb) {
+        case 'click': return { type: 'click', targetId: Number.parseInt(firstValue, 10) };
+        case 'type': return { type: 'type', text: value, clearField: true };
+        case 'go':
+        case 'navigate': return { type: 'navigate', url: firstValue.replace(/^URL\s+/i, '') };
+        case 'scroll': return { type: 'scroll', direction: (firstValue || 'down') as ScrollDirection };
+        case 'key': return { type: 'press_key', key: firstValue };
+        case 'finish': return { type: 'finish', summary: value };
+        default: return { type: 'finish', summary: value || args.command };
+      }
+    }
+    return { type: 'finish', summary: String(args.summary ?? '') };
+  },
   click: (args) => ({
     type: 'click',
     targetId: args.targetId as number,
@@ -139,7 +204,7 @@ const parsers: Record<string, (args: Record<string, any>) => AgentAction> = {
   }),
   finish: (args) => ({
     type: 'finish',
-    summary: args.summary as string | undefined,
+    summary: String(args.summary ?? ''),
   }),
   wait: (args) => ({
     type: 'wait',

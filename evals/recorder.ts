@@ -1,0 +1,157 @@
+/**
+ * evals/recorder.ts
+ *
+ * ffmpeg/ffprobe wrappers for:
+ *  - Compressing the raw Playwright WebM into a smaller MP4
+ *  - Extracting N evenly-spaced frames as base64 PNGs for the judge LLM
+ *  - Getting video duration via ffprobe
+ */
+
+import { execFile } from 'node:child_process';
+import { createRequire } from 'node:module';
+import * as path from 'node:path';
+import * as fs from 'node:fs';
+
+const FRAMES_DIR = path.resolve(process.cwd(), 'evals/results/frames');
+const require = createRequire(import.meta.url);
+const ffmpegPath = require('ffmpeg-static') as string;
+const ffprobePath = (require('ffprobe-static') as { path: string }).path;
+
+function execFileAsync(command: string, args: string[]): Promise<{ stdout: string; stderr: string }> {
+  return new Promise((resolve, reject) => {
+    execFile(command, args, { maxBuffer: 20 * 1024 * 1024 }, (error, stdout, stderr) => {
+      if (error) {
+        reject(new Error(`${command} failed: ${stderr || error.message}`));
+        return;
+      }
+      resolve({ stdout, stderr });
+    });
+  });
+}
+
+/**
+ * Compress a WebM video to a smaller MP4.
+ * - 2fps (sufficient for agent evals, dramatically reduces size)
+ * - 720p
+ * - CRF 28 (good compression, acceptable quality for vision LLM)
+ * - No audio
+ */
+export async function compressVideo(inputPath: string, outputPath: string): Promise<void> {
+  if (!fs.existsSync(inputPath)) {
+    throw new Error(`Video not found: ${inputPath}`);
+  }
+
+  await execFileAsync(ffmpegPath, [
+      '-y',                   // overwrite output if exists
+      '-i', inputPath,
+      '-vf', 'scale=1280:720',
+      '-r', '2',              // 2 fps
+      '-c:v', 'libx264',
+      '-crf', '28',
+      '-preset', 'fast',
+      '-an',                  // no audio
+      outputPath,
+    ]);
+}
+
+/**
+ * Get video duration in seconds using ffprobe.
+ * Returns 0 if ffprobe fails (non-fatal).
+ */
+export async function getVideoDuration(videoPath: string): Promise<number> {
+  if (!fs.existsSync(videoPath)) return 0;
+
+  try {
+    const { stdout } = await execFileAsync(ffprobePath, [
+      '-v', 'quiet',
+      '-print_format', 'json',
+      '-show_streams',
+      videoPath,
+    ]);
+    const json = JSON.parse(stdout || '{}');
+    const duration = parseFloat(json.streams?.[0]?.duration ?? '0');
+    return isNaN(duration) ? 0 : duration;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * Extract N evenly-spaced frames from an MP4 as base64-encoded PNG strings.
+ * Max frames is capped at maxFrames (default 15) to control LLM token cost.
+ *
+ * Returns array of base64 strings (no data-URL prefix).
+ */
+export async function extractFrames(
+  videoPath: string,
+  caseId: string,
+  maxFrames = 15,
+): Promise<string[]> {
+  if (!fs.existsSync(videoPath)) return [];
+
+  const caseFramesDir = path.join(FRAMES_DIR, caseId);
+  fs.mkdirSync(caseFramesDir, { recursive: true });
+
+  // Get total frame count first
+  let countStdout = '';
+  try {
+    ({ stdout: countStdout } = await execFileAsync(ffprobePath, [
+      '-v', 'quiet',
+      '-select_streams', 'v:0',
+      '-count_frames',
+      '-show_entries', 'stream=nb_read_frames',
+      '-print_format', 'json',
+      videoPath,
+    ]));
+  } catch {
+    // use fallback frame count
+  }
+
+  let totalFrames = 60; // fallback
+  try {
+    const json = JSON.parse(countStdout || '{}');
+    const nb = parseInt(json.streams?.[0]?.nb_read_frames ?? '0', 10);
+    if (nb > 0) totalFrames = nb;
+  } catch {
+    // use fallback
+  }
+
+  // Calculate step so we extract exactly maxFrames (or fewer if video is short)
+  const frameStep = Math.max(1, Math.floor(totalFrames / maxFrames));
+
+  // Extract frames using select filter
+  const outputPattern = path.join(caseFramesDir, 'frame_%04d.png');
+  try {
+    await execFileAsync(ffmpegPath, [
+      '-y',
+      '-i', videoPath,
+      '-vf', `select=not(mod(n\\,${frameStep}))`,
+      '-vsync', '0',
+      '-q:v', '2',
+      outputPattern,
+    ]);
+  } catch {
+    console.warn(`[recorder] Frame extraction failed for ${caseId}`);
+    return [];
+  }
+
+  // Read extracted PNG files and encode as base64
+  const frameFiles = fs
+    .readdirSync(caseFramesDir)
+    .filter((f) => f.endsWith('.png'))
+    .sort()
+    .slice(0, maxFrames); // cap at maxFrames
+
+  return frameFiles.map((f) => {
+    const buf = fs.readFileSync(path.join(caseFramesDir, f));
+    return buf.toString('base64');
+  });
+}
+
+/** Clean up extracted frames for a case (call after judging). */
+export function cleanupFrames(caseId: string): void {
+  const caseFramesDir = path.join(FRAMES_DIR, caseId);
+  if (fs.existsSync(caseFramesDir)) {
+    fs.rmSync(caseFramesDir, { recursive: true, force: true });
+  }
+}

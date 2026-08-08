@@ -11,6 +11,17 @@ import { log } from '@/utils/agent-log';
 import type { AgentState } from '../agent-state';
 import { UI_ACTION_TYPES, UI_ACTION_TYPES_NO_CLICK } from '../agent-state';
 import { uiActionRegistry, type UIActionContext } from '../action-registry';
+import { appendConversationTurn } from '@/utils/db';
+
+function comparableUrl(value: string): string {
+  try {
+    const url = new URL(value);
+    url.hash = '';
+    return url.href.replace(/\/$/, '');
+  } catch {
+    return value.replace(/#.*$/, '').replace(/\/$/, '');
+  }
+}
 
 export async function uiActionNode(
   state: AgentState,
@@ -30,6 +41,23 @@ export async function uiActionNode(
   }
 
   const uiActionIdx = actions.findIndex((a) => a === uiAction);
+  const destination = uiAction.type === 'navigate'
+    ? uiAction.url
+    : uiAction.type === 'click'
+      ? coordinateMap.find((entry) => entry.id === uiAction.targetId)?.href
+      : undefined;
+  if (destination) {
+    const visited = new Set((state.visitedUrls ?? []).map(comparableUrl));
+    if (visited.has(comparableUrl(destination))) {
+      const message = `Blocked navigation loop: ${destination} was already visited. Extract the answer from the current page and call finish; do not revisit it.`;
+      await log(message, 'warn');
+      await appendConversationTurn(sessionId, 'tool', `[ACTION BLOCKED - Step ${step}] ${message}`, {
+        toolCallId: rawToolCalls[uiActionIdx]?.id ?? '',
+        toolName: rawToolCalls[uiActionIdx]?.name ?? uiAction.type,
+      });
+      return { tabId, navigationBlocked: true };
+    }
+  }
   const handler = uiActionRegistry.get(uiAction.type);
 
   if (!handler) {

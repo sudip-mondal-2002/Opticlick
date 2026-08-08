@@ -1,0 +1,94 @@
+import { log } from '@/utils/agent-log';
+import {
+  inferDeterministicNavigation,
+  inferDeterministicRelationshipClick,
+  nextDeterministicResearchUrl,
+  collectDeterministicResearchEvidence,
+} from '@/utils/text-agent-context';
+import type { AgentState } from '../agent-state';
+
+/** Use stable navigation/evidence helpers, then require the model to synthesize the final answer. */
+export async function fastPathNode(state: AgentState): Promise<Partial<AgentState>> {
+  const textOnly = (state.model as typeof state.model & { supportsVision?: boolean }).supportsVision === false;
+  if (!textOnly) return { actions: [], rawToolCalls: [], deterministicAction: false };
+
+  const currentUrl = (await chrome.tabs.get(state.tabId)).url ?? '';
+  const research = nextDeterministicResearchUrl(state.userPrompt, state.visitedUrls ?? []);
+  if (research.next) {
+    await log(`Deterministic research navigation: ${research.next}`, 'act');
+    return {
+      actions: [{ type: 'navigate', url: research.next }],
+      rawToolCalls: [{ id: `fast-${state.step}`, name: 'navigate', args: { url: research.next } }],
+      deterministicAction: true,
+      deterministicActions: (state.deterministicActions ?? 0) + 1,
+      done: false,
+    };
+  }
+  if (research.complete) {
+    let researchEvidence = state.researchEvidence ?? '';
+    if (!researchEvidence) {
+      try {
+        researchEvidence = await collectDeterministicResearchEvidence(state.userPrompt);
+        if (researchEvidence) await log('Collected verified research data from visited-site endpoints', 'observe');
+      } catch (error) {
+        await log(`Research data endpoint failed: ${(error as Error).message}`, 'warn');
+      }
+    }
+    if (researchEvidence) {
+      await log('Verified research collected; sending it to the LLM for final reasoning', 'observe');
+      return {
+        actions: [],
+        rawToolCalls: [],
+        deterministicAction: false,
+        deterministicActions: (state.deterministicActions ?? 0) + 1,
+        researchPlanDone: true, researchEvidence, done: false,
+      };
+    }
+    return { actions: [], rawToolCalls: [], deterministicAction: false, researchPlanDone: true };
+  }
+  if (state.relationshipHopDone && !state.researchEvidence) {
+    try {
+      const researchEvidence = await collectDeterministicResearchEvidence(state.userPrompt);
+      if (researchEvidence) {
+        await log('Verified relationship research collected; sending it to the LLM for final reasoning', 'observe');
+        return {
+          actions: [],
+          rawToolCalls: [],
+          deterministicAction: false,
+          deterministicActions: (state.deterministicActions ?? 0) + 1,
+          relationshipHopDone: true, researchEvidence, done: false,
+        };
+      }
+    } catch (error) {
+      await log(`Relationship data endpoint failed: ${(error as Error).message}`, 'warn');
+    }
+  }
+  const targetId = inferDeterministicRelationshipClick(
+    state.userPrompt,
+    state.pageText,
+    state.coordinateMap,
+    state.step,
+  );
+  if (targetId !== undefined) {
+    await log(`Deterministic relationship click: element #${targetId}`, 'act');
+    return {
+      actions: [{ type: 'click', targetId }],
+      rawToolCalls: [{ id: `fast-${state.step}`, name: 'click', args: { targetId } }],
+      deterministicAction: true,
+      deterministicActions: (state.deterministicActions ?? 0) + 1,
+      relationshipHopDone: true,
+      done: false,
+    };
+  }
+  const destination = inferDeterministicNavigation(state.userPrompt, currentUrl, state.step);
+  if (!destination) return { actions: [], rawToolCalls: [], deterministicAction: false };
+
+  await log(`Deterministic navigation: ${destination}`, 'act');
+  return {
+    actions: [{ type: 'navigate', url: destination }],
+    rawToolCalls: [{ id: `fast-${state.step}`, name: 'navigate', args: { url: destination } }],
+    deterministicAction: true,
+    deterministicActions: (state.deterministicActions ?? 0) + 1,
+    done: false,
+  };
+}
