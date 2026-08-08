@@ -67,6 +67,15 @@ export function selectRelevantElements(
     .map(({ entry }) => entry);
 }
 
+/** Recover a small model's placeholder click by choosing the top ranked element. */
+export function fallbackClickTargetId(
+  coordinateMap: CoordinateEntry[],
+  task: string,
+  pageText = '',
+): number | undefined {
+  return selectRelevantElements(coordinateMap, `${task} ${pageText}`, 1)[0]?.id;
+}
+
 /**
  * Follow an explicitly requested relationship hop without asking the model.
  * The page must itself describe the linked entity as the creator/author/etc.;

@@ -5,6 +5,7 @@ import {
   deterministicResearchPlan,
   nextDeterministicResearchUrl,
   collectDeterministicResearchEvidence,
+  fallbackClickTargetId,
   selectRelevantElements,
   selectRelevantPageText,
 } from '@/utils/text-agent-context';
@@ -43,6 +44,16 @@ describe('text agent context', () => {
     ];
     const result = selectRelevantElements(entries, 'Find Guido van Rossum', 2);
     expect(result.map((entry) => entry.id)).toEqual([2, 3]);
+  });
+
+  it('resolves a placeholder click to the highest-ranked visible element', () => {
+    const base = { tag: 'a', href: '', inputType: undefined, rect: { x: 0, y: 0, left: 0, top: 0, width: 1, height: 1 } };
+    const entries: CoordinateEntry[] = [
+      { ...base, id: 1, text: 'About' },
+      { ...base, id: 42, text: 'How to deep clone a JavaScript object?', href: '/questions/42' },
+    ];
+    expect(fallbackClickTargetId(entries, 'Find how to deep clone a JavaScript object'))
+      .toBe(42);
   });
 
   it('builds a direct Wikipedia article lookup on step one', () => {

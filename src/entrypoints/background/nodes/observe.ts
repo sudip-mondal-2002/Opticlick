@@ -24,6 +24,7 @@ import { captureScreenshot } from '@/utils/screenshot';
 import { sleep } from '@/utils/sleep';
 import type { AgentState } from '../agent-state';
 import { RATE_LIMIT_DELAY_MS } from '../agent-state';
+import { fallbackClickTargetId } from '@/utils/text-agent-context';
 
 // ── Node: captureAndDestroy ───────────────────────────────────────────────────
 
@@ -111,7 +112,19 @@ export async function reasonNode(state: AgentState, config: RunnableConfig): Pro
     return { llmFailed: true };
   }
 
-  const { reasoning, thinking, actions, done, rawToolCalls } = result;
+  const { reasoning, thinking, rawToolCalls } = result;
+  let recoveredTargetId: number | undefined;
+  const actions = result.actions.map((action) => {
+    if (action.type !== 'click' || Number.isFinite(action.targetId)) return action;
+    const targetId = fallbackClickTargetId(state.coordinateMap, state.userPrompt, state.pageText);
+    if (targetId === undefined) return action;
+    recoveredTargetId = targetId;
+    return { ...action, targetId };
+  });
+  if (recoveredTargetId !== undefined) {
+    await log(`Resolved placeholder click to element #${recoveredTargetId}`, 'act');
+  }
+  const done = actions.some((action) => action.type === 'finish');
   // Signal thinking stream is complete so the sidebar finalizes the block
   if (thinking) chrome.runtime.sendMessage({ type: 'AGENT_THINKING_DONE' }).catch(() => {});
   if (reasoning) await log(reasoning, 'info');
