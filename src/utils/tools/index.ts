@@ -48,22 +48,15 @@ export const AGENT_TOOLS = [
 // providers. parseToolCall expands it into the existing internal action union.
 const textBrowserActionTool = tool(async () => 'ok', {
   name: 'browser_action',
-  description: 'Perform exactly one browser action.',
+  description: 'One command: click ID | type TEXT | go URL | scroll DIR | key KEY | finish ANSWER',
   schema: z.object({
-    action: z.enum(['click', 'type', 'navigate', 'scroll', 'key', 'finish']),
-    targetId: z.number().int().optional(),
-    url: z.string().optional(),
-    text: z.string().optional(),
-    clearField: z.boolean().optional(),
-    direction: z.enum(['up', 'down', 'left', 'right']).optional(),
-    key: z.string().optional(),
-    summary: z.string().optional(),
+    command: z.string(),
   }),
 });
 const textFinishActionTool = tool(async () => 'ok', {
   name: 'browser_action',
-  description: 'Finish with the complete answer.',
-  schema: z.object({ action: z.literal('finish'), summary: z.string() }),
+  description: 'Use: finish COMPLETE ANSWER',
+  schema: z.object({ command: z.string() }),
 });
 
 export const TEXT_AGENT_TOOLS = [textBrowserActionTool] as const;
@@ -79,6 +72,23 @@ type TodoUpdateItem = (AgentAction & { type: 'todo_update' })['updates'][number]
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const parsers: Record<string, (args: Record<string, any>) => AgentAction> = {
   browser_action: (args) => {
+    if (typeof args.command === 'string') {
+      const match = args.command.trim().match(/^(\S+)(?:\s+([\s\S]*))?$/);
+      const verb = match?.[1]?.toLowerCase();
+      const value = match?.[2]?.trim() ?? '';
+      switch (verb) {
+        case 'click': return { type: 'click', targetId: Number.parseInt(value, 10) };
+        case 'type': return { type: 'type', text: value, clearField: true };
+        case 'go':
+        case 'navigate': return { type: 'navigate', url: value };
+        case 'scroll': return { type: 'scroll', direction: (value || 'down') as ScrollDirection };
+        case 'key': return { type: 'press_key', key: value };
+        case 'finish': return { type: 'finish', summary: value };
+        default: return { type: 'finish', summary: value || args.command };
+      }
+    }
+    // Accept the former structured shape for persisted calls and backwards
+    // compatibility while newly bound models receive only the one-string DSL.
     switch (args.action) {
       case 'click': return { type: 'click', targetId: args.targetId as number };
       case 'type': return { type: 'type', text: args.text as string, clearField: args.clearField as boolean | undefined };

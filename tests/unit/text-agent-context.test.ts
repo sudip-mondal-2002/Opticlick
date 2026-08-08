@@ -27,13 +27,13 @@ describe('text agent context', () => {
     expect(result.map((entry) => entry.id)).toEqual([2, 3]);
   });
 
-  it('builds a direct Wikipedia search on step one', () => {
+  it('builds a direct Wikipedia article lookup on step one', () => {
     const url = inferDeterministicNavigation(
       'On Wikipedia, look up the Python programming language. Then find its creator.',
       'https://opticlick.example/',
       1,
     );
-    expect(url).toBe('https://en.wikipedia.org/w/index.php?search=the%20Python%20programming%20language');
+    expect(url).toBe('https://en.wikipedia.org/wiki/Special:Search?search=Python%20programming%20language&go=Go');
   });
 
   it('does not repeat deterministic navigation after step one', () => {

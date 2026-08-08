@@ -63,7 +63,7 @@ function annotatedElementsBlock(coordinateMap: CoordinateEntry[], limit = coordi
   const rows = coordinateMap.slice(0, limit)
     .map((e) => {
       const type = e.inputType ? `${e.tag}(${e.inputType})` : e.tag;
-      const text = e.text.length > 80 ? `${e.text.slice(0, 77)}...` : e.text;
+      const text = e.text.length > 48 ? `${e.text.slice(0, 45)}...` : e.text;
       return `\`[${e.id}]\` \`${type}\` — "${text}"`;
     })
     .join('\n');
@@ -108,8 +108,11 @@ export function buildUserMessage(
 
   if (!includeScreenshot) {
     const evidence = selectRelevantPageText(pageText, taskPrompt);
-    const elements = selectRelevantElements(coordinateMap, taskPrompt);
-    const compactText = `Goal: ${taskPrompt}\nState: ${evidence || '(no page evidence)'}${annotatedElementsBlock(elements, 10)}\nChoose one browser action. Finish immediately when the goal is satisfied.`;
+    // Evidence often reveals the next entity in a multi-hop task (for
+    // example, a creator's name). Include those terms while ranking links so
+    // the useful hop survives the five-element token budget.
+    const elements = selectRelevantElements(coordinateMap, `${taskPrompt} ${evidence}`);
+    const compactText = `Goal:${taskPrompt}\nPage:${evidence || '-'}${annotatedElementsBlock(elements, 5)}\nAct once; finish if complete.`;
     return new HumanMessage({ content: [{ type: 'text', text: compactText }] as any });
   }
 

@@ -20,7 +20,7 @@ function scoreText(text: string, terms: string[]): number {
 }
 
 /** Keep URL/title plus only task-relevant sentence windows. */
-export function selectRelevantPageText(pageText: string, task: string, maxChars = 700): string {
+export function selectRelevantPageText(pageText: string, task: string, maxChars = 360): string {
   if (!pageText) return '';
   const url = pageText.match(/^Current URL:.*$/m)?.[0] ?? '';
   const title = pageText.match(/^Page title:.*$/m)?.[0] ?? '';
@@ -37,7 +37,7 @@ export function selectRelevantPageText(pageText: string, task: string, maxChars 
   const selected: Array<{ text: string; index: number }> = [];
   let used = url.length + title.length + 2;
   for (const candidate of ranked) {
-    if (selected.length >= 6) break;
+    if (selected.length >= 3) break;
     const remaining = maxChars - used;
     if (remaining <= 40) break;
     selected.push({ text: candidate.text.slice(0, remaining), index: candidate.index });
@@ -51,7 +51,7 @@ export function selectRelevantPageText(pageText: string, task: string, maxChars 
 export function selectRelevantElements(
   coordinateMap: CoordinateEntry[],
   task: string,
-  limit = 10,
+  limit = 5,
 ): CoordinateEntry[] {
   const terms = taskTerms(task);
   return coordinateMap
@@ -67,7 +67,10 @@ export function selectRelevantElements(
 }
 
 const SITE_SEARCH: Array<{ pattern: RegExp; host: string; build: (query: string) => string }> = [
-  { pattern: /\bwikipedia\b/i, host: 'wikipedia.org', build: (q) => `https://en.wikipedia.org/w/index.php?search=${encodeURIComponent(q)}` },
+  // `go=Go` resolves an exact title straight to its article while retaining
+  // Wikipedia search fallback for ambiguous subjects. That saves a complete
+  // model turn compared with rendering and clicking a search-result page.
+  { pattern: /\bwikipedia\b/i, host: 'wikipedia.org', build: (q) => `https://en.wikipedia.org/wiki/Special:Search?search=${encodeURIComponent(q)}&go=Go` },
   { pattern: /\bamazon\b/i, host: 'amazon.', build: (q) => `https://www.amazon.com/s?k=${encodeURIComponent(q)}` },
   { pattern: /\bebay\b/i, host: 'ebay.', build: (q) => `https://www.ebay.com/sch/i.html?_nkw=${encodeURIComponent(q)}` },
   { pattern: /\bgithub\b/i, host: 'github.com', build: (q) => `https://github.com/search?q=${encodeURIComponent(q)}` },
@@ -83,6 +86,7 @@ function searchQuery(task: string): string {
   return source
     .replace(/\b(?:on|in|using)\s+(?:wikipedia|amazon|ebay|github|imdb|reddit|stack overflow|youtube)\b/gi, '')
     .replace(/^(?:the user asks to|please)\s+/i, '')
+    .replace(/^the\s+/i, '')
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 160);

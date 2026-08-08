@@ -10,6 +10,15 @@ describe('parseToolCall', () => {
       .toEqual({ type: 'finish', summary: 'Done' });
   });
 
+  it('parses the token-efficient command form', () => {
+    expect(parseToolCall('browser_action', { command: 'click 42' }))
+      .toEqual({ type: 'click', targetId: 42 });
+    expect(parseToolCall('browser_action', { command: 'go https://example.com/a' }))
+      .toEqual({ type: 'navigate', url: 'https://example.com/a' });
+    expect(parseToolCall('browser_action', { command: 'finish The answer is 1991.' }))
+      .toEqual({ type: 'finish', summary: 'The answer is 1991.' });
+  });
+
   it('returns null for unknown tool name', () => {
     expect(parseToolCall('unknown_tool', {})).toBeNull();
   });
