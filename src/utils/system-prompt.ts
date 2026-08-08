@@ -281,3 +281,11 @@ export const SYSTEM_INSTRUCTIONS = CORE_INSTRUCTIONS + SECURITY_INSTRUCTIONS;
  * the eval harness. Tool schemas still carry their detailed argument rules.
  */
 export const COMPACT_TEXT_AGENT_INSTRUCTIONS = `Complete the web goal from Page evidence. Call browser_action once. Choose command and put the real id, text, url, direction, key, or factual summary in params. Never emit placeholders. Click only listed IDs. Finish when all requested facts are known; never invent.`;
+
+// Small Groq Llama models are substantially more reliable with a literal
+// command line than with an OpenAI function schema. Besides removing the
+// schema tokens, this prevents the model from copying schema placeholders
+// such as "ID" into a tool call.
+export const COMPACT_TEXT_COMMAND_INSTRUCTIONS = `Return one line only:
+C <listed id> | T <text> | G <url> | S down | K <key> | F <complete answer>
+Use a real listed id. Never output placeholders. F only when Page contains every requested fact; never invent.`;

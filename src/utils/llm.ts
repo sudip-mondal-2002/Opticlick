@@ -25,7 +25,7 @@ import {
   getProviderForModel,
 } from './models';
 import type { CustomOpenAIConfig } from './models';
-import { CORE_INSTRUCTIONS, SECURITY_INSTRUCTIONS, COMPACT_TEXT_AGENT_INSTRUCTIONS } from './system-prompt';
+import { CORE_INSTRUCTIONS, SECURITY_INSTRUCTIONS, COMPACT_TEXT_AGENT_INSTRUCTIONS, COMPACT_TEXT_COMMAND_INSTRUCTIONS } from './system-prompt';
 import { getCustomSystemPrompt, isCustomPromptEffective } from './custom-system-prompt';
 import { buildHistory, buildUserMessage } from './prompt';
 import { streamWithRetry } from './llm-stream';
@@ -144,7 +144,7 @@ export function createCustomOpenAIModel(config: CustomOpenAIConfig): ChatOpenAI 
     configuration: { baseURL: config.baseUrl },
   });
   const textOnlyProvider = /api\.(cerebras\.ai|groq\.com)/.test(config.baseUrl);
-  Object.assign(model, { supportsVision: !textOnlyProvider });
+  Object.assign(model, { supportsVision: !textOnlyProvider, textCommandMode: isGroqLlama });
   return model;
 }
 
@@ -195,9 +195,10 @@ export async function callModel(
   // Only Gemini uses native image format; all others use OpenAI-compatible image_url format
   const useImageUrlFormat = !(model instanceof ChatGoogleGenerativeAI);
   const includeScreenshot = (model as AnyModel & { supportsVision?: boolean }).supportsVision !== false;
+  const textCommandMode = !includeScreenshot && (model as AnyModel & { textCommandMode?: boolean }).textCommandMode === true;
   const systemContent = includeScreenshot
     ? await buildSystemMessage()
-    : COMPACT_TEXT_AGENT_INSTRUCTIONS;
+    : textCommandMode ? COMPACT_TEXT_COMMAND_INSTRUCTIONS : COMPACT_TEXT_AGENT_INSTRUCTIONS;
   // Text agents receive a compact state ledger in the current user message.
   // Replaying prior chat/tool turns multiplied input usage without adding
   // information and prevented a simple three-step task from fitting in quota.
@@ -221,8 +222,17 @@ export async function callModel(
     // function name (for example `click` or `brave_search`). Groq then rejects
     // the response before it reaches our parser. Force the one advertised
     // function by name so every provider response uses the compact schema.
-    : model.bindTools(tools as typeof TEXT_AGENT_TOOLS[number][], { tool_choice: 'browser_action' as const });
-  const streamed = await streamWithRetry(modelWithTools, messages, logFn, config, onThinkingDelta);
+    : textCommandMode
+      ? model
+      : model.bindTools(tools as typeof TEXT_AGENT_TOOLS[number][], { tool_choice: 'browser_action' as const });
+  const streamed = await streamWithRetry(
+    modelWithTools,
+    messages,
+    logFn,
+    config,
+    onThinkingDelta,
+    textCommandMode ? 'text-command' : 'tools',
+  );
   // Some small models emit several function calls despite the instruction to
   // choose one. Execute only the first decision; otherwise a trailing generic
   // `finish` can mark a task done before the preceding browser action runs.

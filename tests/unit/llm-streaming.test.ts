@@ -472,6 +472,38 @@ describe('callModel — streaming integration', () => {
     expect(boundModel.stream).toHaveBeenCalledTimes(5);
   });
 
+  it('parses the compact text command grammar without binding tools', async () => {
+    const { streamWithRetry } = await import('@/utils/llm-stream');
+    const commandModel = {
+      stream: vi.fn(async function* () {
+        yield new AIMessageChunk({ content: 'C 42' });
+      }) as Mock,
+    };
+
+    const result = await streamWithRetry(
+      commandModel,
+      [],
+      async () => {},
+      undefined,
+      undefined,
+      'text-command',
+    );
+
+    expect(result.actions).toEqual([{ type: 'click', targetId: 42 }]);
+    expect(result.rawToolCalls[0]).toMatchObject({ name: 'browser_action' });
+    expect(commandModel.stream).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not retry a provider that rejects tool calling', async () => {
+    const { streamWithRetry } = await import('@/utils/llm-stream');
+    const boundModel = {
+      stream: vi.fn().mockRejectedValue(new Error('400 `tool calling` is not supported with this model.')),
+    };
+
+    await expect(streamWithRetry(boundModel, [], async () => {})).rejects.toThrow('tool calling');
+    expect(boundModel.stream).toHaveBeenCalledTimes(1);
+  });
+
   it('attaches the LangSmith tracer as a callback when no LangGraph config is provided', async () => {
     // Covers `streamConfig = tracer ? { callbacks: [tracer] } : {}` — the tracer-active branch.
     // vi.resetModules() clears the module cache so the subsequent dynamic import re-executes

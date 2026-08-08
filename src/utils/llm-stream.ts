@@ -88,6 +88,37 @@ function parseResponse(response: AIMessageChunk): { reasoning: string; actions: 
   return { reasoning: reasoning.trim(), actions, rawToolCalls };
 }
 
+/** Parse the one-line command grammar used by low-token text agents. */
+function parseTextCommand(response: AIMessageChunk): { reasoning: string; actions: AgentAction[]; rawToolCalls: RawToolCall[] } {
+  const content = typeof response.content === 'string'
+    ? response.content
+    : (response.content as Array<{ type: string; text?: string }>)
+        .filter((part) => part.type === 'text')
+        .map((part) => part.text ?? '')
+        .join('');
+  const cleaned = content.replace(/```(?:text)?/gi, '').replace(/```/g, '').trim();
+  const line = cleaned.split(/\r?\n/).map((value) => value.trim()).find(Boolean) ?? '';
+  const match = line.match(/^(?:action\s*[:=]\s*)?([CTGSKF])(?:\s+|\|)([\s\S]*)$/i);
+  if (!match) throw new Error(`Invalid compact command: ${line.slice(0, 120)}`);
+  const value = match[2].trim();
+  let args: Record<string, unknown>;
+  switch (match[1].toUpperCase()) {
+    case 'C': args = { command: `click ${value}` }; break;
+    case 'T': args = { command: `type ${value}` }; break;
+    case 'G': args = { command: `go ${value}` }; break;
+    case 'S': args = { command: `scroll ${value || 'down'}` }; break;
+    case 'K': args = { command: `key ${value}` }; break;
+    default: args = { command: `finish ${value}` }; break;
+  }
+  const action = parseToolCall('browser_action', args);
+  if (!action) throw new Error(`Unsupported compact command: ${line.slice(0, 120)}`);
+  return {
+    reasoning: line,
+    actions: [action],
+    rawToolCalls: [{ id: 'compact-command', name: 'browser_action', args }],
+  };
+}
+
 // ── Retry loop ────────────────────────────────────────────────────────────────
 
 /**
@@ -112,6 +143,7 @@ export async function streamWithRetry(
   logFn: LogFn,
   config?: RunnableConfig,
   onThinkingDelta?: (delta: string) => void,
+  responseMode: 'tools' | 'text-command' = 'tools',
 ): Promise<{ reasoning: string; thinking: string; actions: AgentAction[]; rawToolCalls: RawToolCall[] }> {
   let lastError: Error | undefined;
 
@@ -174,7 +206,7 @@ export async function streamWithRetry(
         final.additional_kwargs = { ...final.additional_kwargs, thinking: collectedThinking };
       }
 
-      const parsed = parseResponse(final);
+      const parsed = responseMode === 'text-command' ? parseTextCommand(final) : parseResponse(final);
       return { ...parsed, thinking: collectedThinking.trim() };
     } catch (err) {
       lastError = err as Error;
@@ -192,7 +224,7 @@ export async function streamWithRetry(
       // The provider has already rejected this exact tool contract. Replaying
       // identical messages four more times wastes TPM and cannot repair a
       // schema/name mismatch; let the agent fail fast with the real cause.
-      if (/tool call validation failed|attempted to call tool/i.test(lastError.message)) {
+      if (/tool call validation failed|attempted to call tool|tool calling.+not supported/i.test(lastError.message)) {
         throw lastError;
       }
       const isRateLimit = lastError.message.includes('429') || lastError.message.toLowerCase().includes('rate limit');
