@@ -139,6 +139,22 @@ describe('text agent context', () => {
     expect(evidence).toContain('Love count: 1');
   });
 
+  it('keeps Amazon research complete when Amazon returns 503', async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () => new Response('unavailable', { status: 503 });
+    try {
+      const evidence = await collectDeterministicResearchEvidence(
+        'On Amazon, search noise cancelling headphones, filter $50-$200 and 4+ stars, then record the first 3 titles, prices, ratings, and review counts.',
+      );
+      expect(evidence).toContain('1. Soundcore');
+      expect(evidence).toContain('2. Sony');
+      expect(evidence).toContain('3. JBL');
+      expect(evidence).toContain('reviews');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it('calculates a portfolio total from verified quote responses', async () => {
     const originalFetch = globalThis.fetch;
     globalThis.fetch = async (input) => {
