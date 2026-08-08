@@ -41,6 +41,22 @@ describe('text agent context', () => {
     expect(inferDeterministicNavigation('Search Wikipedia for Python', 'https://example.com', 2)).toBeUndefined();
   });
 
+  it('navigates directly to a bare task URL', () => {
+    expect(inferDeterministicNavigation(
+      'Go to github.com/vercel/next.js. Tell me the star count.',
+      'https://example.com',
+      1,
+    )).toBe('https://github.com/vercel/next.js');
+  });
+
+  it('routes named finance sites without a model call', () => {
+    expect(inferDeterministicNavigation(
+      'Get current prices from CoinMarketCap: Bitcoin and Ethereum.',
+      'https://example.com',
+      1,
+    )).toBe('https://coinmarketcap.com/');
+  });
+
   it('follows a requested creator relationship from page evidence', () => {
     const base = { tag: 'a', inputType: undefined, rect: { x: 0, y: 0, left: 0, top: 0, width: 1, height: 1 } };
     const entries: CoordinateEntry[] = [

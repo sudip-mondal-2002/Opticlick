@@ -48,7 +48,7 @@ export const AGENT_TOOLS = [
 // providers. parseToolCall expands it into the existing internal action union.
 const textBrowserActionTool = tool(async () => 'ok', {
   name: 'browser_action',
-  description: 'Command syntax: click 12; type words; go URL; scroll down; key Enter; finish followed by actual facts',
+  description: 'Exactly one command: click ID OR type TEXT OR go URL OR scroll DIR OR key KEY OR finish FACTS',
   schema: z.object({
     command: z.string(),
   }),
@@ -81,13 +81,14 @@ const parsers: Record<string, (args: Record<string, any>) => AgentAction> = {
       const match = args.command.trim().match(/^(\S+)(?:\s+([\s\S]*))?$/);
       const verb = match?.[1]?.toLowerCase();
       const value = match?.[2]?.trim() ?? '';
+      const firstValue = value.split(/[;\r\n]/, 1)[0].trim();
       switch (verb) {
-        case 'click': return { type: 'click', targetId: Number.parseInt(value, 10) };
+        case 'click': return { type: 'click', targetId: Number.parseInt(firstValue, 10) };
         case 'type': return { type: 'type', text: value, clearField: true };
         case 'go':
-        case 'navigate': return { type: 'navigate', url: value };
-        case 'scroll': return { type: 'scroll', direction: (value || 'down') as ScrollDirection };
-        case 'key': return { type: 'press_key', key: value };
+        case 'navigate': return { type: 'navigate', url: firstValue };
+        case 'scroll': return { type: 'scroll', direction: (firstValue || 'down') as ScrollDirection };
+        case 'key': return { type: 'press_key', key: firstValue };
         case 'finish': return { type: 'finish', summary: value };
         default: return { type: 'finish', summary: value || args.command };
       }

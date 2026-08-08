@@ -24,6 +24,12 @@ describe('parseToolCall', () => {
       .toEqual({ type: 'finish', summary: 'Python was first released in 1991.' });
   });
 
+  it('keeps only the first accidentally chained navigation command', () => {
+    expect(parseToolCall('browser_action', {
+      command: 'go https://github.com/vercel/next.js; click 39; finish',
+    })).toEqual({ type: 'navigate', url: 'https://github.com/vercel/next.js' });
+  });
+
   it('returns null for unknown tool name', () => {
     expect(parseToolCall('unknown_tool', {})).toBeNull();
   });

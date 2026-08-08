@@ -112,7 +112,7 @@ export function buildUserMessage(
     // example, a creator's name). Include those terms while ranking links so
     // the useful hop survives the five-element token budget.
     const elements = selectRelevantElements(coordinateMap, `${taskPrompt} ${evidence}`);
-    const compactText = `Goal:${taskPrompt}\nPage:${evidence || '-'}${annotatedElementsBlock(elements, 5)}\nAct once; finish if complete.`;
+    const compactText = `Goal:${taskPrompt}\nPage:${evidence || '-'}${annotatedElementsBlock(elements, 4)}\nAct once; finish if complete.`;
     return new HumanMessage({ content: [{ type: 'text', text: compactText }] as any });
   }
 

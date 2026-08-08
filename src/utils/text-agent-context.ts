@@ -20,7 +20,7 @@ function scoreText(text: string, terms: string[]): number {
 }
 
 /** Keep URL/title plus only task-relevant sentence windows. */
-export function selectRelevantPageText(pageText: string, task: string, maxChars = 360): string {
+export function selectRelevantPageText(pageText: string, task: string, maxChars = 300): string {
   if (!pageText) return '';
   const url = pageText.match(/^Current URL:.*$/m)?.[0] ?? '';
   const title = pageText.match(/^Page title:.*$/m)?.[0] ?? '';
@@ -51,7 +51,7 @@ export function selectRelevantPageText(pageText: string, task: string, maxChars 
 export function selectRelevantElements(
   coordinateMap: CoordinateEntry[],
   task: string,
-  limit = 5,
+  limit = 4,
 ): CoordinateEntry[] {
   const terms = taskTerms(task);
   return coordinateMap
@@ -107,6 +107,8 @@ const SITE_SEARCH: Array<{ pattern: RegExp; host: string; build: (query: string)
   { pattern: /\breddit\b/i, host: 'reddit.com', build: (q) => `https://www.reddit.com/search/?q=${encodeURIComponent(q)}` },
   { pattern: /\bstack overflow\b/i, host: 'stackoverflow.com', build: (q) => `https://stackoverflow.com/search?q=${encodeURIComponent(q)}` },
   { pattern: /\byoutube\b/i, host: 'youtube.com', build: (q) => `https://www.youtube.com/results?search_query=${encodeURIComponent(q)}` },
+  { pattern: /\bcoinmarketcap\b/i, host: 'coinmarketcap.com', build: () => 'https://coinmarketcap.com/' },
+  { pattern: /\byahoo finance\b/i, host: 'finance.yahoo.com', build: () => 'https://finance.yahoo.com/' },
 ];
 
 function searchQuery(task: string): string {
@@ -133,6 +135,16 @@ export function inferDeterministicNavigation(
     try {
       if (new URL(currentUrl).hostname !== new URL(explicitUrl).hostname) return explicitUrl;
     } catch { /* invalid current URL */ }
+  }
+
+  const bareUrl = task.match(/\b(?:[a-z0-9-]+\.)+[a-z]{2,}(?:\/[^\s)\]},;]*)?/i)?.[0]
+    ?.replace(/[.!?]+$/, '');
+  if (bareUrl) {
+    const destination = `https://${bareUrl}`;
+    try {
+      if (new URL(currentUrl).hostname !== new URL(destination).hostname) return destination;
+      if (new URL(currentUrl).pathname !== new URL(destination).pathname) return destination;
+    } catch { return destination; }
   }
 
   const site = SITE_SEARCH.find((candidate) => candidate.pattern.test(task));
