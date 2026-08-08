@@ -243,17 +243,36 @@ function retryDelayMs(error: unknown): number | undefined {
   return Math.ceil(value * (unit === 'm' ? 60_000 : unit === 's' ? 1_000 : 1)) + 500;
 }
 
+// Deferred judging keeps evaluators out of agent workers, but unconstrained
+// concurrency creates a retry herd against Groq's TPM bucket. Gate request
+// starts globally while completed calls and all agent cases remain parallel.
+let nextJudgeStartAt = 0;
+let judgeStartGate: Promise<void> = Promise.resolve();
+
+function waitForJudgeStartSlot(): Promise<void> {
+  const interval = Number(process.env.EVAL_JUDGE_MIN_INTERVAL_MS
+    ?? (process.env.GROQ_API_KEY ? '6000' : '0'));
+  const slot = judgeStartGate.then(async () => {
+    const delay = Math.max(0, nextJudgeStartAt - Date.now());
+    if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
+    nextJudgeStartAt = Date.now() + Math.max(0, interval);
+  });
+  judgeStartGate = slot.catch(() => {});
+  return slot;
+}
+
 async function judgeWithRateLimitRetry(
   evalCase: EvalCase,
   runResult: RunResult,
   frames: string[],
 ): Promise<JudgeResult> {
-  for (let attempt = 1; attempt <= 5; attempt++) {
+  for (let attempt = 1; attempt <= 8; attempt++) {
     try {
+      await waitForJudgeStartSlot();
       return await judgeRun(evalCase, runResult, frames);
     } catch (error) {
       const delay = retryDelayMs(error);
-      if (delay === undefined || attempt === 5) throw error;
+      if (delay === undefined || attempt === 8) throw error;
       console.log(`     [${evalCase.id}] Judge rate limited; retrying in ${(delay / 1000).toFixed(1)}s`);
       await new Promise((resolve) => setTimeout(resolve, delay));
     }

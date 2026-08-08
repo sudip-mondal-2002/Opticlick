@@ -61,10 +61,7 @@ function getJudgeModel(): { model: ChatGoogleGenerativeAI | ChatOpenAI; supports
   };
 }
 
-const JUDGE_SYSTEM_PROMPT = `You are an impartial evaluator for an autonomous web agent called Opticlick.
-You will be shown screen recording frames of the agent completing a task in a browser.
-Your job is to score the agent's performance objectively.
-Always respond with valid JSON only — no markdown, no explanation outside the JSON.`;
+const JUDGE_SYSTEM_PROMPT = 'Score this web-agent run objectively. Return JSON only.';
 
 function buildJudgePrompt(
   evalCase: EvalCase,
@@ -77,40 +74,12 @@ function buildJudgePrompt(
     {
       type: 'text',
       text: `${JUDGE_SYSTEM_PROMPT}
-
-Task given to the agent:
-"${evalCase.prompt}"
-
-Expected outcome:
-"${evalCase.expectedOutput}"
-
-${
-  agentOutput
-    ? `Agent's actual log output (last 40 entries from the session):
-<agent_output>
-${agentOutput}
-</agent_output>
-
-Use this text output to evaluate output_correctness — it shows exactly what the agent found and reported.`
-    : 'No agent log output was captured.'
-}
-
-You are also shown ${frames.length} screen frames sampled from the main browser tab recording (navigation evidence).
-Analyze both the text output above AND the frames, then respond with ONLY this JSON (no extra text):
-
-{
-  "task_completed": true or false,
-  "navigation_accuracy": 0 or 0.5 or 1,
-  "output_correctness": 0 or 0.5 or 1,
-  "unnecessary_actions": true or false,
-  "reasoning": "one concise sentence explaining your verdict"
-}
-
-Scoring guide:
-- task_completed: true ONLY if the agent fully finished the stated task AND provided the answer
-- navigation_accuracy: 1 = visited the exact correct site(s); 0.5 = partially correct; 0 = wrong
-- output_correctness: 1 = agent's answer matches expected; 0.5 = partially correct; 0 = wrong or missing
-- unnecessary_actions: true if agent took clearly irrelevant steps that added no value`,
+Task: ${evalCase.prompt}
+Expected: ${evalCase.expectedOutput}
+Run log: ${agentOutput || '(missing)'}
+${includeFrames ? `Frames: ${frames.length}.` : ''}
+JSON schema: {"task_completed":boolean,"navigation_accuracy":0|0.5|1,"output_correctness":0|0.5|1,"unnecessary_actions":boolean,"reasoning":"one sentence"}
+Use 1 only for correct/complete, 0.5 for partial, 0 for wrong/missing.`,
     },
   ];
 
