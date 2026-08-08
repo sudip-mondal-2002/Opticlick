@@ -198,6 +198,7 @@ export async function runAgentLoop(
       actionHistory: [],
       retryStep: false,
       deterministicActions: 0,
+      llmCalls: 0,
       deterministicAction: false,
       relationshipHopDone: false,
       researchPlanDone: false,

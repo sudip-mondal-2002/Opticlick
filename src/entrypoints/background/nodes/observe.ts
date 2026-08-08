@@ -23,7 +23,7 @@ import { sendToTab } from '@/utils/tab-helpers';
 import { captureScreenshot } from '@/utils/screenshot';
 import { sleep } from '@/utils/sleep';
 import type { AgentState } from '../agent-state';
-import { RATE_LIMIT_DELAY_MS } from '../agent-state';
+import { MAX_BROWSER_DECISION_CALLS, RATE_LIMIT_DELAY_MS } from '../agent-state';
 import { fallbackClickTargetId } from '@/utils/text-agent-context';
 
 // ── Node: captureAndDestroy ───────────────────────────────────────────────────
@@ -66,6 +66,10 @@ export async function captureAndDestroyNode(state: AgentState): Promise<Partial<
 
 export async function reasonNode(state: AgentState, config: RunnableConfig): Promise<Partial<AgentState>> {
   const textOnly = (state.model as typeof state.model & { supportsVision?: boolean }).supportsVision === false;
+  const llmCalls = state.llmCalls ?? 0;
+  const browserDecisionBudgetReached = textOnly && llmCalls >= MAX_BROWSER_DECISION_CALLS;
+  const forceEvidenceSynthesis = state.navigationBlocked
+    || (textOnly && (state.relationshipHopDone || state.researchPlanDone || browserDecisionBudgetReached));
   const history = textOnly ? [] : await getConversationHistory(state.sessionId);
   const vfsFiles = textOnly ? [] : await listVFSFiles(state.sessionId);
   await log('Sending to LLM…', 'observe');
@@ -77,6 +81,9 @@ export async function reasonNode(state: AgentState, config: RunnableConfig): Pro
       : state.anchoredPrompt;
   if (state.navigationBlocked) {
     prompt += '\n\n[SYSTEM NOTE: A navigation loop was blocked. Do not interact further. Call finish now with the facts collected from the current page and prior context.]';
+  }
+  if (browserDecisionBudgetReached) {
+    await log('Browser decision budget reached; synthesizing the best answer from collected evidence', 'observe');
   }
 
   // Broadcast thinking deltas to the sidebar for live streaming
@@ -105,7 +112,7 @@ export async function reasonNode(state: AgentState, config: RunnableConfig): Pro
         : (state.pageTextHistory?.length ?? 0) > 1
           ? state.pageTextHistory.join('\n')
           : state.pageText,
-      state.navigationBlocked || (textOnly && (state.relationshipHopDone || state.researchPlanDone)),
+      forceEvidenceSynthesis,
     );
   } catch (err) {
     if (/tokens per day|\bTPD\b|tool call validation failed|attempted to call tool/i.test((err as Error).message)) throw err;
@@ -138,5 +145,13 @@ export async function reasonNode(state: AgentState, config: RunnableConfig): Pro
   await appendToSessionSearchText(state.sessionId, `${state.userPrompt} ${reasoning ?? ''}`);
   await touchSession(state.sessionId);
 
-  return { actions, rawToolCalls, reasoning: reasoning || '', thinking: thinking || '', done, llmFailed: false };
+  return {
+    actions,
+    rawToolCalls,
+    reasoning: reasoning || '',
+    thinking: thinking || '',
+    done,
+    llmFailed: false,
+    llmCalls: llmCalls + 1,
+  };
 }
