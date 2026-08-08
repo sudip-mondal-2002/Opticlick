@@ -25,7 +25,7 @@ import {
   getProviderForModel,
 } from './models';
 import type { CustomOpenAIConfig } from './models';
-import { CORE_INSTRUCTIONS, SECURITY_INSTRUCTIONS, COMPACT_TEXT_AGENT_INSTRUCTIONS, COMPACT_TEXT_COMMAND_INSTRUCTIONS, COMPACT_RESEARCH_ANSWER_INSTRUCTIONS } from './system-prompt';
+import { CORE_INSTRUCTIONS, SECURITY_INSTRUCTIONS, COMPACT_TEXT_AGENT_INSTRUCTIONS, COMPACT_TEXT_COMMAND_INSTRUCTIONS, COMPACT_RESEARCH_ANSWER_INSTRUCTIONS, COMPACT_EVIDENCE_SYNTHESIS_INSTRUCTIONS } from './system-prompt';
 import { getCustomSystemPrompt, isCustomPromptEffective } from './custom-system-prompt';
 import { buildHistory, buildUserMessage } from './prompt';
 import { streamWithRetry } from './llm-stream';
@@ -202,8 +202,11 @@ export async function callModel(
   const includeScreenshot = (model as AnyModel & { supportsVision?: boolean }).supportsVision !== false;
   const textCommandMode = !includeScreenshot && (model as AnyModel & { textCommandMode?: boolean }).textCommandMode === true;
   const researchAnswerMode = !includeScreenshot && (model as AnyModel & { researchAnswerMode?: boolean }).researchAnswerMode === true;
+  const evidenceSynthesisMode = !includeScreenshot && forceFinish;
   const systemContent = includeScreenshot
     ? await buildSystemMessage()
+    : evidenceSynthesisMode
+      ? COMPACT_EVIDENCE_SYNTHESIS_INSTRUCTIONS
     : researchAnswerMode
       ? COMPACT_RESEARCH_ANSWER_INSTRUCTIONS
       : textCommandMode ? COMPACT_TEXT_COMMAND_INSTRUCTIONS : COMPACT_TEXT_AGENT_INSTRUCTIONS;
@@ -230,6 +233,8 @@ export async function callModel(
     // function name (for example `click` or `brave_search`). Groq then rejects
     // the response before it reaches our parser. Force the one advertised
     // function by name so every provider response uses the compact schema.
+    : evidenceSynthesisMode
+      ? model
     : textCommandMode
       ? model
       : researchAnswerMode
@@ -241,7 +246,7 @@ export async function callModel(
     logFn,
     config,
     onThinkingDelta,
-    researchAnswerMode ? 'research-answer' : textCommandMode ? 'text-command' : 'tools',
+    evidenceSynthesisMode || researchAnswerMode ? 'research-answer' : textCommandMode ? 'text-command' : 'tools',
   );
   // Some small models emit several function calls despite the instruction to
   // choose one. Execute only the first decision; otherwise a trailing generic
