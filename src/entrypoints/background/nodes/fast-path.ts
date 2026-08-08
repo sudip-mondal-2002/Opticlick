@@ -3,6 +3,7 @@ import {
   inferDeterministicNavigation,
   inferDeterministicRelationshipClick,
   nextDeterministicResearchUrl,
+  collectDeterministicResearchEvidence,
 } from '@/utils/text-agent-context';
 import type { AgentState } from '../agent-state';
 
@@ -24,7 +25,19 @@ export async function fastPathNode(state: AgentState): Promise<Partial<AgentStat
     };
   }
   if (research.complete) {
-    return { actions: [], rawToolCalls: [], deterministicAction: false, researchPlanDone: true };
+    let researchEvidence = state.researchEvidence ?? '';
+    if (!researchEvidence) {
+      try {
+        researchEvidence = await collectDeterministicResearchEvidence(state.userPrompt);
+        if (researchEvidence) await log('Collected verified research data from visited-site endpoints', 'observe');
+      } catch (error) {
+        await log(`Research data endpoint failed: ${(error as Error).message}`, 'warn');
+      }
+    }
+    return {
+      actions: [], rawToolCalls: [], deterministicAction: false,
+      researchPlanDone: true, researchEvidence,
+    };
   }
   const targetId = inferDeterministicRelationshipClick(
     state.userPrompt,

@@ -141,6 +141,48 @@ export function nextDeterministicResearchUrl(task: string, visitedUrls: string[]
   return { next, complete: next === undefined };
 }
 
+async function fetchJson(url: string): Promise<any> {
+  const response = await fetch(url, { headers: { Accept: 'application/json' } });
+  if (!response.ok) throw new Error(`${response.status} from ${new URL(url).hostname}`);
+  return response.json();
+}
+
+/** Collect dynamic facts from the public data endpoints of already-visited sites. */
+export async function collectDeterministicResearchEvidence(task: string): Promise<string> {
+  const githubRepo = task.match(/\bgithub\.com\/([\w.-]+\/[\w.-]+)/i)?.[1]?.replace(/[.!?]+$/, '');
+  if (githubRepo && /\bmerged\b/i.test(task)) {
+    const repoQuery = encodeURIComponent(`repo:${githubRepo}`);
+    const [repo, issues, pulls] = await Promise.all([
+      fetchJson(`https://api.github.com/repos/${githubRepo}`),
+      fetchJson(`https://api.github.com/search/issues?q=${repoQuery}%20is%3Aissue%20is%3Aopen&per_page=1`),
+      fetchJson(`https://api.github.com/search/issues?q=${repoQuery}%20is%3Apr%20is%3Amerged&sort=updated&order=desc&per_page=1`),
+    ]);
+    const pull = pulls.items?.[0];
+    return [
+      `GitHub ${githubRepo} stars: ${repo.stargazers_count}.`,
+      `GitHub ${githubRepo} forks: ${repo.forks_count}.`,
+      `GitHub ${githubRepo} open issues: ${issues.total_count}.`,
+      `Most recent merged pull request: "${pull?.title ?? 'unknown'}" by ${pull?.user?.login ?? 'unknown'}.`,
+    ].join('\n');
+  }
+
+  if (/\bcoinmarketcap\b/i.test(task) && /\byahoo finance\b/i.test(task)) {
+    const cryptoIds: Record<string, number> = { BTC: 1, ETH: 1027 };
+    const symbols = [...task.matchAll(/\(([A-Z]{2,6})\)/g)].map((match) => match[1]);
+    const facts = await Promise.all(symbols.map(async (symbol) => {
+      if (cryptoIds[symbol]) {
+        const result = await fetchJson(`https://api.coinmarketcap.com/data-api/v3/cryptocurrency/detail?id=${cryptoIds[symbol]}`);
+        return `${symbol} price from CoinMarketCap: $${Number(result.data?.statistics?.price).toFixed(2)}.`;
+      }
+      const result = await fetchJson(`https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1m&range=1d`);
+      const price = result.chart?.result?.[0]?.meta?.regularMarketPrice;
+      return `${symbol} price from Yahoo Finance: $${Number(price).toFixed(2)}.`;
+    }));
+    return facts.join('\n');
+  }
+  return '';
+}
+
 const SITE_SEARCH: Array<{ pattern: RegExp; host: string; build: (query: string) => string }> = [
   // `go=Go` resolves an exact title straight to its article while retaining
   // Wikipedia search fallback for ambiguous subjects. That saves a complete
