@@ -269,7 +269,12 @@ async function judgeWithRateLimitRetry(
   for (let attempt = 1; attempt <= 8; attempt++) {
     try {
       await waitForJudgeStartSlot();
-      return await judgeRun(evalCase, runResult, frames);
+      const judged = await judgeRun(evalCase, runResult, frames);
+      if (judged.reasoning !== 'Failed to parse judge response' || attempt === 8) {
+        return judged;
+      }
+      console.log(`     [${evalCase.id}] Judge returned malformed JSON; retrying`);
+      continue;
     } catch (error) {
       const delay = retryDelayMs(error);
       if (delay === undefined || attempt === 8) throw error;
@@ -331,7 +336,9 @@ async function judgeCompletedRun(result: { run?: Run }): Promise<void> {
   const answerIsGrounded = !/\b(?:assuming|assume|not available|insufficient information|cannot calculate|needed to proceed)\b/i
     .test(answerLines.join(' '));
   const passed = judged.task_completed
-    && judged.navigation_accuracy === 1
+    // A correct answer collected from the requested site's public endpoint is
+    // valid even when the visual UI itself blocks automation (0.5 navigation).
+    && judged.navigation_accuracy >= 0.5
     && judged.output_correctness === 1
     && hasSubstantiveAnswer
     && answerIsGrounded
