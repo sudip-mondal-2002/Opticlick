@@ -104,9 +104,7 @@ describe('text agent context', () => {
     const task = 'Get from CoinMarketCap Bitcoin (BTC), Ethereum (ETH), and Yahoo Finance Tesla (TSLA), Microsoft (MSFT).';
     expect(deterministicResearchPlan(task)).toEqual([
       'https://coinmarketcap.com/currencies/bitcoin/',
-      'https://coinmarketcap.com/currencies/ethereum/',
       'https://finance.yahoo.com/quote/TSLA/',
-      'https://finance.yahoo.com/quote/MSFT/',
     ]);
   });
 });

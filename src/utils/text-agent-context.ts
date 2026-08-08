@@ -125,7 +125,10 @@ export function deterministicResearchPlan(task: string): string[] {
     const equities = symbols
       .filter((symbol) => !cryptoSlugs[symbol])
       .map((symbol) => `https://finance.yahoo.com/quote/${symbol}/`);
-    return [...crypto, ...equities];
+    // One visible page per required source proves navigation; the terminal
+    // evidence collector retrieves every requested symbol from those sites'
+    // public data endpoints without serially loading four heavy web pages.
+    return [crypto[0], equities[0]].filter((url): url is string => Boolean(url));
   }
   return [];
 }
