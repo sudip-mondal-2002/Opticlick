@@ -200,6 +200,7 @@ export async function runAgentLoop(
       deterministicActions: 0,
       deterministicAction: false,
       relationshipHopDone: false,
+      researchPlanDone: false,
       coordinateMap: [],
       pageText: '',
       pageTextHistory: [],

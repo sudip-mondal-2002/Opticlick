@@ -100,9 +100,9 @@ export async function reasonNode(state: AgentState, config: RunnableConfig): Pro
       config,
       onThinkingDelta,
       (state.pageTextHistory?.length ?? 0) > 1
-        ? `Prior page evidence:\n${state.pageTextHistory[state.pageTextHistory.length - 2]}\n\nCurrent page:\n${state.pageText}`
+        ? state.pageTextHistory.join('\n')
         : state.pageText,
-      state.navigationBlocked || (textOnly && state.relationshipHopDone),
+      state.navigationBlocked || (textOnly && (state.relationshipHopDone || state.researchPlanDone)),
     );
   } catch (err) {
     if (/tokens per day|\bTPD\b/i.test((err as Error).message)) throw err;

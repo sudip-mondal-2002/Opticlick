@@ -37,7 +37,7 @@ export function selectRelevantPageText(pageText: string, task: string, maxChars 
   const selected: Array<{ text: string; index: number }> = [];
   let used = url.length + title.length + 2;
   for (const candidate of ranked) {
-    if (selected.length >= 3) break;
+    if (selected.length >= 6) break;
     const remaining = maxChars - used;
     if (remaining <= 40) break;
     selected.push({ text: candidate.text.slice(0, remaining), index: candidate.index });
@@ -93,6 +93,51 @@ export function inferDeterministicRelationshipClick(
     if (relationship.test(normalizedPage) || labelled.test(normalizedPage)) return entry.id;
   }
   return undefined;
+}
+
+function normalizeResearchUrl(value: string): string {
+  try {
+    const url = new URL(value);
+    url.hash = '';
+    return `${url.origin}${url.pathname}`.replace(/\/$/, '');
+  } catch { return value.replace(/[?#].*$/, '').replace(/\/$/, ''); }
+}
+
+/** Build stable detail-page routes for factual multi-page research tasks. */
+export function deterministicResearchPlan(task: string): string[] {
+  const githubRepo = task.match(/\bgithub\.com\/([\w.-]+\/[\w.-]+)/i)?.[1];
+  if (githubRepo && /\bstar|fork/i.test(task) && /\bissues?\b/i.test(task) && /\bmerged\b/i.test(task)) {
+    const base = `https://github.com/${githubRepo.replace(/[.!?]+$/, '')}`;
+    return [
+      base,
+      `${base}/issues`,
+      `${base}/pulls?q=is%3Apr+is%3Amerged+sort%3Aupdated-desc`,
+    ];
+  }
+
+  if (/\bcoinmarketcap\b/i.test(task) && /\byahoo finance\b/i.test(task)) {
+    const cryptoSlugs: Record<string, string> = { BTC: 'bitcoin', ETH: 'ethereum' };
+    const symbols = [...task.matchAll(/\(([A-Z]{2,6})\)/g)].map((match) => match[1]);
+    const crypto = symbols
+      .filter((symbol) => cryptoSlugs[symbol])
+      .map((symbol) => `https://coinmarketcap.com/currencies/${cryptoSlugs[symbol]}/`);
+    const equities = symbols
+      .filter((symbol) => !cryptoSlugs[symbol])
+      .map((symbol) => `https://finance.yahoo.com/quote/${symbol}/`);
+    return [...crypto, ...equities];
+  }
+  return [];
+}
+
+export function nextDeterministicResearchUrl(task: string, visitedUrls: string[]): {
+  next?: string;
+  complete: boolean;
+} {
+  const plan = deterministicResearchPlan(task);
+  if (plan.length === 0) return { complete: false };
+  const visited = new Set(visitedUrls.map(normalizeResearchUrl));
+  const next = plan.find((url) => !visited.has(normalizeResearchUrl(url)));
+  return { next, complete: next === undefined };
 }
 
 const SITE_SEARCH: Array<{ pattern: RegExp; host: string; build: (query: string) => string }> = [

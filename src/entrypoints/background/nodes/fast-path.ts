@@ -1,5 +1,9 @@
 import { log } from '@/utils/agent-log';
-import { inferDeterministicNavigation, inferDeterministicRelationshipClick } from '@/utils/text-agent-context';
+import {
+  inferDeterministicNavigation,
+  inferDeterministicRelationshipClick,
+  nextDeterministicResearchUrl,
+} from '@/utils/text-agent-context';
 import type { AgentState } from '../agent-state';
 
 /** Skip the model when the task explicitly names a URL or searchable site. */
@@ -8,6 +12,20 @@ export async function fastPathNode(state: AgentState): Promise<Partial<AgentStat
   if (!textOnly) return { actions: [], rawToolCalls: [], deterministicAction: false };
 
   const currentUrl = (await chrome.tabs.get(state.tabId)).url ?? '';
+  const research = nextDeterministicResearchUrl(state.userPrompt, state.visitedUrls ?? []);
+  if (research.next) {
+    await log(`Deterministic research navigation: ${research.next}`, 'act');
+    return {
+      actions: [{ type: 'navigate', url: research.next }],
+      rawToolCalls: [{ id: `fast-${state.step}`, name: 'navigate', args: { url: research.next } }],
+      deterministicAction: true,
+      deterministicActions: (state.deterministicActions ?? 0) + 1,
+      done: false,
+    };
+  }
+  if (research.complete) {
+    return { actions: [], rawToolCalls: [], deterministicAction: false, researchPlanDone: true };
+  }
   const targetId = inferDeterministicRelationshipClick(
     state.userPrompt,
     state.pageText,

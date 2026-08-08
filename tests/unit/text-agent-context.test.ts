@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   inferDeterministicNavigation,
   inferDeterministicRelationshipClick,
+  deterministicResearchPlan,
+  nextDeterministicResearchUrl,
   selectRelevantElements,
   selectRelevantPageText,
 } from '@/utils/text-agent-context';
@@ -69,5 +71,28 @@ describe('text agent context', () => {
       entries,
       2,
     )).toBe(9);
+  });
+
+  it('plans GitHub factual research on stable pages', () => {
+    const task = 'Go to github.com/vercel/next.js. Tell me stars, forks, open issues, and most recent merged pull request.';
+    expect(deterministicResearchPlan(task)).toEqual([
+      'https://github.com/vercel/next.js',
+      'https://github.com/vercel/next.js/issues',
+      'https://github.com/vercel/next.js/pulls?q=is%3Apr+is%3Amerged+sort%3Aupdated-desc',
+    ]);
+    expect(nextDeterministicResearchUrl(task, [
+      'https://github.com/vercel/next.js/',
+      'https://github.com/vercel/next.js/issues',
+    ]).next).toContain('/pulls?');
+  });
+
+  it('plans exact crypto and stock quote pages', () => {
+    const task = 'Get from CoinMarketCap Bitcoin (BTC), Ethereum (ETH), and Yahoo Finance Tesla (TSLA), Microsoft (MSFT).';
+    expect(deterministicResearchPlan(task)).toEqual([
+      'https://coinmarketcap.com/currencies/bitcoin/',
+      'https://coinmarketcap.com/currencies/ethereum/',
+      'https://finance.yahoo.com/quote/TSLA/',
+      'https://finance.yahoo.com/quote/MSFT/',
+    ]);
   });
 });

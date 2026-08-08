@@ -30,6 +30,13 @@ describe('parseToolCall', () => {
     })).toEqual({ type: 'navigate', url: 'https://github.com/vercel/next.js' });
   });
 
+  it('parses the compact structured action form', () => {
+    expect(parseToolCall('browser_action', { action: 'click', value: '39' }))
+      .toEqual({ type: 'click', targetId: 39 });
+    expect(parseToolCall('browser_action', { action: 'go', value: 'https://example.com; click 2' }))
+      .toEqual({ type: 'navigate', url: 'https://example.com' });
+  });
+
   it('returns null for unknown tool name', () => {
     expect(parseToolCall('unknown_tool', {})).toBeNull();
   });
