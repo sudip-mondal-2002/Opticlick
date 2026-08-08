@@ -100,9 +100,11 @@ export async function reasonNode(state: AgentState, config: RunnableConfig): Pro
       state.coordinateMap,
       config,
       onThinkingDelta,
-      `${(state.pageTextHistory?.length ?? 0) > 1
-        ? state.pageTextHistory.join('\n')
-        : state.pageText}${state.researchEvidence ? `\nVerified data from visited sites:\n${state.researchEvidence}` : ''}`,
+      state.researchEvidence
+        ? `Verified data from visited sites:\n${state.researchEvidence}`
+        : (state.pageTextHistory?.length ?? 0) > 1
+          ? state.pageTextHistory.join('\n')
+          : state.pageText,
       state.navigationBlocked || (textOnly && (state.relationshipHopDone || state.researchPlanDone)),
     );
   } catch (err) {

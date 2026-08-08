@@ -121,7 +121,9 @@ export function buildUserMessage(
     // no requested fact is dropped. It is still far smaller than replaying
     // chat/tool history and is used by only one model call.
     const evidence = verifiedEvidence
-      ? `Verified data from visited sites:\n${verifiedEvidence.slice(0, 900)}`
+      // Preserve complete list answers (for example top-10 stories) while
+      // remaining well below one thousand input tokens for the terminal call.
+      ? `Verified data from visited sites:\n${verifiedEvidence.slice(0, 2500)}`
       : selectRelevantPageText(evidenceSource, taskPrompt, pageCount > 1 ? 900 : 300);
     // Evidence often reveals the next entity in a multi-hop task (for
     // example, a creator's name). Include those terms while ranking links so

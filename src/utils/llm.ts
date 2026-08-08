@@ -230,8 +230,13 @@ export async function callModel(
     // function name (for example `click` or `brave_search`). Groq then rejects
     // the response before it reaches our parser. Force the one advertised
     // function by name so every provider response uses the compact schema.
-    : textCommandMode || researchAnswerMode
-      ? model
+    : textCommandMode
+      // Normal browser decisions stay capped at 96 completion tokens. A final
+      // evidence synthesis may need a compact multi-item answer, so override
+      // only that one invocation without expanding every navigation call.
+      ? forceFinish ? model.bind({ max_tokens: 384 }) : model
+      : researchAnswerMode
+        ? model
       : model.bindTools(tools as typeof TEXT_AGENT_TOOLS[number][], { tool_choice: 'browser_action' as const });
   const streamed = await streamWithRetry(
     modelWithTools,

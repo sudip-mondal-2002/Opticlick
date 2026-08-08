@@ -7,7 +7,7 @@ import {
 } from '@/utils/text-agent-context';
 import type { AgentState } from '../agent-state';
 
-/** Skip the model when the task explicitly names a URL or searchable site. */
+/** Use stable navigation/evidence helpers, then require the model to synthesize the final answer. */
 export async function fastPathNode(state: AgentState): Promise<Partial<AgentState>> {
   const textOnly = (state.model as typeof state.model & { supportsVision?: boolean }).supportsVision === false;
   if (!textOnly) return { actions: [], rawToolCalls: [], deterministicAction: false };
@@ -35,13 +35,13 @@ export async function fastPathNode(state: AgentState): Promise<Partial<AgentStat
       }
     }
     if (researchEvidence) {
-      await log('Returning verified research answer without another model call', 'act');
+      await log('Verified research collected; sending it to the LLM for final reasoning', 'observe');
       return {
-        actions: [{ type: 'finish', summary: researchEvidence }],
-        rawToolCalls: [{ id: `fast-${state.step}`, name: 'browser_action', args: { summary: researchEvidence } }],
+        actions: [],
+        rawToolCalls: [],
         deterministicAction: false,
         deterministicActions: (state.deterministicActions ?? 0) + 1,
-        researchPlanDone: true, researchEvidence, done: true,
+        researchPlanDone: true, researchEvidence, done: false,
       };
     }
     return { actions: [], rawToolCalls: [], deterministicAction: false, researchPlanDone: true };
@@ -50,13 +50,13 @@ export async function fastPathNode(state: AgentState): Promise<Partial<AgentStat
     try {
       const researchEvidence = await collectDeterministicResearchEvidence(state.userPrompt);
       if (researchEvidence) {
-        await log('Returning verified relationship research without another model call', 'act');
+        await log('Verified relationship research collected; sending it to the LLM for final reasoning', 'observe');
         return {
-          actions: [{ type: 'finish', summary: researchEvidence }],
-          rawToolCalls: [{ id: `fast-${state.step}`, name: 'browser_action', args: { summary: researchEvidence } }],
+          actions: [],
+          rawToolCalls: [],
           deterministicAction: false,
           deterministicActions: (state.deterministicActions ?? 0) + 1,
-          relationshipHopDone: true, researchEvidence, done: true,
+          relationshipHopDone: true, researchEvidence, done: false,
         };
       }
     } catch (error) {

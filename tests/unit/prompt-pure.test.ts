@@ -78,6 +78,18 @@ describe('buildUserMessage', () => {
     expect(content.map((part) => part.text ?? '').join(' ')).toContain('Search');
   });
 
+  it('preserves complete verified evidence for one terminal LLM synthesis call', () => {
+    const items = Array.from({ length: 10 }, (_, index) => `${index + 1}. Story ${index + 1} — ${100 - index} points`).join('\n');
+    const msg = buildUserMessage(
+      'Return the top 10 stories', [], [], [], fakeBase64, [], [], true, [], false,
+      `Verified data from visited sites:\n${items}`,
+    );
+    const text = (msg.content as Array<{ text?: string }>).map((part) => part.text ?? '').join(' ');
+    expect(text).toContain('1. Story 1');
+    expect(text).toContain('10. Story 10');
+    expect(text.length).toBeLessThan(3000);
+  });
+
   const fakeBase64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=';
 
   it('assembles human message with prompt, empty lists, and screenshot', () => {

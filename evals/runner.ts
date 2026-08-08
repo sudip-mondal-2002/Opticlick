@@ -335,6 +335,7 @@ async function judgeCompletedRun(result: { run?: Run }): Promise<void> {
     });
   const answerIsGrounded = !/\b(?:assuming|assume|not available|insufficient information|cannot calculate|needed to proceed)\b/i
     .test(answerLines.join(' '));
+  const agentLlmCalls = Number(outputs.agent_llm_calls ?? 0);
   const passed = judged.task_completed
     // A correct answer collected from the requested site's public endpoint is
     // valid even when the visual UI itself blocks automation (0.5 navigation).
@@ -342,6 +343,9 @@ async function judgeCompletedRun(result: { run?: Run }): Promise<void> {
     && judged.output_correctness === 1
     && hasSubstantiveAnswer
     && answerIsGrounded
+    // An LLM-agent benchmark must exercise the model. Deterministic browser
+    // helpers may gather evidence, but they cannot directly satisfy a case.
+    && agentLlmCalls >= 1
     && !runResult.timedOut
     && !runResult.errorOccurred;
   const merged = { ...outputs, ...judged, passed };
@@ -356,6 +360,7 @@ async function judgeCompletedRun(result: { run?: Run }): Promise<void> {
     ['efficiency_score', judged.efficiency_score],
     ['answer_present', hasSubstantiveAnswer ? 1 : 0],
     ['answer_grounded', answerIsGrounded ? 1 : 0],
+    ['llm_exercised', agentLlmCalls >= 1 ? 1 : 0],
     ['passed', passed ? 1 : 0],
   ] as const;
   await Promise.all(feedback.map(([key, score]) => client.createFeedback(run.id, key, {
