@@ -291,7 +291,7 @@ describe('callModel — streaming integration', () => {
 
   it('forces the single compact tool by name for text-only providers', async () => {
     const { model } = makeModel([
-      toolChunk('browser_action', { action: 'finish', value: 'The requested answer is complete.' }),
+      toolChunk('browser_action', { command: 'finish', params: { summary: 'The requested answer is complete.' } }),
     ]);
     Object.assign(model, { supportsVision: false });
 
@@ -312,8 +312,8 @@ describe('callModel — streaming integration', () => {
       new AIMessageChunk({
         content: '',
         tool_calls: [
-          { name: 'browser_action', args: { action: 'go', value: 'https://example.com' }, id: 'call_go', type: 'tool_call' },
-          { name: 'browser_action', args: { action: 'finish', value: 'complete' }, id: 'call_finish', type: 'tool_call' },
+          { name: 'browser_action', args: { command: 'go', params: { url: 'https://example.com' } }, id: 'call_go', type: 'tool_call' },
+          { name: 'browser_action', args: { command: 'finish', params: { summary: 'complete' } }, id: 'call_finish', type: 'tool_call' },
         ],
       }),
     ]);
@@ -494,6 +494,52 @@ describe('callModel — streaming integration', () => {
     expect(commandModel.stream).toHaveBeenCalledTimes(1);
   });
 
+  it.each([
+    ['TYPE Ada Lovelace', { type: 'type', text: 'Ada Lovelace', clearField: true }],
+    ['GO https://example.com', { type: 'navigate', url: 'https://example.com' }],
+    ['SCROLL down', { type: 'scroll', direction: 'down' }],
+    ['KEY Enter', { type: 'press_key', key: 'Enter' }],
+    ['DONE All requested facts have been collected.', { type: 'finish', summary: 'All requested facts have been collected.' }],
+  ])('parses compact command %s', async (content, expectedAction) => {
+    const { streamWithRetry } = await import('@/utils/llm-stream');
+    const commandModel = {
+      stream: vi.fn(async function* () {
+        yield new AIMessageChunk({ content });
+      }) as Mock,
+    };
+
+    const result = await streamWithRetry(commandModel, [], async () => {}, undefined, undefined, 'text-command');
+
+    expect(result.actions).toEqual([expectedAction]);
+  });
+
+  it('parses compact commands from text content blocks and records usage', async () => {
+    const { streamWithRetry } = await import('@/utils/llm-stream');
+    const logFn = vi.fn().mockResolvedValue(undefined);
+    const commandModel = {
+      stream: vi.fn(async function* () {
+        yield new AIMessageChunk({
+          content: [
+            { type: 'image_url', image_url: { url: 'ignored' } },
+            { type: 'text' },
+            { type: 'text', text: 'TYPE Grace Hopper' },
+          ] as any,
+          usage_metadata: {
+            input_tokens: 10,
+            output_tokens: 2,
+            total_tokens: 12,
+            input_token_details: { cache_read: 6 },
+          },
+        });
+      }) as Mock,
+    };
+
+    const result = await streamWithRetry(commandModel, [], logFn, undefined, undefined, 'text-command');
+
+    expect(result.actions[0]).toMatchObject({ type: 'type', text: 'Grace Hopper' });
+    expect(logFn).toHaveBeenCalledWith('LLM tokens: input=10, cached=6, output=2', 'debug');
+  });
+
   it('turns a direct research response into one finish action', async () => {
     const { streamWithRetry } = await import('@/utils/llm-stream');
     const researchModel = {
@@ -513,6 +559,55 @@ describe('callModel — streaming integration', () => {
 
     expect(result.actions).toEqual([{ type: 'finish', summary: 'Ada Lovelace was born in 1815 and died in 1852.' }]);
     expect(researchModel.stream).toHaveBeenCalledTimes(1);
+  });
+
+  it('turns research text content blocks into one finish action', async () => {
+    const { streamWithRetry } = await import('@/utils/llm-stream');
+    const researchModel = {
+      stream: vi.fn(async function* () {
+        yield new AIMessageChunk({
+          content: [
+            { type: 'image_url', image_url: { url: 'ignored' } },
+            { type: 'text' },
+            { type: 'text', text: 'The complete researched answer is supported by the evidence.' },
+          ] as any,
+        });
+      }) as Mock,
+    };
+
+    const result = await streamWithRetry(researchModel, [], async () => {}, undefined, undefined, 'research-answer');
+
+    expect(result.actions).toEqual([{
+      type: 'finish',
+      summary: 'The complete researched answer is supported by the evidence.',
+    }]);
+  });
+
+  it('rejects incomplete research answers after the configured retries', async () => {
+    const { streamWithRetry } = await import('@/utils/llm-stream');
+    const researchModel = {
+      stream: vi.fn(async function* () {
+        yield new AIMessageChunk({ content: 'too short' });
+      }) as Mock,
+    };
+
+    await expect(
+      streamWithRetry(researchModel, [], async () => {}, undefined, undefined, 'research-answer'),
+    ).rejects.toThrow('empty or incomplete');
+    expect(researchModel.stream).toHaveBeenCalledTimes(5);
+  });
+
+  it.each([
+    ['413 request entity too large', '413 request entity too large'],
+    ['Request too large for this model', 'Request too large for this model'],
+    ['tokens per day limit reached', 'tokens per day limit reached'],
+    ['TPD quota exhausted', 'TPD quota exhausted'],
+  ])('does not retry deterministic provider failure: %s', async (message, expected) => {
+    const { streamWithRetry } = await import('@/utils/llm-stream');
+    const boundModel = { stream: vi.fn().mockRejectedValue(new Error(message)) };
+
+    await expect(streamWithRetry(boundModel, [], async () => {})).rejects.toThrow(expected);
+    expect(boundModel.stream).toHaveBeenCalledTimes(1);
   });
 
   it('does not retry a provider that rejects tool calling', async () => {

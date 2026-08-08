@@ -1,18 +1,23 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { initializeLangSmith, getLangSmithTracer } from '@/utils/langsmith-config';
+import { initializeLangSmith, getLangSmithParentRunId, getLangSmithTracer } from '@/utils/langsmith-config';
 import { LangChainTracer } from '@langchain/core/tracers/tracer_langchain';
 import { Client } from 'langsmith';
+import { RunTree } from 'langsmith/run_trees';
 
 vi.mock('langsmith', () => ({
   Client: vi.fn(function () {
-    return {};
+    return { awaitPendingTraceBatches: vi.fn().mockResolvedValue(undefined) };
   }),
 }));
 
 vi.mock('@langchain/core/tracers/tracer_langchain', () => ({
   LangChainTracer: vi.fn(function () {
-    return { name: 'mocked-tracer' };
+    return { name: 'mocked-tracer', updateFromRunTree: vi.fn() };
   }),
+}));
+
+vi.mock('langsmith/run_trees', () => ({
+  RunTree: { fromHeaders: vi.fn() },
 }));
 
 describe('langsmith-config', () => {
@@ -29,6 +34,7 @@ describe('langsmith-config', () => {
     delete g.__LANGSMITH_PROJECT__;
     delete g.__LANGSMITH_ENDPOINT__;
     delete g.__LANGSMITH_TRACING__;
+    delete g.__LANGSMITH_PARENT_HEADERS__;
   });
 
   afterEach(() => {
@@ -38,6 +44,7 @@ describe('langsmith-config', () => {
     delete g.__LANGSMITH_PROJECT__;
     delete g.__LANGSMITH_ENDPOINT__;
     delete g.__LANGSMITH_TRACING__;
+    delete g.__LANGSMITH_PARENT_HEADERS__;
   });
 
   it('does not initialize tracer if tracing is disabled', () => {
@@ -94,7 +101,7 @@ describe('langsmith-config', () => {
         projectName: 'my-project',
       })
     );
-    expect(getLangSmithTracer()).toEqual({ name: 'mocked-tracer' });
+    expect(getLangSmithTracer()).toMatchObject({ name: 'mocked-tracer' });
   });
 
   it('initializes tracer correctly using global overrides', () => {
@@ -117,7 +124,7 @@ describe('langsmith-config', () => {
         projectName: 'global-project',
       })
     );
-    expect(getLangSmithTracer()).toEqual({ name: 'mocked-tracer' });
+    expect(getLangSmithTracer()).toMatchObject({ name: 'mocked-tracer' });
   });
 
   it('treats tracing as enabled if __LANGSMITH_API_KEY__ is set and __LANGSMITH_TRACING__ is not false', () => {
@@ -127,7 +134,7 @@ describe('langsmith-config', () => {
 
     initializeLangSmith();
 
-    expect(getLangSmithTracer()).toEqual({ name: 'mocked-tracer' });
+    expect(getLangSmithTracer()).toMatchObject({ name: 'mocked-tracer' });
   });
 
   it('does not initialize tracer if __LANGSMITH_TRACING__ is set to false', () => {
@@ -139,5 +146,42 @@ describe('langsmith-config', () => {
     initializeLangSmith();
 
     expect(getLangSmithTracer()).toBeNull();
+  });
+
+  it('links model spans to distributed parent headers', () => {
+    const parent = { id: 'parent-run-id' };
+    vi.mocked(RunTree.fromHeaders).mockReturnValue(parent as never);
+    const g = globalThis as any;
+    g.__LANGSMITH_API_KEY__ = 'global-secret-key';
+    g.__LANGSMITH_ENDPOINT__ = 'https://api.smith.langchain.com';
+    g.__LANGSMITH_PARENT_HEADERS__ = JSON.stringify({ traceparent: 'parent' });
+
+    initializeLangSmith();
+
+    expect(getLangSmithParentRunId()).toBe('parent-run-id');
+    const tracer = vi.mocked(LangChainTracer).mock.results.at(-1)?.value as any;
+    expect(tracer.updateFromRunTree).toHaveBeenCalledWith(parent);
+  });
+
+  it('ignores malformed distributed parent headers', () => {
+    const g = globalThis as any;
+    g.__LANGSMITH_API_KEY__ = 'global-secret-key';
+    g.__LANGSMITH_ENDPOINT__ = 'https://api.smith.langchain.com';
+    g.__LANGSMITH_PARENT_HEADERS__ = '{invalid';
+
+    expect(() => initializeLangSmith()).not.toThrow();
+    expect(getLangSmithParentRunId()).toBeUndefined();
+  });
+
+  it('flushes pending trace batches through the eval hook', async () => {
+    const g = globalThis as any;
+    g.__LANGSMITH_API_KEY__ = 'global-secret-key';
+    g.__LANGSMITH_ENDPOINT__ = 'https://api.smith.langchain.com';
+    initializeLangSmith();
+    const client = vi.mocked(Client).mock.results.at(-1)?.value as any;
+
+    await g.__OPTICLICK_FLUSH_LANGSMITH__();
+
+    expect(client.awaitPendingTraceBatches).toHaveBeenCalledOnce();
   });
 });

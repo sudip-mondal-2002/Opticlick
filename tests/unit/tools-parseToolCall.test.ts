@@ -3,13 +3,6 @@ import { dragAndDropTool, parseToolCall } from '@/utils/tools/index';
 import type { AgentAction, TodoItem } from '@/utils/types';
 
 describe('parseToolCall', () => {
-  it('expands the compact browser_action schema', () => {
-    expect(parseToolCall('browser_action', { action: 'navigate', url: 'https://example.com' }))
-      .toEqual({ type: 'navigate', url: 'https://example.com' });
-    expect(parseToolCall('browser_action', { action: 'finish', summary: 'Done' }))
-      .toEqual({ type: 'finish', summary: 'Done' });
-  });
-
   it('parses the token-efficient command form', () => {
     expect(parseToolCall('browser_action', { command: 'click 42' }))
       .toEqual({ type: 'click', targetId: 42 });
@@ -26,6 +19,12 @@ describe('parseToolCall', () => {
       .toMatchObject({ type: 'click', targetId: 42 });
     expect(parseToolCall('browser_action', { command: 'go', params: { url: 'https://example.com' } }))
       .toMatchObject({ type: 'navigate', url: 'https://example.com' });
+    expect(parseToolCall('browser_action', { command: 'type', params: { text: 'Ada Lovelace' } }))
+      .toEqual({ type: 'type', text: 'Ada Lovelace', clearField: true });
+    expect(parseToolCall('browser_action', { command: 'scroll', params: {} }))
+      .toEqual({ type: 'scroll', direction: 'down' });
+    expect(parseToolCall('browser_action', { command: 'key', params: { key: 'Enter' } }))
+      .toEqual({ type: 'press_key', key: 'Enter' });
     expect(parseToolCall('browser_action', { command: 'finish', params: { summary: 'The answer is 1991.' } }))
       .toMatchObject({ type: 'finish', summary: 'The answer is 1991.' });
   });
@@ -46,11 +45,8 @@ describe('parseToolCall', () => {
     })).toEqual({ type: 'navigate', url: 'https://github.com/vercel/next.js' });
   });
 
-  it('parses the compact structured action form', () => {
-    expect(parseToolCall('browser_action', { action: 'click', value: '39' }))
-      .toEqual({ type: 'click', targetId: 39 });
-    expect(parseToolCall('browser_action', { action: 'go', value: 'https://example.com; click 2' }))
-      .toEqual({ type: 'navigate', url: 'https://example.com' });
+  it('falls back to a safe finish for malformed compact calls', () => {
+    expect(parseToolCall('browser_action', {})).toEqual({ type: 'finish', summary: '' });
   });
 
   it('returns null for unknown tool name', () => {

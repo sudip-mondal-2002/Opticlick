@@ -14,8 +14,8 @@ let _client: Client | null = null;
 let _parentRunId: string | undefined;
 
 export function initializeLangSmith(): void {
-  const globalObj = typeof globalThis !== 'undefined' ? globalThis : (typeof window !== 'undefined' ? window : {});
-  const g = globalObj as unknown as Record<string, string | undefined>;
+  const g = globalThis as unknown as Record<string, string | undefined>;
+  _parentRunId = undefined;
 
   const apiKey = g.__LANGSMITH_API_KEY__ || (import.meta.env.VITE_LANGSMITH_API_KEY as string | undefined);
   const endpoint = g.__LANGSMITH_ENDPOINT__ || (import.meta.env.VITE_LANGSMITH_ENDPOINT as string | undefined);
@@ -32,6 +32,7 @@ export function initializeLangSmith(): void {
   if (!tracing || !apiKey || !endpoint) {
     console.warn('[LangSmith] Tracing disabled or missing config — no traces will be sent.');
     _tracer = null;
+    _client = null;
     return;
   }
 
@@ -68,13 +69,11 @@ export function getLangSmithParentRunId(): string | undefined {
 // the MV3 service worker has loaded. Expose a narrow re-initialization hook so
 // detailed graph/model/tool traces are enabled without baking secrets into the
 // extension bundle.
-if (typeof globalThis !== 'undefined') {
-  const runtime = globalThis as typeof globalThis & {
-    __OPTICLICK_INITIALIZE_LANGSMITH__?: () => void;
-    __OPTICLICK_FLUSH_LANGSMITH__?: () => Promise<void>;
-  };
-  runtime.__OPTICLICK_INITIALIZE_LANGSMITH__ = initializeLangSmith;
-  runtime.__OPTICLICK_FLUSH_LANGSMITH__ = async () => {
-    await _client?.awaitPendingTraceBatches();
-  };
-}
+const runtime = globalThis as typeof globalThis & {
+  __OPTICLICK_INITIALIZE_LANGSMITH__?: () => void;
+  __OPTICLICK_FLUSH_LANGSMITH__?: () => Promise<void>;
+};
+runtime.__OPTICLICK_INITIALIZE_LANGSMITH__ = initializeLangSmith;
+runtime.__OPTICLICK_FLUSH_LANGSMITH__ = async () => {
+  await _client?.awaitPendingTraceBatches();
+};

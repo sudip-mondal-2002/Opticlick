@@ -92,8 +92,7 @@ const parsers: Record<string, (args: Record<string, any>) => AgentAction> = {
       switch (args.command.toLowerCase()) {
         case 'click': return { type: 'click', targetId: Number(params.id ?? params.targetId) };
         case 'type': return { type: 'type', text: String(params.text ?? ''), clearField: true };
-        case 'go':
-        case 'navigate': return { type: 'navigate', url: String(params.url ?? '') };
+        case 'go': return { type: 'navigate', url: String(params.url ?? '') };
         case 'scroll': return { type: 'scroll', direction: String(params.direction ?? 'down') as ScrollDirection };
         case 'key': return { type: 'press_key', key: String(params.key ?? '') };
         case 'finish': return { type: 'finish', summary: String(params.summary ?? params.text ?? '') };
@@ -115,29 +114,7 @@ const parsers: Record<string, (args: Record<string, any>) => AgentAction> = {
         default: return { type: 'finish', summary: value || args.command };
       }
     }
-    if (typeof args.value === 'string') {
-      const value = args.value.trim();
-      const firstValue = value.split(/[;\r\n]/, 1)[0].trim();
-      switch (args.action) {
-        case 'click': return { type: 'click', targetId: Number.parseInt(firstValue, 10) };
-        case 'type': return { type: 'type', text: value, clearField: true };
-        case 'go': return { type: 'navigate', url: firstValue };
-        case 'scroll': return { type: 'scroll', direction: (firstValue || 'down') as ScrollDirection };
-        case 'key': return { type: 'press_key', key: firstValue };
-        case 'finish': return { type: 'finish', summary: value };
-      }
-    }
-    // Accept the former structured shape for persisted calls and backwards
-    // compatibility while newly bound models receive only the one-string DSL.
-    switch (args.action) {
-      case 'click': return { type: 'click', targetId: args.targetId as number };
-      case 'type': return { type: 'type', text: args.text as string, clearField: args.clearField as boolean | undefined };
-      case 'navigate': return { type: 'navigate', url: args.url as string };
-      case 'scroll': return { type: 'scroll', direction: (args.direction ?? 'down') as ScrollDirection };
-      case 'key': return { type: 'press_key', key: args.key as string };
-      case 'finish': return { type: 'finish', summary: args.summary as string };
-      default: return { type: 'finish', summary: String(args.summary ?? '') };
-    }
+    return { type: 'finish', summary: String(args.summary ?? '') };
   },
   click: (args) => ({
     type: 'click',
