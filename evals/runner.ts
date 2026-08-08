@@ -489,7 +489,10 @@ async function main(): Promise<void> {
   console.log(`\n✅ Pass rate ${passRate.toFixed(1)}% meets threshold ${threshold}%`);
 }
 
-main().catch((err) => {
-  console.error('Fatal error:', err);
-  process.exit(1);
-});
+main().then(
+  () => process.exit(0),
+  (err) => {
+    console.error('Fatal error:', err);
+    process.exit(1);
+  },
+);
