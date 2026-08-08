@@ -55,8 +55,10 @@ const textBrowserActionTool = tool(async () => 'ok', {
 });
 const textFinishActionTool = tool(async () => 'ok', {
   name: 'browser_action',
-  description: 'Return actual collected facts: command starts with finish',
-  schema: z.object({ command: z.string() }),
+  description: 'Finish by returning every requested fact from the supplied evidence.',
+  schema: z.object({
+    summary: z.string().min(12).describe('Complete factual answer, not a placeholder'),
+  }),
 });
 
 export const TEXT_AGENT_TOOLS = [textBrowserActionTool] as const;
@@ -72,6 +74,9 @@ type TodoUpdateItem = (AgentAction & { type: 'todo_update' })['updates'][number]
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const parsers: Record<string, (args: Record<string, any>) => AgentAction> = {
   browser_action: (args) => {
+    if (typeof args.summary === 'string' && args.action === undefined) {
+      return { type: 'finish', summary: args.summary };
+    }
     if (typeof args.command === 'string') {
       const match = args.command.trim().match(/^(\S+)(?:\s+([\s\S]*))?$/);
       const verb = match?.[1]?.toLowerCase();

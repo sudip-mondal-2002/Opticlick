@@ -19,6 +19,11 @@ describe('parseToolCall', () => {
       .toEqual({ type: 'finish', summary: 'The answer is 1991.' });
   });
 
+  it('parses the required finish summary form', () => {
+    expect(parseToolCall('browser_action', { summary: 'Python was first released in 1991.' }))
+      .toEqual({ type: 'finish', summary: 'Python was first released in 1991.' });
+  });
+
   it('returns null for unknown tool name', () => {
     expect(parseToolCall('unknown_tool', {})).toBeNull();
   });
