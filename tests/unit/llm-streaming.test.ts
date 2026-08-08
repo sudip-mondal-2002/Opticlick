@@ -494,6 +494,27 @@ describe('callModel — streaming integration', () => {
     expect(commandModel.stream).toHaveBeenCalledTimes(1);
   });
 
+  it('turns a direct research response into one finish action', async () => {
+    const { streamWithRetry } = await import('@/utils/llm-stream');
+    const researchModel = {
+      stream: vi.fn(async function* () {
+        yield new AIMessageChunk({ content: 'Ada Lovelace was born in 1815 and died in 1852.' });
+      }) as Mock,
+    };
+
+    const result = await streamWithRetry(
+      researchModel,
+      [],
+      async () => {},
+      undefined,
+      undefined,
+      'research-answer',
+    );
+
+    expect(result.actions).toEqual([{ type: 'finish', summary: 'Ada Lovelace was born in 1815 and died in 1852.' }]);
+    expect(researchModel.stream).toHaveBeenCalledTimes(1);
+  });
+
   it('does not retry a provider that rejects tool calling', async () => {
     const { streamWithRetry } = await import('@/utils/llm-stream');
     const boundModel = {

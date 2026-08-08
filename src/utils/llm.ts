@@ -25,7 +25,7 @@ import {
   getProviderForModel,
 } from './models';
 import type { CustomOpenAIConfig } from './models';
-import { CORE_INSTRUCTIONS, SECURITY_INSTRUCTIONS, COMPACT_TEXT_AGENT_INSTRUCTIONS, COMPACT_TEXT_COMMAND_INSTRUCTIONS } from './system-prompt';
+import { CORE_INSTRUCTIONS, SECURITY_INSTRUCTIONS, COMPACT_TEXT_AGENT_INSTRUCTIONS, COMPACT_TEXT_COMMAND_INSTRUCTIONS, COMPACT_RESEARCH_ANSWER_INSTRUCTIONS } from './system-prompt';
 import { getCustomSystemPrompt, isCustomPromptEffective } from './custom-system-prompt';
 import { buildHistory, buildUserMessage } from './prompt';
 import { streamWithRetry } from './llm-stream';
@@ -131,6 +131,7 @@ export function createCustomOpenAIModel(config: CustomOpenAIConfig): ChatOpenAI 
   const isGroq = /api\.groq\.com/.test(config.baseUrl);
   const isGroqGptOss = isGroq && config.modelName.startsWith('openai/gpt-oss-');
   const isGroqLlama = isGroq && config.modelName.startsWith('llama-');
+  const isGroqCompound = isGroq && config.modelName.startsWith('groq/compound');
   const model = new ChatOpenAI({
     model: config.modelName,
     apiKey: config.apiKey || 'not-needed',
@@ -138,13 +139,17 @@ export function createCustomOpenAIModel(config: CustomOpenAIConfig): ChatOpenAI 
     // Browser decisions should be a short tool call, not a long essay.  This
     // also bounds failed no-tool responses so they cannot consume thousands
     // of completion tokens before the retry loop rejects them.
-    ...(isGroq ? { maxTokens: isGroqLlama ? 256 : 512 } : {}),
+    ...(isGroq ? { maxTokens: isGroqLlama ? 96 : isGroqCompound ? 768 : 512 } : {}),
     ...(isGroqGptOss ? { modelKwargs: { reasoning_effort: 'low' } } : {}),
     maxRetries: 0,
     configuration: { baseURL: config.baseUrl },
   });
   const textOnlyProvider = /api\.(cerebras\.ai|groq\.com)/.test(config.baseUrl);
-  Object.assign(model, { supportsVision: !textOnlyProvider, textCommandMode: isGroqLlama });
+  Object.assign(model, {
+    supportsVision: !textOnlyProvider,
+    textCommandMode: isGroqLlama,
+    researchAnswerMode: isGroqCompound,
+  });
   return model;
 }
 
@@ -196,9 +201,12 @@ export async function callModel(
   const useImageUrlFormat = !(model instanceof ChatGoogleGenerativeAI);
   const includeScreenshot = (model as AnyModel & { supportsVision?: boolean }).supportsVision !== false;
   const textCommandMode = !includeScreenshot && (model as AnyModel & { textCommandMode?: boolean }).textCommandMode === true;
+  const researchAnswerMode = !includeScreenshot && (model as AnyModel & { researchAnswerMode?: boolean }).researchAnswerMode === true;
   const systemContent = includeScreenshot
     ? await buildSystemMessage()
-    : textCommandMode ? COMPACT_TEXT_COMMAND_INSTRUCTIONS : COMPACT_TEXT_AGENT_INSTRUCTIONS;
+    : researchAnswerMode
+      ? COMPACT_RESEARCH_ANSWER_INSTRUCTIONS
+      : textCommandMode ? COMPACT_TEXT_COMMAND_INSTRUCTIONS : COMPACT_TEXT_AGENT_INSTRUCTIONS;
   // Text agents receive a compact state ledger in the current user message.
   // Replaying prior chat/tool turns multiplied input usage without adding
   // information and prevented a simple three-step task from fitting in quota.
@@ -222,7 +230,7 @@ export async function callModel(
     // function name (for example `click` or `brave_search`). Groq then rejects
     // the response before it reaches our parser. Force the one advertised
     // function by name so every provider response uses the compact schema.
-    : textCommandMode
+    : textCommandMode || researchAnswerMode
       ? model
       : model.bindTools(tools as typeof TEXT_AGENT_TOOLS[number][], { tool_choice: 'browser_action' as const });
   const streamed = await streamWithRetry(
@@ -231,7 +239,7 @@ export async function callModel(
     logFn,
     config,
     onThinkingDelta,
-    textCommandMode ? 'text-command' : 'tools',
+    researchAnswerMode ? 'research-answer' : textCommandMode ? 'text-command' : 'tools',
   );
   // Some small models emit several function calls despite the instruction to
   // choose one. Execute only the first decision; otherwise a trailing generic

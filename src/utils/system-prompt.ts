@@ -286,6 +286,6 @@ export const COMPACT_TEXT_AGENT_INSTRUCTIONS = `Complete the web goal from Page 
 // command line than with an OpenAI function schema. Besides removing the
 // schema tokens, this prevents the model from copying schema placeholders
 // such as "ID" into a tool call.
-export const COMPACT_TEXT_COMMAND_INSTRUCTIONS = `Return one line only:
-C <listed id> | T <text> | G <url> | S down | K <key> | F <complete answer>
-Use a real listed id. Never output placeholders. F only when Page contains every requested fact; never invent.`;
+export const COMPACT_TEXT_COMMAND_INSTRUCTIONS = `Reply with exactly one command and no explanation. Examples: CLICK 42 or TYPE Ada Lovelace or GO https://example.com or SCROLL down or KEY Enter or DONE complete factual answer. Never list multiple commands. Use a real listed id, never a placeholder. DONE only when Page contains every requested fact; never invent.`;
+
+export const COMPACT_RESEARCH_ANSWER_INSTRUCTIONS = `Answer the Goal with current, verifiable facts. Use your built-in web search or website visit when needed. Return only the complete final answer, with every requested field. Never describe browser actions and never invent missing values.`;

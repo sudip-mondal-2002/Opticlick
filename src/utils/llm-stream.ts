@@ -98,16 +98,21 @@ function parseTextCommand(response: AIMessageChunk): { reasoning: string; action
         .join('');
   const cleaned = content.replace(/```(?:text)?/gi, '').replace(/```/g, '').trim();
   const line = cleaned.split(/\r?\n/).map((value) => value.trim()).find(Boolean) ?? '';
-  const match = line.match(/^(?:action\s*[:=]\s*)?([CTGSKF])(?:\s+|\|)([\s\S]*)$/i);
+  const match = line.match(/^(?:action\s*[:=]\s*)?(CLICK|TYPE|GO|SCROLL|KEY|DONE|[CTGSKF])(?:\s+|\|)([\s\S]*)$/i);
   if (!match) throw new Error(`Invalid compact command: ${line.slice(0, 120)}`);
   const value = match[2].trim();
   let args: Record<string, unknown>;
   switch (match[1].toUpperCase()) {
-    case 'C': args = { command: `click ${value}` }; break;
-    case 'T': args = { command: `type ${value}` }; break;
-    case 'G': args = { command: `go ${value}` }; break;
-    case 'S': args = { command: `scroll ${value || 'down'}` }; break;
-    case 'K': args = { command: `key ${value}` }; break;
+    case 'C':
+    case 'CLICK': args = { command: `click ${value}` }; break;
+    case 'T':
+    case 'TYPE': args = { command: `type ${value}` }; break;
+    case 'G':
+    case 'GO': args = { command: `go ${value}` }; break;
+    case 'S':
+    case 'SCROLL': args = { command: `scroll ${value || 'down'}` }; break;
+    case 'K':
+    case 'KEY': args = { command: `key ${value}` }; break;
     default: args = { command: `finish ${value}` }; break;
   }
   const action = parseToolCall('browser_action', args);
@@ -116,6 +121,23 @@ function parseTextCommand(response: AIMessageChunk): { reasoning: string; action
     reasoning: line,
     actions: [action],
     rawToolCalls: [{ id: 'compact-command', name: 'browser_action', args }],
+  };
+}
+
+function parseResearchAnswer(response: AIMessageChunk): { reasoning: string; actions: AgentAction[]; rawToolCalls: RawToolCall[] } {
+  const content = typeof response.content === 'string'
+    ? response.content
+    : (response.content as Array<{ type: string; text?: string }>)
+        .filter((part) => part.type === 'text')
+        .map((part) => part.text ?? '')
+        .join('');
+  const answer = content.trim();
+  if (answer.length < 12) throw new Error('Research model returned an empty or incomplete answer.');
+  const args = { summary: answer };
+  return {
+    reasoning: answer,
+    actions: [{ type: 'finish', summary: answer }],
+    rawToolCalls: [{ id: 'research-answer', name: 'browser_action', args }],
   };
 }
 
@@ -143,7 +165,7 @@ export async function streamWithRetry(
   logFn: LogFn,
   config?: RunnableConfig,
   onThinkingDelta?: (delta: string) => void,
-  responseMode: 'tools' | 'text-command' = 'tools',
+  responseMode: 'tools' | 'text-command' | 'research-answer' = 'tools',
 ): Promise<{ reasoning: string; thinking: string; actions: AgentAction[]; rawToolCalls: RawToolCall[] }> {
   let lastError: Error | undefined;
 
@@ -206,7 +228,11 @@ export async function streamWithRetry(
         final.additional_kwargs = { ...final.additional_kwargs, thinking: collectedThinking };
       }
 
-      const parsed = responseMode === 'text-command' ? parseTextCommand(final) : parseResponse(final);
+      const parsed = responseMode === 'text-command'
+        ? parseTextCommand(final)
+        : responseMode === 'research-answer'
+          ? parseResearchAnswer(final)
+          : parseResponse(final);
       return { ...parsed, thinking: collectedThinking.trim() };
     } catch (err) {
       lastError = err as Error;
