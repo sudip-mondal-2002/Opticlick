@@ -93,7 +93,7 @@ Use 1 only for correct/complete, 0.5 for partial, 0 for wrong/missing.`,
 }
 
 /** Parse the judge LLM's JSON response, with fallback on parse failure. */
-function parseJudgeResponse(raw: string): Omit<JudgeResult, 'efficiency_score'> {
+export function parseJudgeResponse(raw: string): Omit<JudgeResult, 'efficiency_score'> {
   const fallback: Omit<JudgeResult, 'efficiency_score'> = {
     task_completed: false,
     navigation_accuracy: 0,
@@ -123,6 +123,22 @@ function parseJudgeResponse(raw: string): Omit<JudgeResult, 'efficiency_score'> 
       reasoning: String(parsed.reasoning ?? '').slice(0, 300),
     };
   } catch {
+    // Small judges occasionally truncate only the final free-text reasoning
+    // after already emitting every score. Recover those typed fields rather
+    // than discarding an otherwise complete evaluation.
+    const task = raw.match(/"task_completed"\s*:\s*(true|false)/i)?.[1];
+    const navigation = Number(raw.match(/"navigation_accuracy"\s*:\s*(0(?:\.5)?|1)/i)?.[1]);
+    const output = Number(raw.match(/"output_correctness"\s*:\s*(0(?:\.5)?|1)/i)?.[1]);
+    const unnecessary = raw.match(/"unnecessary_actions"\s*:\s*(true|false)/i)?.[1];
+    if (task && [0, 0.5, 1].includes(navigation) && [0, 0.5, 1].includes(output) && unnecessary) {
+      return {
+        task_completed: task.toLowerCase() === 'true',
+        navigation_accuracy: navigation as 0 | 0.5 | 1,
+        output_correctness: output as 0 | 0.5 | 1,
+        unnecessary_actions: unnecessary.toLowerCase() === 'true',
+        reasoning: 'Recovered scores from a truncated judge response',
+      };
+    }
     return fallback;
   }
 }
