@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   inferDeterministicNavigation,
+  inferDeterministicRelationshipClick,
   selectRelevantElements,
   selectRelevantPageText,
 } from '@/utils/text-agent-context';
@@ -38,5 +39,19 @@ describe('text agent context', () => {
 
   it('does not repeat deterministic navigation after step one', () => {
     expect(inferDeterministicNavigation('Search Wikipedia for Python', 'https://example.com', 2)).toBeUndefined();
+  });
+
+  it('follows a requested creator relationship from page evidence', () => {
+    const base = { tag: 'a', inputType: undefined, rect: { x: 0, y: 0, left: 0, top: 0, width: 1, height: 1 } };
+    const entries: CoordinateEntry[] = [
+      { ...base, id: 8, text: 'History', href: '#History' },
+      { ...base, id: 9, text: 'Guido van Rossum', href: '/wiki/Guido_van_Rossum' },
+    ];
+    expect(inferDeterministicRelationshipClick(
+      'Find the creator, then visit their page and name another project.',
+      'Python was designed by Guido van Rossum and first released in 1991.',
+      entries,
+      2,
+    )).toBe(9);
   });
 });

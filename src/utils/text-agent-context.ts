@@ -66,6 +66,35 @@ export function selectRelevantElements(
     .map(({ entry }) => entry);
 }
 
+/**
+ * Follow an explicitly requested relationship hop without asking the model.
+ * The page must itself describe the linked entity as the creator/author/etc.;
+ * this avoids guessing from a generic list of links.
+ */
+export function inferDeterministicRelationshipClick(
+  task: string,
+  pageText: string,
+  coordinateMap: CoordinateEntry[],
+  step: number,
+): number | undefined {
+  if (step < 2 || !/\b(?:creator|author|director|founder|inventor|designer)\b/i.test(task)) return undefined;
+  if (!/\b(?:then|their|another|other|project|work|contribut|page)\b/i.test(task)) return undefined;
+
+  const normalizedPage = pageText.replace(/\s+/g, ' ');
+  for (const entry of coordinateMap) {
+    const name = entry.text.trim().replace(/\s+/g, ' ');
+    if (!entry.href || name.length < 5 || name.length > 70 || !/^[A-Z]/.test(name)) continue;
+    const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const relationship = new RegExp(
+      `(?:created|designed|written|directed|founded|invented|developed|authored)(?:\\s+\\w+){0,3}\\s+by(?:\\s+\\w+){0,3}\\s+${escaped}\\b`,
+      'i',
+    );
+    const labelled = new RegExp(`(?:creator|author|director|founder|inventor|designer)\\s*:?\\s*${escaped}\\b`, 'i');
+    if (relationship.test(normalizedPage) || labelled.test(normalizedPage)) return entry.id;
+  }
+  return undefined;
+}
+
 const SITE_SEARCH: Array<{ pattern: RegExp; host: string; build: (query: string) => string }> = [
   // `go=Go` resolves an exact title straight to its article while retaining
   // Wikipedia search fallback for ambiguous subjects. That saves a complete

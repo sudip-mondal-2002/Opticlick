@@ -48,14 +48,14 @@ export const AGENT_TOOLS = [
 // providers. parseToolCall expands it into the existing internal action union.
 const textBrowserActionTool = tool(async () => 'ok', {
   name: 'browser_action',
-  description: 'One command: click ID | type TEXT | go URL | scroll DIR | key KEY | finish ANSWER',
+  description: 'Command syntax: click 12; type words; go URL; scroll down; key Enter; finish followed by actual facts',
   schema: z.object({
     command: z.string(),
   }),
 });
 const textFinishActionTool = tool(async () => 'ok', {
   name: 'browser_action',
-  description: 'Use: finish COMPLETE ANSWER',
+  description: 'Return actual collected facts: command starts with finish',
   schema: z.object({ command: z.string() }),
 });
 

@@ -259,7 +259,11 @@ async function judgeCompletedRun(result: { run?: Run }): Promise<void> {
   } finally {
     cleanupFrames(evalCase.id);
   }
-  const passed = judged.task_completed && !runResult.timedOut && !runResult.errorOccurred;
+  const passed = judged.task_completed
+    && judged.navigation_accuracy === 1
+    && judged.output_correctness === 1
+    && !runResult.timedOut
+    && !runResult.errorOccurred;
   const merged = { ...outputs, ...judged, passed };
   run.outputs = merged;
 

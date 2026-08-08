@@ -52,7 +52,7 @@ export interface JudgeResult {
 
 export type EvalResult = RunResult &
   JudgeResult & {
-    /** task_completed && !timedOut && !errorOccurred */
+    /** Fully completed with correct navigation/output and no runtime failure. */
     passed: boolean;
     agent_input_tokens: number;
     agent_cached_tokens: number;
