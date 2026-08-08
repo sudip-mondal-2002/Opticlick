@@ -130,6 +130,7 @@ export function createOpenAIModel(apiKey: string, modelId: string): ChatOpenAI {
 export function createCustomOpenAIModel(config: CustomOpenAIConfig): ChatOpenAI {
   const isGroq = /api\.groq\.com/.test(config.baseUrl);
   const isGroqGptOss = isGroq && config.modelName.startsWith('openai/gpt-oss-');
+  const isGroqLlama = isGroq && config.modelName.startsWith('llama-');
   const model = new ChatOpenAI({
     model: config.modelName,
     apiKey: config.apiKey || 'not-needed',
@@ -137,7 +138,7 @@ export function createCustomOpenAIModel(config: CustomOpenAIConfig): ChatOpenAI 
     // Browser decisions should be a short tool call, not a long essay.  This
     // also bounds failed no-tool responses so they cannot consume thousands
     // of completion tokens before the retry loop rejects them.
-    ...(isGroq ? { maxTokens: 512 } : {}),
+    ...(isGroq ? { maxTokens: isGroqLlama ? 256 : 512 } : {}),
     ...(isGroqGptOss ? { modelKwargs: { reasoning_effort: 'low' } } : {}),
     maxRetries: 0,
     configuration: { baseURL: config.baseUrl },
@@ -216,7 +217,17 @@ export async function callModel(
   // decision map to one provider call and avoids the token/429 cascade.
   const modelWithTools = includeScreenshot
     ? model.bindTools(tools)
-    : model.bindTools(tools as typeof TEXT_AGENT_TOOLS[number][], { tool_choice: 'required' as const });
-  const { reasoning, thinking, actions, rawToolCalls } = await streamWithRetry(modelWithTools, messages, logFn, config, onThinkingDelta);
+    // `required` still lets small OpenAI-compatible models invent a different
+    // function name (for example `click` or `brave_search`). Groq then rejects
+    // the response before it reaches our parser. Force the one advertised
+    // function by name so every provider response uses the compact schema.
+    : model.bindTools(tools as typeof TEXT_AGENT_TOOLS[number][], { tool_choice: 'browser_action' as const });
+  const streamed = await streamWithRetry(modelWithTools, messages, logFn, config, onThinkingDelta);
+  // Some small models emit several function calls despite the instruction to
+  // choose one. Execute only the first decision; otherwise a trailing generic
+  // `finish` can mark a task done before the preceding browser action runs.
+  const actions = includeScreenshot ? streamed.actions : streamed.actions.slice(0, 1);
+  const rawToolCalls = includeScreenshot ? streamed.rawToolCalls : streamed.rawToolCalls.slice(0, 1);
+  const { reasoning, thinking } = streamed;
   return { reasoning, thinking, actions, done: actions.some((a: AgentAction) => a.type === 'finish'), rawToolCalls };
 }

@@ -189,6 +189,12 @@ export async function streamWithRetry(
       if (/tokens per day|\bTPD\b/i.test(lastError.message)) {
         throw lastError;
       }
+      // The provider has already rejected this exact tool contract. Replaying
+      // identical messages four more times wastes TPM and cannot repair a
+      // schema/name mismatch; let the agent fail fast with the real cause.
+      if (/tool call validation failed|attempted to call tool/i.test(lastError.message)) {
+        throw lastError;
+      }
       const isRateLimit = lastError.message.includes('429') || lastError.message.toLowerCase().includes('rate limit');
       if (attempt < MAX_API_RETRIES) {
         if (isRateLimit) {

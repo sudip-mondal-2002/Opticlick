@@ -289,6 +289,47 @@ describe('callModel — streaming integration', () => {
     expect(result.actions[0].type).toBe('finish');
   });
 
+  it('forces the single compact tool by name for text-only providers', async () => {
+    const { model } = makeModel([
+      toolChunk('browser_action', { action: 'finish', value: 'The requested answer is complete.' }),
+    ]);
+    Object.assign(model, { supportsVision: false });
+
+    await callModel(
+      model as ReturnType<typeof createModel>,
+      '',
+      'Return the answer',
+    );
+
+    expect(model.bindTools).toHaveBeenCalledWith(
+      expect.any(Array),
+      { tool_choice: 'browser_action' },
+    );
+  });
+
+  it('executes only the first tool call from a text-only model turn', async () => {
+    const { model } = makeModel([
+      new AIMessageChunk({
+        content: '',
+        tool_calls: [
+          { name: 'browser_action', args: { action: 'go', value: 'https://example.com' }, id: 'call_go', type: 'tool_call' },
+          { name: 'browser_action', args: { action: 'finish', value: 'complete' }, id: 'call_finish', type: 'tool_call' },
+        ],
+      }),
+    ]);
+    Object.assign(model, { supportsVision: false });
+
+    const result = await callModel(
+      model as ReturnType<typeof createModel>,
+      '',
+      'Visit example.com and report its title',
+    );
+
+    expect(result.actions).toHaveLength(1);
+    expect(result.actions[0]).toMatchObject({ type: 'navigate', url: 'https://example.com' });
+    expect(result.done).toBe(false);
+  });
+
   it('returns rawToolCalls parallel to actions', async () => {
     const { model } = makeModel([
       toolChunk('todo_update', { updates: [{ id: 'step-1', status: 'done' }] }),

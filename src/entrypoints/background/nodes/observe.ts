@@ -105,7 +105,7 @@ export async function reasonNode(state: AgentState, config: RunnableConfig): Pro
       state.navigationBlocked || (textOnly && (state.relationshipHopDone || state.researchPlanDone)),
     );
   } catch (err) {
-    if (/tokens per day|\bTPD\b/i.test((err as Error).message)) throw err;
+    if (/tokens per day|\bTPD\b|tool call validation failed|attempted to call tool/i.test((err as Error).message)) throw err;
     await log(`LLM call failed: ${(err as Error).message}. Will retry step.`, 'error');
     await sleep(RATE_LIMIT_DELAY_MS);
     return { llmFailed: true };
