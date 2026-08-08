@@ -199,6 +199,7 @@ export async function runAgentLoop(
       retryStep: false,
       deterministicActions: 0,
       deterministicAction: false,
+      relationshipHopDone: false,
       coordinateMap: [],
       pageText: '',
       pageTextHistory: [],

@@ -102,7 +102,7 @@ export async function reasonNode(state: AgentState, config: RunnableConfig): Pro
       (state.pageTextHistory?.length ?? 0) > 1
         ? `Prior page evidence:\n${state.pageTextHistory[state.pageTextHistory.length - 2]}\n\nCurrent page:\n${state.pageText}`
         : state.pageText,
-      state.navigationBlocked,
+      state.navigationBlocked || (textOnly && state.relationshipHopDone),
     );
   } catch (err) {
     if (/tokens per day|\bTPD\b/i.test((err as Error).message)) throw err;

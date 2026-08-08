@@ -46,7 +46,7 @@ export function tokenMetrics(agentOutput: string) {
     agent_output_tokens: output,
     agent_llm_calls: calls,
     rate_limit_retries: (agentOutput.match(/Rate limited \(attempt/g) ?? []).length,
-    deterministic_actions: (agentOutput.match(/Deterministic navigation:/g) ?? []).length,
+    deterministic_actions: (agentOutput.match(/Deterministic (?:navigation|relationship click):/g) ?? []).length,
   };
 }
 

@@ -21,6 +21,7 @@ export async function fastPathNode(state: AgentState): Promise<Partial<AgentStat
       rawToolCalls: [{ id: `fast-${state.step}`, name: 'click', args: { targetId } }],
       deterministicAction: true,
       deterministicActions: (state.deterministicActions ?? 0) + 1,
+      relationshipHopDone: true,
       done: false,
     };
   }

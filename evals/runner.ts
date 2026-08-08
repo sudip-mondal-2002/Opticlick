@@ -259,9 +259,17 @@ async function judgeCompletedRun(result: { run?: Run }): Promise<void> {
   } finally {
     cleanupFrames(evalCase.id);
   }
+  const hasSubstantiveAnswer = runResult.agentOutput
+    .split(/\r?\n/)
+    .filter((line) => line.includes('[ok]'))
+    .some((line) => {
+      const answer = line.replace(/^.*?\[ok\]\s*/, '').trim();
+      return answer.length >= 12 && !/^task complete!?$/i.test(answer);
+    });
   const passed = judged.task_completed
     && judged.navigation_accuracy === 1
     && judged.output_correctness === 1
+    && hasSubstantiveAnswer
     && !runResult.timedOut
     && !runResult.errorOccurred;
   const merged = { ...outputs, ...judged, passed };
@@ -274,6 +282,7 @@ async function judgeCompletedRun(result: { run?: Run }): Promise<void> {
     ['output_correctness', judged.output_correctness],
     ['unnecessary_actions', judged.unnecessary_actions ? 1 : 0],
     ['efficiency_score', judged.efficiency_score],
+    ['answer_present', hasSubstantiveAnswer ? 1 : 0],
     ['passed', passed ? 1 : 0],
   ] as const;
   await Promise.all(feedback.map(([key, score]) => client.createFeedback(run.id, key, {

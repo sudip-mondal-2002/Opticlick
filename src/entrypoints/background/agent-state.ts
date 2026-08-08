@@ -46,6 +46,7 @@ export const AgentStateAnnotation = Annotation.Root({
   retryStep: Annotation<boolean>({ reducer: (_, b) => b }),
   deterministicActions: Annotation<number>({ reducer: (_, b) => b }),
   deterministicAction: Annotation<boolean>({ reducer: (_, b) => b }),
+  relationshipHopDone: Annotation<boolean>({ reducer: (_, b) => b }),
 
   // Per-step page data
   coordinateMap: Annotation<CoordinateEntry[]>({ reducer: (_, b) => b }),

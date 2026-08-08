@@ -204,7 +204,7 @@ export async function callModel(
   const messages: BaseMessage[] = [
     new SystemMessage(systemContent),
     ...buildHistory(boundedHistory),
-    buildUserMessage(userPrompt, vfsFiles, currentTodo, inlineImages, base64Image, memoryEntries, scratchpadEntries, useImageUrlFormat, coordinateMap, includeScreenshot, pageText),
+    buildUserMessage(userPrompt, vfsFiles, currentTodo, inlineImages, base64Image, memoryEntries, scratchpadEntries, useImageUrlFormat, forceFinish ? [] : coordinateMap, includeScreenshot, pageText),
   ];
   const tools = includeScreenshot
     ? [...AGENT_TOOLS]
