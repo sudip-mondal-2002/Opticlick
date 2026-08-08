@@ -264,7 +264,6 @@ async function judgeCompletedRun(result: { run?: Run }): Promise<void> {
   run.outputs = merged;
 
   const client = getClient();
-  await client.updateRun(run.id, { outputs: merged });
   const feedback = [
     ['task_completed', judged.task_completed ? 1 : 0],
     ['navigation_accuracy', judged.navigation_accuracy],
