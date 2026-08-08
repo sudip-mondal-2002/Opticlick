@@ -1,8 +1,12 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import type { AttachedFile, PromptTemplate } from '@/utils/types';
+import { useSpeechInput } from '../hooks/useSpeechInput';
 
 interface Props {
   isRunning: boolean;
+  isPaused: boolean;
+  onPause: () => void;
+  onResume: () => void;
   textareaRef: React.RefObject<HTMLTextAreaElement | null>;
   onRun: (prompt: string, attachments: AttachedFile[]) => void;
   onStop: () => void;
@@ -10,6 +14,7 @@ interface Props {
   onClearInjectedPrompt?: () => void;
   templates?: PromptTemplate[];
   onSaveTemplate?: (name: string, prompt: string) => void;
+  speechLanguage?: string;
 }
 
 function PaperclipIcon() {
@@ -44,6 +49,16 @@ function StopIcon() {
   );
 }
 
+function MicrophoneIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z" />
+      <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
+      <line x1="12" x2="12" y1="19" y2="22" />
+    </svg>
+  );
+}
+
 function readFileAsBase64(file: File): Promise<{ data: string; previewUrl?: string }> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -62,9 +77,12 @@ type AttachmentItem = AttachedFile & { previewUrl?: string };
 
 export function ChatInput({
   isRunning,
+  isPaused,
+  onPause,
+  onResume,
   textareaRef,
   onRun,
-  onStop,
+  onStop, speechLanguage,
   injectedPrompt,
   onClearInjectedPrompt,
   templates = [],
@@ -88,6 +106,27 @@ export function ChatInput({
     }
   }, [injectedPrompt, onClearInjectedPrompt, textareaRef]);
 
+  const baseTextRef = useRef('');
+
+  const handleTranscript = useCallback((transcript: string) => {
+    const separator = baseTextRef.current ? ' ' : '';
+    setPrompt(baseTextRef.current + separator + transcript);
+  }, []);
+
+  const { isListening, startListening, stopListening, isSupported } = useSpeechInput({
+    onTranscript: handleTranscript,
+    lang: speechLanguage,
+  });
+
+  const toggleListening = () => {
+    if (isListening) {
+      stopListening();
+    } else {
+      baseTextRef.current = prompt;
+      startListening();
+    }
+  };
+
   const addFiles = useCallback(async (files: FileList | File[]) => {
     const results = await Promise.all(
       Array.from(files).map(async (f) => {
@@ -100,7 +139,8 @@ export function ChatInput({
 
   const handleRun = () => {
     const trimmed = prompt.trim();
-    if (!trimmed || isRunning) return;
+    if (!trimmed || isRunning || isPaused) return;
+    stopListening();
     const pending = attachments.map(({ name, mimeType, data }) => ({ name, mimeType, data }));
     setPrompt('');
     setAttachments([]);
@@ -273,11 +313,16 @@ export function ChatInput({
           rows={3}
           className="w-full min-h-[64px] max-h-[140px] resize-none px-3 py-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-[10px] text-[12.5px] text-slate-800 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-600 leading-[1.5] outline-none font-sans transition-[border-color,box-shadow] focus:border-sky-600 focus:ring-2 focus:ring-sky-600/20 disabled:opacity-50 disabled:cursor-not-allowed"
           value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
+          onChange={(e) => {
+          setPrompt(e.target.value);
+          if (isListening) {
+            stopListening();
+          }
+        }}
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
-          disabled={isRunning}
-          placeholder="Describe a task… (Enter to run, Shift+Enter for newline, / for templates)"
+          disabled={isRunning || isPaused}
+          placeholder={isListening ? 'Listening…' : 'Describe a task… (Enter to run, Shift+Enter for newline, / for templates)'}
         />
 
         {/* Slash menu dropdown */}
@@ -306,18 +351,20 @@ export function ChatInput({
       {/* Toolbar row */}
       <div className="flex items-center justify-between mt-2 gap-1.5">
         <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5">
+          <button
+              type="button"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-medium rounded-[7px] text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 transition-all hover:bg-slate-200 dark:hover:bg-slate-700 active:scale-[0.97] disabled:opacity-30 disabled:cursor-not-allowed"
+              disabled={isRunning || isPaused}
+              onClick={() => fileInputRef.current?.click()}
+              title="Attach file"
+            >
+              <PaperclipIcon />
+              Attach
+            </button>
           <button
             className="flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-medium rounded-[7px] text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 transition-all hover:bg-slate-200 dark:hover:bg-slate-700 active:scale-[0.97] disabled:opacity-30 disabled:cursor-not-allowed"
-            disabled={isRunning}
-            onClick={() => fileInputRef.current?.click()}
-            title="Attach file"
-          >
-            <PaperclipIcon />
-            Attach
-          </button>
-          <button
-            className="flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-medium rounded-[7px] text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 transition-all hover:bg-slate-200 dark:hover:bg-slate-700 active:scale-[0.97] disabled:opacity-30 disabled:cursor-not-allowed"
-            disabled={isRunning || !prompt.trim()}
+            disabled={isRunning || isPaused || !prompt.trim()}
             onClick={() => setShowSaveForm(true)}
             title="Save as template"
           >
@@ -326,25 +373,87 @@ export function ChatInput({
           </button>
         </div>
 
+          {isSupported && (
+            <button
+              type="button"
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 text-[11px] font-medium rounded-[7px] transition-all active:scale-[0.97] disabled:opacity-30 disabled:cursor-not-allowed ${
+                isListening
+                  ? 'bg-rose-500 text-white border border-rose-600 animate-pulse'
+                  : 'text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700'
+              }`}
+              onClick={toggleListening}
+              disabled={isRunning || isPaused}
+              title={isListening ? 'Stop dictation' : 'Dictate prompt'}
+            >
+              {isListening ? (
+                <>
+                  <span className="w-1.5 h-1.5 rounded-full bg-white shrink-0 animate-ping" />
+                  Listening
+                </>
+              ) : (
+                <>
+                  <MicrophoneIcon />
+                  Dictate
+                </>
+              )}
+            </button>
+          )}
+        </div>
+
         <div className="flex items-center gap-1.5">
-          <button
-            className="flex items-center justify-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold rounded-[7px] text-rose-500 dark:text-rose-400 bg-slate-100 dark:bg-slate-900 border border-rose-200 dark:border-rose-900/60 transition-all hover:bg-rose-50 dark:hover:bg-rose-950/30 active:scale-[0.97] disabled:opacity-30 disabled:cursor-not-allowed"
-            disabled={!isRunning}
-            onClick={onStop}
-            title="Stop agent"
-          >
-            <StopIcon />
-            Stop
-          </button>
-          <button
-            className="flex items-center justify-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold rounded-[7px] text-white bg-gradient-to-r from-sky-700 via-sky-500 to-sky-400 shadow-[0_2px_8px_rgba(14,165,233,0.3)] transition-all hover:brightness-105 active:scale-[0.97] disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none"
-            disabled={isRunning || !prompt.trim()}
-            onClick={handleRun}
-            title="Run agent"
-          >
-            <PlayIcon />
-            Run
-          </button>
+          {isRunning ? (
+            <button
+              className="flex items-center justify-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold rounded-[7px] text-amber-600 dark:text-amber-400 bg-slate-100 dark:bg-slate-900 border border-amber-200 dark:border-amber-900/60 transition-all hover:bg-amber-50 dark:hover:bg-amber-950/30 active:scale-[0.97]"
+              onClick={onPause}
+              title="Pause agent"
+            >
+              {/* Pause Icon */}
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" />
+              </svg>
+              Pause
+            </button>
+          ) : isPaused ? (
+            <button
+              className="flex items-center justify-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold rounded-[7px] text-sky-600 dark:text-sky-400 bg-slate-100 dark:bg-slate-900 border border-sky-200 dark:border-sky-900/60 transition-all hover:bg-sky-50 dark:hover:bg-sky-950/30 active:scale-[0.97]"
+              onClick={onResume}
+              title="Resume agent"
+            >
+              <PlayIcon />
+              Resume
+            </button>
+          ) : null}
+
+          {(isRunning || isPaused) ? (
+            <button
+              className="flex items-center justify-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold rounded-[7px] text-rose-500 dark:text-rose-400 bg-slate-100 dark:bg-slate-900 border border-rose-200 dark:border-rose-900/60 transition-all hover:bg-rose-50 dark:hover:bg-rose-950/30 active:scale-[0.97]"
+              onClick={onStop}
+              title="Stop agent"
+            >
+              <StopIcon />
+              Stop
+            </button>
+          ) : (
+            <>
+              <button
+                className="flex items-center justify-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold rounded-[7px] text-rose-500 dark:text-rose-400 bg-slate-100 dark:bg-slate-900 border border-rose-200 dark:border-rose-900/60 transition-all hover:bg-rose-50 dark:hover:bg-rose-950/30 active:scale-[0.97] disabled:opacity-30 disabled:cursor-not-allowed"
+                disabled
+                title="Stop agent"
+              >
+                <StopIcon />
+                Stop
+              </button>
+              <button
+                className="flex items-center justify-center gap-1.5 px-3 py-1.5 text-[11px] font-semibold rounded-[7px] text-white bg-gradient-to-r from-sky-700 via-sky-500 to-sky-400 shadow-[0_2px_8px_rgba(14,165,233,0.3)] transition-all hover:brightness-105 active:scale-[0.97] disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none"
+                disabled={!prompt.trim()}
+                onClick={handleRun}
+                title="Run agent"
+              >
+                <PlayIcon />
+                Run
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>

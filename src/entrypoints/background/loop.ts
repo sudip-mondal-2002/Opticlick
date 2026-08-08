@@ -15,7 +15,7 @@
 import {
   createSession,
   updateSessionMetadata,
-  saveVFSFile,
+  saveGlobalVFSFile,
   getAllMemories,
 } from '@/utils/db';
 import { createAnyModel } from '@/utils/llm';
@@ -67,12 +67,22 @@ export async function runAgentLoop(
     });
   }
 
-  await setAgentState({ status: 'running', tabId, step: 0, prompt: userPrompt, sessionId });
+  const currentAgentState = await getAgentState();
+  const isStateActive = currentAgentState?.status === 'running' || currentAgentState?.status === 'paused';
+  const initialStep = (existingSessionId != null && currentAgentState?.sessionId === existingSessionId && isStateActive)
+    ? currentAgentState.step
+    : 0;
+
+  await setAgentState({ status: 'running', tabId, step: initialStep, prompt: userPrompt, sessionId });
 
   // Seed VFS with any user-attached files
   if (attachments?.length) {
     for (const file of attachments) {
-      await saveVFSFile(sessionId, file.name, file.data, file.mimeType);
+      await saveGlobalVFSFile(
+  file.name,
+  file.data,
+  file.mimeType
+);
     }
     await log(`Loaded ${attachments.length} attached file(s) into VFS`, 'observe');
   }
@@ -193,7 +203,7 @@ export async function runAgentLoop(
       anchoredPrompt,
       model,
       attachments: attachments ?? [],
-      step: 0,
+      step: initialStep,
       emptyRetries: 0,
       actionHistory: [],
       retryStep: false,

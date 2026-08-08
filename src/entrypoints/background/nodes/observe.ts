@@ -13,7 +13,7 @@ import {
   getConversationHistory,
   touchSession,
   saveVFSFile,
-  listVFSFiles,
+  listAccessibleVFSFiles,
 } from '@/utils/db';
 import { callModel } from '@/utils/llm';
 import type { InlineImage } from '@/utils/llm';
@@ -71,7 +71,7 @@ export async function reasonNode(state: AgentState, config: RunnableConfig): Pro
   const forceEvidenceSynthesis = state.navigationBlocked
     || (textOnly && (state.relationshipHopDone || state.researchPlanDone || browserDecisionBudgetReached));
   const history = textOnly ? [] : await getConversationHistory(state.sessionId);
-  const vfsFiles = textOnly ? [] : await listVFSFiles(state.sessionId);
+  const vfsFiles = textOnly ? [] : await listAccessibleVFSFiles(state.sessionId);
   await log('Sending to LLM…', 'observe');
 
   // Adjust prompt when there are no interactable elements

@@ -24,6 +24,8 @@ import { ChatFeed } from './components/ChatFeed';
 import { SessionsOverlay } from './components/SessionsOverlay';
 import { TemplatesOverlay } from './components/TemplatesOverlay';
 import { CustomInstructionsOverlay } from './components/CustomInstructionsOverlay';
+import { KeyboardShortcutsModal } from './components/KeyboardShortcutsModal';
+import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import type { LogItem, HistoryStep } from './components/ChatFeed';
 
 // ── Parse model turn from IndexedDB ──────────────────────────────────────────
@@ -77,11 +79,13 @@ function AgentUI() {
 
   const [selectedModel, setSelectedModel] = useState(DEFAULT_MODEL);
   const [ollamaModels, setOllamaModels] = useState<ModelOption[]>([]);
+  const [speechLanguage, setSpeechLanguage] = useState<string>('');
 
   const [submittedPrompt, setSubmittedPrompt] = useState<string | null>(null);
   const [pendingQuestion, setPendingQuestion] = useState<string | null>(null);
   const [replyInput, setReplyInput] = useState('');
   const [isRunning, setIsRunning] = useState(false);
+  const [isPaused, setIsPaused] = useState(false);
   const [isError, setIsError] = useState(false);
   const [logs, setLogs] = useState<LogItem[]>([]);
   const [step, setStep] = useState(0);
@@ -103,6 +107,7 @@ function AgentUI() {
 
   const [templates, setTemplates] = useState<PromptTemplate[]>([]);
   const [showTemplates, setShowTemplates] = useState(false);
+  const [showShortcuts, setShowShortcuts] = useState(false);
   const [showCustomInstructions, setShowCustomInstructions] = useState(false);
   const [injectedPrompt, setInjectedPrompt] = useState<string | null>(null);
 
@@ -114,7 +119,7 @@ function AgentUI() {
   useEffect(() => {
     (async () => {
       const [stored, ollama] = await Promise.all([
-        chrome.storage.local.get(['geminiApiKey', 'anthropicApiKey', 'openaiApiKey', 'customOpenaiConfigs', 'selectedModel', 'promptTemplates']),
+        chrome.storage.local.get(['geminiApiKey', 'anthropicApiKey', 'openaiApiKey', 'customOpenaiConfigs', 'selectedModel', 'promptTemplates', 'speechLanguage']),
         fetchOllamaModels(),
       ]);
       const gKey = (stored.geminiApiKey as string) || null;
@@ -150,6 +155,7 @@ function AgentUI() {
         }
       }
       setSelectedModel(model);
+      setSpeechLanguage((stored.speechLanguage as string) || '');
       setKeyLoading(false);
     })();
   }, []);
@@ -180,6 +186,12 @@ function AgentUI() {
     const updated = customConfigs.filter((c) => c.id !== configId);
     setCustomConfigs(updated);
     chrome.storage.local.set({ customOpenaiConfigs: updated });
+  };
+
+  const saveSpeechLanguage = (lang: string) => {
+    chrome.storage.local.set({ speechLanguage: lang }).then(() => {
+      setSpeechLanguage(lang);
+    });
   };
 
   const handleModelChange = (modelId: string) => {
@@ -259,6 +271,7 @@ function AgentUI() {
     const { agentState } = (await chrome.storage.session.get('agentState')) as { agentState?: AgentState };
     if (!agentState) return;
     setIsRunning(agentState.status === 'running');
+    setIsPaused(agentState.status === 'paused');
     setIsError(agentState.status === 'error');
     if (agentState.step > 0) setStep(agentState.step);
     if (agentState.sessionId != null) setCurrentSessionId(agentState.sessionId);
@@ -299,6 +312,8 @@ function AgentUI() {
         });
       }
       if (msg.type === 'AGENT_STATE_CHANGE') syncState();
+      if (msg.type === 'AGENT_PAUSED') syncState();
+      if (msg.type === 'AGENT_RESUMED') syncState();
       if (msg.type === 'ASK_USER') setPendingQuestion(msg.question as string);
       if (msg.type === 'PLAY_SOUND') playSound(msg.sound as 'finish' | 'ask');
     };
@@ -339,10 +354,23 @@ function AgentUI() {
     });
   };
 
+  const handlePause = async () => {
+    appendLog('Pause requested.', 'act');
+    await chrome.runtime.sendMessage({ type: 'PAUSE_AGENT' });
+    await syncState();
+  };
+
+  const handleResume = async () => {
+    appendLog('Resume requested.', 'act');
+    await chrome.runtime.sendMessage({ type: 'RESUME_AGENT' });
+    await syncState();
+  };
+
   const handleStop = () => {
     appendLog('Stop requested.', 'act');
     chrome.runtime.sendMessage({ type: 'STOP_AGENT' });
     setIsRunning(false);
+    setIsPaused(false);
     setPendingQuestion(null);
     setReplyInput('');
   };
@@ -387,10 +415,43 @@ function AgentUI() {
         }
       } else if (turn.role === 'model') {
         steps.push(...parseModelTurn(turn.content));
+      } else if (turn.role === 'pause') {
+        steps.push({ kind: 'pause', text: turn.content });
+      } else if (turn.role === 'resume') {
+        steps.push({ kind: 'resume', text: turn.content });
       }
     }
     setHistorySteps(steps);
   };
+
+  useKeyboardShortcuts({
+    isRunning,
+    onStop: handleStop,
+    onOpenSettings: () => setShowApiKeys(true),
+    onOpenHistory: () => setShowSessions(true),
+    onOpenTemplates: () => setShowTemplates(true),
+    onNewChat: handleNewChat,
+    onFocusInput: () => textareaRef.current?.focus(),
+    onShowShortcuts: () => setShowShortcuts(true),
+    onCloseOverlay: () => {
+      const hasOverlay =
+        showApiKeys ||
+        showSessions ||
+        showTemplates ||
+        showCustomInstructions ||
+        showShortcuts;
+
+      if (!hasOverlay) return false;
+
+      setShowApiKeys(false);
+      setShowSessions(false);
+      setShowTemplates(false);
+      setShowCustomInstructions(false);
+      setShowShortcuts(false);
+
+      return true;
+    },
+  });
 
   // ── Render ─────────────────────────────────────────────────────────────────
 
@@ -442,6 +503,8 @@ function AgentUI() {
           onSaveCustomConfig={saveCustomConfig}
           onDeleteCustomConfig={deleteCustomConfig}
           onClose={() => setShowApiKeys(false)}
+          speechLanguage={speechLanguage}
+          onSaveSpeechLanguage={saveSpeechLanguage}
         />
       )}
 
@@ -453,6 +516,20 @@ function AgentUI() {
           onSave={updateTemplate}
           onDelete={deleteTemplate}
         />
+      )}
+
+      {showTemplates && (
+        <TemplatesOverlay
+          templates={templates}
+          onClose={() => setShowTemplates(false)}
+          onUse={useTemplate}
+          onSave={updateTemplate}
+          onDelete={deleteTemplate}
+        />
+      )}
+
+      {showShortcuts && (
+        <KeyboardShortcutsModal onClose={() => setShowShortcuts(false)} />
       )}
 
       {showCustomInstructions && (
@@ -524,7 +601,7 @@ function AgentUI() {
         />
       )}
 
-      {isRunning && step > 0 && <StepFooter step={step} />}
+      {(isRunning || isPaused) && step > 0 && <StepFooter step={step} isPaused={isPaused} />}
 
       {/* Agent question prompt */}
       {pendingQuestion && (
@@ -557,6 +634,9 @@ function AgentUI() {
       <ChatInput
         key={chatInputKey}
         isRunning={isRunning}
+        isPaused={isPaused}
+        onPause={handlePause}
+        onResume={handleResume}
         textareaRef={textareaRef}
         onRun={handleRun}
         onStop={handleStop}
@@ -564,6 +644,7 @@ function AgentUI() {
         onClearInjectedPrompt={() => setInjectedPrompt(null)}
         templates={templates}
         onSaveTemplate={saveTemplate}
+        speechLanguage={speechLanguage}
       />
 
       <ModelSelector
