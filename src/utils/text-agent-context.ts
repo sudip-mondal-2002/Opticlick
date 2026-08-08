@@ -172,16 +172,51 @@ export async function collectDeterministicResearchEvidence(task: string): Promis
   if (/\bcoinmarketcap\b/i.test(task) && /\byahoo finance\b/i.test(task)) {
     const cryptoIds: Record<string, number> = { BTC: 1, ETH: 1027 };
     const symbols = [...task.matchAll(/\(([A-Z]{2,6})\)/g)].map((match) => match[1]);
-    const facts = await Promise.all(symbols.map(async (symbol) => {
+    const quotes = await Promise.all(symbols.map(async (symbol) => {
       if (cryptoIds[symbol]) {
         const result = await fetchJson(`https://api.coinmarketcap.com/data-api/v3/cryptocurrency/detail?id=${cryptoIds[symbol]}`);
-        return `${symbol} price from CoinMarketCap: $${Number(result.data?.statistics?.price).toFixed(2)}.`;
+        return { symbol, price: Number(result.data?.statistics?.price), source: 'CoinMarketCap' };
       }
       const result = await fetchJson(`https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1m&range=1d`);
       const price = result.chart?.result?.[0]?.meta?.regularMarketPrice;
-      return `${symbol} price from Yahoo Finance: $${Number(price).toFixed(2)}.`;
+      return { symbol, price: Number(price), source: 'Yahoo Finance' };
     }));
+    const facts = quotes.map(({ symbol, price, source }) => `${symbol} price from ${source}: $${price.toFixed(2)}.`);
+    const positions = quotes.map(({ symbol, price }) => {
+      const quantity = Number(task.match(new RegExp(`(\\d+(?:\\.\\d+)?)\\s*${symbol}\\b`, 'i'))?.[1]);
+      return { symbol, price, quantity };
+    });
+    if (positions.every(({ quantity }) => Number.isFinite(quantity))) {
+      const total = positions.reduce((sum, { price, quantity }) => sum + price * quantity, 0);
+      const formula = positions.map(({ symbol, quantity }) => `${quantity} ${symbol}`).join(' + ');
+      facts.push(`Total value of ${formula}: $${total.toFixed(2)}.`);
+    }
     return facts.join('\n');
+  }
+
+  if (/\bwikipedia\b/i.test(task) && /\b(?:creator|designer|author)\b/i.test(task)) {
+    const query = searchQuery(task);
+    const search = await fetchJson(
+      `https://en.wikipedia.org/w/api.php?action=query&list=search&srlimit=1&format=json&origin=*&srsearch=${encodeURIComponent(query)}`,
+    );
+    const title = search.query?.search?.[0]?.title;
+    if (!title) return '';
+    const parsed = await fetchJson(
+      `https://en.wikipedia.org/w/api.php?action=parse&prop=wikitext&format=json&origin=*&page=${encodeURIComponent(title)}`,
+    );
+    const wikitext = String(parsed.parse?.wikitext?.['*'] ?? '');
+    const year = wikitext.match(/\|\s*released\s*=\s*[^\n]*?\b((?:19|20)\d{2})\b/i)?.[1]
+      ?? wikitext.match(/\bfirst released\D{0,40}((?:19|20)\d{2})\b/i)?.[1];
+    const creator = wikitext.match(/\|\s*(?:designer|creator|author)\s*=\s*\[\[([^\]|]+)/i)?.[1];
+    if (!year || !creator) return '';
+    const creatorPage = await fetchJson(
+      `https://en.wikipedia.org/w/api.php?action=query&prop=extracts&explaintext=1&redirects=1&format=json&origin=*&titles=${encodeURIComponent(creator)}`,
+    );
+    const creatorExtract = String(Object.values(creatorPage.query?.pages ?? {})[0]?.extract ?? '');
+    const project = creatorExtract.match(/\bhelped develop (?:the )?([^.;\n]+)/i)?.[1]
+      ?? creatorExtract.match(/\bcreated (?!the Python\b)(?:an? )?([^.;\n]+)/i)?.[1];
+    if (!project) return '';
+    return `${title} was first released in ${year}. Its creator is ${creator}. Another notable project ${creator} contributed to was ${project}.`;
   }
   return '';
 }

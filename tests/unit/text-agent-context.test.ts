@@ -4,6 +4,7 @@ import {
   inferDeterministicRelationshipClick,
   deterministicResearchPlan,
   nextDeterministicResearchUrl,
+  collectDeterministicResearchEvidence,
   selectRelevantElements,
   selectRelevantPageText,
 } from '@/utils/text-agent-context';
@@ -106,5 +107,51 @@ describe('text agent context', () => {
       'https://coinmarketcap.com/currencies/bitcoin/',
       'https://finance.yahoo.com/quote/TSLA/',
     ]);
+  });
+
+  it('calculates a portfolio total from verified quote responses', async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (input) => {
+      const url = String(input);
+      const body = url.includes('coinmarketcap')
+        ? { data: { statistics: { price: url.includes('1027') ? 20 : 100 } } }
+        : { chart: { result: [{ meta: { regularMarketPrice: url.includes('TSLA') ? 5 : 8 } }] } };
+      return new Response(JSON.stringify(body), { status: 200 });
+    };
+    try {
+      const result = await collectDeterministicResearchEvidence(
+        'Get CoinMarketCap Bitcoin (BTC), Ethereum (ETH), Yahoo Finance Tesla (TSLA), Microsoft (MSFT). Calculate 0.5 BTC + 2 ETH + 10 TSLA shares + 5 MSFT shares.',
+      );
+      expect(result).toContain('BTC price from CoinMarketCap: $100.00');
+      expect(result).toContain('Total value of 0.5 BTC + 2 ETH + 10 TSLA + 5 MSFT: $180.00');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('builds a complete creator-hop answer from Wikipedia endpoints', async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (input) => {
+      const url = String(input);
+      let body: Record<string, unknown>;
+      if (url.includes('list=search')) {
+        body = { query: { search: [{ title: 'Python (programming language)' }] } };
+      } else if (url.includes('action=parse')) {
+        body = { parse: { wikitext: { '*': '| released = {{start date|1991|02|20}}\n| designer = [[Guido van Rossum]]' } } };
+      } else {
+        body = { query: { pages: { 1: { extract: 'He helped develop the ABC programming language. He also created Grail.' } } } };
+      }
+      return new Response(JSON.stringify(body), { status: 200 });
+    };
+    try {
+      const result = await collectDeterministicResearchEvidence(
+        'On Wikipedia, look up the Python programming language. Find its release year and creator, then one other project they contributed to.',
+      );
+      expect(result).toBe(
+        'Python (programming language) was first released in 1991. Its creator is Guido van Rossum. Another notable project Guido van Rossum contributed to was ABC programming language.',
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });

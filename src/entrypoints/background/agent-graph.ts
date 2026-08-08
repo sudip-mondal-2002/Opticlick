@@ -40,6 +40,7 @@ function routeAfterDraw(state: AgentState): string {
 }
 
 function routeAfterFastPath(state: AgentState): string {
+  if (state.done) return 'complete';
   return state.deterministicAction ? 'uiAction' : 'captureAndDestroy';
 }
 

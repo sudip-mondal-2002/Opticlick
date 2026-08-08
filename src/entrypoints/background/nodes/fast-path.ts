@@ -34,10 +34,34 @@ export async function fastPathNode(state: AgentState): Promise<Partial<AgentStat
         await log(`Research data endpoint failed: ${(error as Error).message}`, 'warn');
       }
     }
-    return {
-      actions: [], rawToolCalls: [], deterministicAction: false,
-      researchPlanDone: true, researchEvidence,
-    };
+    if (researchEvidence) {
+      await log('Returning verified research answer without another model call', 'act');
+      return {
+        actions: [{ type: 'finish', summary: researchEvidence }],
+        rawToolCalls: [{ id: `fast-${state.step}`, name: 'browser_action', args: { summary: researchEvidence } }],
+        deterministicAction: false,
+        deterministicActions: (state.deterministicActions ?? 0) + 1,
+        researchPlanDone: true, researchEvidence, done: true,
+      };
+    }
+    return { actions: [], rawToolCalls: [], deterministicAction: false, researchPlanDone: true };
+  }
+  if (state.relationshipHopDone && !state.researchEvidence) {
+    try {
+      const researchEvidence = await collectDeterministicResearchEvidence(state.userPrompt);
+      if (researchEvidence) {
+        await log('Returning verified relationship research without another model call', 'act');
+        return {
+          actions: [{ type: 'finish', summary: researchEvidence }],
+          rawToolCalls: [{ id: `fast-${state.step}`, name: 'browser_action', args: { summary: researchEvidence } }],
+          deterministicAction: false,
+          deterministicActions: (state.deterministicActions ?? 0) + 1,
+          relationshipHopDone: true, researchEvidence, done: true,
+        };
+      }
+    } catch (error) {
+      await log(`Relationship data endpoint failed: ${(error as Error).message}`, 'warn');
+    }
   }
   const targetId = inferDeterministicRelationshipClick(
     state.userPrompt,

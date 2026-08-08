@@ -48,10 +48,9 @@ export const AGENT_TOOLS = [
 // providers. parseToolCall expands it into the existing internal action union.
 const textBrowserActionTool = tool(async () => 'ok', {
   name: 'browser_action',
-  description: 'Perform exactly one browser action. Put its ID, text, URL, direction, key, or final factual answer in value.',
+  description: 'Perform exactly one action: click ID, type TEXT, go URL, scroll DIRECTION, key KEY, or finish ANSWER.',
   schema: z.object({
-    action: z.enum(['click', 'type', 'go', 'scroll', 'key', 'finish']),
-    value: z.string(),
+    command: z.string().describe('One command only, for example: click 12 or finish The factual answer.'),
   }),
 });
 const textFinishActionTool = tool(async () => 'ok', {
