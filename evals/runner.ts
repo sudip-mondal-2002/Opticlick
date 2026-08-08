@@ -57,13 +57,22 @@ function buildEvalCase(inputs: Record<string, unknown>): EvalCase {
     : (inputs.langsmithExampleId as string) || (inputs.id as string) || '';
 
   const rawDifficulty = (inputs.difficulty ?? inputs.Difficulty ?? 'medium') as string;
+  const configuredTimeoutSeconds = Number(process.env.EVAL_CASE_TIMEOUT_SECONDS);
+  const configuredTimeoutMs = Number.isFinite(configuredTimeoutSeconds) && configuredTimeoutSeconds > 0
+    ? configuredTimeoutSeconds * 1000
+    : undefined;
+  const datasetTimeoutMs = Number(inputs.timeout_ms ?? inputs.timeoutMs);
 
   return {
     id,
     title:          (inputs.title as string) || `Case ${id}`,
     difficulty:     rawDifficulty.toLowerCase() as 'easy' | 'medium' | 'hard',
     requiresAuth,
-    timeoutMs:      (inputs.timeout_ms as number) || (inputs.timeoutMs as number) || 1_200_000,
+    // CI's explicit safety limit takes precedence over stale/absent dataset
+    // values. Previously the workflow set this env var but it was ignored,
+    // leaving a failed case alive for the 20-minute fallback.
+    timeoutMs:      configuredTimeoutMs
+      ?? (Number.isFinite(datasetTimeoutMs) && datasetTimeoutMs > 0 ? datasetTimeoutMs : 1_200_000),
     prompt:         (inputs.prompt as string) || (inputs.input as string) || '',
     expectedOutput: expectedOutputByCase.get(id) ?? '',
   };
