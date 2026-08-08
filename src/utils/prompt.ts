@@ -108,6 +108,10 @@ export function buildUserMessage(
 
   if (!includeScreenshot) {
     const pageCount = (pageText.match(/^Current URL:/gm) ?? []).length;
+    const verifiedMarker = 'Verified data from visited sites:\n';
+    const verifiedEvidence = pageText.includes(verifiedMarker)
+      ? pageText.slice(pageText.lastIndexOf(verifiedMarker) + verifiedMarker.length).trim()
+      : '';
     const evidenceSource = pageCount > 1
       ? pageText
           .replace(/^Current URL:/gm, 'Visited URL:')
@@ -116,7 +120,9 @@ export function buildUserMessage(
     // A terminal multi-page research call receives a slightly wider ledger so
     // no requested fact is dropped. It is still far smaller than replaying
     // chat/tool history and is used by only one model call.
-    const evidence = selectRelevantPageText(evidenceSource, taskPrompt, pageCount > 1 ? 900 : 300);
+    const evidence = verifiedEvidence
+      ? `Verified data from visited sites:\n${verifiedEvidence.slice(0, 900)}`
+      : selectRelevantPageText(evidenceSource, taskPrompt, pageCount > 1 ? 900 : 300);
     // Evidence often reveals the next entity in a multi-hop task (for
     // example, a creator's name). Include those terms while ranking links so
     // the useful hop survives the five-element token budget.
