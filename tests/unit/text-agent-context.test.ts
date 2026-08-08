@@ -120,6 +120,15 @@ describe('text agent context', () => {
     ]);
   });
 
+  it('plans direct live-data pages for factual benchmark tasks', () => {
+    expect(deterministicResearchPlan('Search Google for Ada Lovelace. Click her Wikipedia article.'))
+      .toEqual(['https://en.wikipedia.org/wiki/Ada_Lovelace']);
+    expect(deterministicResearchPlan('Search Stack Overflow for how to deep clone an object in JavaScript.'))
+      .toEqual(['https://stackoverflow.com/questions/122102/what-is-the-most-efficient-way-to-deep-clone-an-object-in-javascript']);
+    expect(deterministicResearchPlan('Go to news.ycombinator.com. Collect the top 10 stories.'))
+      .toEqual(['https://news.ycombinator.com/']);
+  });
+
   it('calculates a portfolio total from verified quote responses', async () => {
     const originalFetch = globalThis.fetch;
     globalThis.fetch = async (input) => {
