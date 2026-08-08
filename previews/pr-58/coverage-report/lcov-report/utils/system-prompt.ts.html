@@ -25,7 +25,7 @@
             <div class='fl pad1y space-right2'>
                 <span class="strong">100% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>3/3</span>
+                <span class='fraction'>7/7</span>
             </div>
         
             
@@ -46,7 +46,7 @@
             <div class='fl pad1y space-right2'>
                 <span class="strong">100% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>3/3</span>
+                <span class='fraction'>7/7</span>
             </div>
         
             
@@ -339,7 +339,24 @@
 <a name='L274'></a><a href='#L274'>274</a>
 <a name='L275'></a><a href='#L275'>275</a>
 <a name='L276'></a><a href='#L276'>276</a>
-<a name='L277'></a><a href='#L277'>277</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L277'></a><a href='#L277'>277</a>
+<a name='L278'></a><a href='#L278'>278</a>
+<a name='L279'></a><a href='#L279'>279</a>
+<a name='L280'></a><a href='#L280'>280</a>
+<a name='L281'></a><a href='#L281'>281</a>
+<a name='L282'></a><a href='#L282'>282</a>
+<a name='L283'></a><a href='#L283'>283</a>
+<a name='L284'></a><a href='#L284'>284</a>
+<a name='L285'></a><a href='#L285'>285</a>
+<a name='L286'></a><a href='#L286'>286</a>
+<a name='L287'></a><a href='#L287'>287</a>
+<a name='L288'></a><a href='#L288'>288</a>
+<a name='L289'></a><a href='#L289'>289</a>
+<a name='L290'></a><a href='#L290'>290</a>
+<a name='L291'></a><a href='#L291'>291</a>
+<a name='L292'></a><a href='#L292'>292</a>
+<a name='L293'></a><a href='#L293'>293</a>
+<a name='L294'></a><a href='#L294'>294</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -615,7 +632,24 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
-<span class="cline-any cline-yes">7x</span></td><td class="text"><pre class="prettyprint lang-js">/**
+<span class="cline-any cline-yes">7x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">7x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">7x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">7x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">7x</span>
+<span class="cline-any cline-neutral">&nbsp;</span></td><td class="text"><pre class="prettyprint lang-js">/**
  * System prompt for the Opticlick web agent.
  * Defines the agent's cognitive framework, tool constraints, and operating rules.
  *
@@ -891,14 +925,31 @@ Do NOT call finish() when:
 &nbsp;
 // ── Legacy convenience export (unchanged external API) ───────────────────────
 /** Full built-in prompt without any custom instructions. */
-export const SYSTEM_INSTRUCTIONS = CORE_INSTRUCTIONS + SECURITY_INSTRUCTIONS;</pre></td></tr></table></pre>
+export const SYSTEM_INSTRUCTIONS = CORE_INSTRUCTIONS + SECURITY_INSTRUCTIONS;
+&nbsp;
+/**
+ * Token-efficient instructions for text-only, rate-limited providers used by
+ * the eval harness. Tool schemas still carry their detailed argument rules.
+ */
+export const COMPACT_TEXT_AGENT_INSTRUCTIONS = `Complete the web goal from Page evidence. Call browser_action once. Choose command and put the real id, text, url, direction, key, or factual summary in params. Never emit placeholders. Click only listed IDs. Finish when all requested facts are known; never invent.`;
+&nbsp;
+// Small Groq Llama models are substantially more reliable with a literal
+// command line than with an OpenAI function schema. Besides removing the
+// schema tokens, this prevents the model from copying schema placeholders
+// such as "ID" into a tool call.
+export const COMPACT_TEXT_COMMAND_INSTRUCTIONS = `Reply with exactly one command and no explanation. Examples: CLICK 42 or TYPE Ada Lovelace or GO https://example.com or SCROLL down or KEY Enter or DONE complete factual answer. Never list multiple commands. Use a real listed id, never a placeholder. DONE only when Page contains every requested fact; never invent.`;
+&nbsp;
+export const COMPACT_RESEARCH_ANSWER_INSTRUCTIONS = `Answer the Goal with current, verifiable facts. Use your built-in web search or website visit when needed. Return only the complete final answer, with every requested field. Never describe browser actions and never invent missing values.`;
+&nbsp;
+export const COMPACT_EVIDENCE_SYNTHESIS_INSTRUCTIONS = `Answer the Goal using only the verified Page evidence. Return only the complete factual answer, preserving every requested item and value. Do not output commands, discuss browser actions, or invent facts.`;
+&nbsp;</pre></td></tr></table></pre>
 
                 <div class='push'></div><!-- for sticky footer -->
             </div><!-- /wrapper -->
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2026-06-20T10:54:04.315Z
+                at 2026-08-08T18:31:26.553Z
             </div>
         <script src="../prettify.js"></script>
         <script>
