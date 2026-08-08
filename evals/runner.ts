@@ -233,6 +233,34 @@ async function mapWithConcurrency<T>(items: T[], concurrency: number, fn: (item:
   }));
 }
 
+function retryDelayMs(error: unknown): number | undefined {
+  const message = (error as Error).message ?? '';
+  if (!/\b429\b|rate limit/i.test(message)) return undefined;
+  const match = message.match(/try again in\s+([\d.]+)\s*(ms|s|m)/i);
+  if (!match) return 6_000;
+  const value = Number(match[1]);
+  const unit = match[2].toLowerCase();
+  return Math.ceil(value * (unit === 'm' ? 60_000 : unit === 's' ? 1_000 : 1)) + 500;
+}
+
+async function judgeWithRateLimitRetry(
+  evalCase: EvalCase,
+  runResult: RunResult,
+  frames: string[],
+): Promise<JudgeResult> {
+  for (let attempt = 1; attempt <= 5; attempt++) {
+    try {
+      return await judgeRun(evalCase, runResult, frames);
+    } catch (error) {
+      const delay = retryDelayMs(error);
+      if (delay === undefined || attempt === 5) throw error;
+      console.log(`     [${evalCase.id}] Judge rate limited; retrying in ${(delay / 1000).toFixed(1)}s`);
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+  throw new Error('Judge retry loop exhausted');
+}
+
 async function judgeCompletedRun(result: { run?: Run }): Promise<void> {
   const run = result.run;
   if (!run?.outputs) return;
@@ -258,7 +286,11 @@ async function judgeCompletedRun(result: { run?: Run }): Promise<void> {
   const frames = await extractFrames(video, evalCase.id, 6);
   let judged: JudgeResult;
   try {
-    judged = await withTimeout(judgeRun(evalCase, runResult, frames), 180_000, 'Judge LLM timed out after 3 minutes');
+    judged = await withTimeout(
+      judgeWithRateLimitRetry(evalCase, runResult, frames),
+      180_000,
+      'Judge LLM timed out after 3 minutes',
+    );
   } catch (error) {
     judged = {
       task_completed: false, navigation_accuracy: 0, output_correctness: 0,
