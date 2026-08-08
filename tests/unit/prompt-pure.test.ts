@@ -74,7 +74,7 @@ describe('buildUserMessage', () => {
     const msg = buildUserMessage('prompt', [], [], [], fakeBase64, [], [], true, coordinates, false);
     const content = msg.content as Array<{ type: string; text?: string }>;
     expect(content.some((part) => part.type === 'image_url')).toBe(false);
-    expect(content.map((part) => part.text ?? '').join(' ')).toContain('annotated page-element list');
+    expect(content.map((part) => part.text ?? '').join(' ')).toContain('Annotated Elements');
     expect(content.map((part) => part.text ?? '').join(' ')).toContain('Search');
   });
 

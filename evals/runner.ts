@@ -30,7 +30,7 @@ import { evaluate } from 'langsmith/evaluation';
 import { getCurrentRunTree } from 'langsmith/traceable';
 import type { EvaluationResult } from 'langsmith/evaluation';
 import type { Run, Example } from 'langsmith/schemas';
-import type { EvalCase, EvalResult, EvalSummary, JudgeResult } from './types.js';
+import type { EvalCase, EvalResult, EvalSummary, JudgeResult, RunResult } from './types.js';
 import { runEvalCase } from './harness.js';
 import { compressVideo, extractFrames, cleanupFrames } from './recorder.js';
 import { judgeRun } from './judge.js';
@@ -122,6 +122,16 @@ async function runAgent(
   }
   console.log(`     Finish reason: ${runResult.finishReason} | Steps: ${runResult.numSteps} | Duration: ${runResult.durationSeconds.toFixed(1)}s`);
 
+  // Agent execution and judging use separate phases. This returns the browser
+  // result immediately so judge latency and quota never occupy an agent worker.
+  if (process.env.EVAL_DEFER_JUDGE !== 'false') {
+    return {
+      ...runResult,
+      nestedSpanCount,
+      ...await collectMetrics(runResult),
+    };
+  }
+
   // ── Step 2: Compress video ────────────────────────────────────────────────
   if (fs.existsSync(runResult.rawVideoPath)) {
     try {
@@ -196,16 +206,79 @@ async function runAgent(
 // evaluate() calls these after runAgent() and logs feedback to LangSmith.
 
 const evaluators: Array<(run: Run, example?: Example) => EvaluationResult> = [
-  (run) => ({ key: 'task_completed',            score: run.outputs?.task_completed ? 1 : 0 }),
-  (run) => ({ key: 'navigation_accuracy',       score: Number(run.outputs?.navigation_accuracy ?? 0) }),
-  (run) => ({ key: 'output_correctness',        score: Number(run.outputs?.output_correctness ?? 0) }),
-  (run) => ({ key: 'unnecessary_actions',       score: run.outputs?.unnecessary_actions ? 1 : 0 }),
-  (run) => ({ key: 'efficiency_score',          score: Number(run.outputs?.efficiency_score ?? 0) }),
-  (run) => ({ key: 'passed',                    score: run.outputs?.passed ? 1 : 0 }),
   (run) => ({ key: 'timed_out',                 score: run.outputs?.timedOut ? 1 : 0 }),
   (run) => ({ key: 'num_steps',                 score: Number(run.outputs?.numSteps ?? 0) }),
   (run) => ({ key: 'time_to_completion_seconds',score: Number(run.outputs?.durationSeconds ?? 0) }),
+  (run) => ({ key: 'agent_input_tokens',        score: Number(run.outputs?.agent_input_tokens ?? 0) }),
+  (run) => ({ key: 'agent_llm_calls',           score: Number(run.outputs?.agent_llm_calls ?? 0) }),
+  (run) => ({ key: 'deterministic_actions',     score: Number(run.outputs?.deterministic_actions ?? 0) }),
 ];
+
+async function mapWithConcurrency<T>(items: T[], concurrency: number, fn: (item: T) => Promise<void>): Promise<void> {
+  let next = 0;
+  await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+    while (next < items.length) {
+      const item = items[next++];
+      await fn(item);
+    }
+  }));
+}
+
+async function judgeCompletedRun(result: { run?: Run }): Promise<void> {
+  const run = result.run;
+  if (!run?.outputs) return;
+  const outputs = run.outputs as unknown as Record<string, unknown>;
+  const runResult: RunResult = {
+    caseId: String(outputs.caseId ?? ''),
+    rawVideoPath: String(outputs.rawVideoPath ?? ''),
+    compressedVideoPath: String(outputs.compressedVideoPath ?? ''),
+    agentOutput: String(outputs.agentOutput ?? ''),
+    finishReason: (outputs.finishReason as RunResult['finishReason']) ?? 'error',
+    durationSeconds: Number(outputs.durationSeconds ?? 0),
+    numSteps: Number(outputs.numSteps ?? 0),
+    timedOut: Boolean(outputs.timedOut),
+    errorOccurred: Boolean(outputs.errorOccurred),
+  };
+  const evalCase = buildEvalCase((run.inputs ?? {}) as Record<string, unknown>);
+
+  if (fs.existsSync(runResult.rawVideoPath) && !fs.existsSync(runResult.compressedVideoPath)) {
+    try { await compressVideo(runResult.rawVideoPath, runResult.compressedVideoPath); }
+    catch (error) { console.warn(`     ⚠ Video compression failed for ${evalCase.id}: ${(error as Error).message}`); }
+  }
+  const video = fs.existsSync(runResult.compressedVideoPath) ? runResult.compressedVideoPath : runResult.rawVideoPath;
+  const frames = await extractFrames(video, evalCase.id, 6);
+  let judged: JudgeResult;
+  try {
+    judged = await withTimeout(judgeRun(evalCase, runResult, frames), 180_000, 'Judge LLM timed out after 3 minutes');
+  } catch (error) {
+    judged = {
+      task_completed: false, navigation_accuracy: 0, output_correctness: 0,
+      unnecessary_actions: false, efficiency_score: 0,
+      reasoning: `Judge error: ${(error as Error).message}`,
+    };
+  } finally {
+    cleanupFrames(evalCase.id);
+  }
+  const passed = judged.task_completed && !runResult.timedOut && !runResult.errorOccurred;
+  const merged = { ...outputs, ...judged, passed };
+  run.outputs = merged;
+
+  const client = getClient();
+  await client.updateRun(run.id, { outputs: merged });
+  const feedback = [
+    ['task_completed', judged.task_completed ? 1 : 0],
+    ['navigation_accuracy', judged.navigation_accuracy],
+    ['output_correctness', judged.output_correctness],
+    ['unnecessary_actions', judged.unnecessary_actions ? 1 : 0],
+    ['efficiency_score', judged.efficiency_score],
+    ['passed', passed ? 1 : 0],
+  ] as const;
+  await Promise.all(feedback.map(([key, score]) => client.createFeedback(run.id, key, {
+    score,
+    comment: key === 'passed' ? judged.reasoning : undefined,
+  })));
+  console.log(`     [${evalCase.id}] Judge: completed=${judged.task_completed} | output=${judged.output_correctness}`);
+}
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
@@ -299,6 +372,16 @@ async function main(): Promise<void> {
     },
   });
 
+  if (process.env.EVAL_DEFER_JUDGE !== 'false') {
+    const judgeConcurrency = Number(process.env.EVAL_JUDGE_CONCURRENCY ?? '3');
+    if (!Number.isInteger(judgeConcurrency) || judgeConcurrency < 1 || judgeConcurrency > 8) {
+      throw new Error('EVAL_JUDGE_CONCURRENCY must be an integer between 1 and 8');
+    }
+    banner(`Judging phase (${judgeConcurrency} concurrent)`);
+    await mapWithConcurrency(evalResults.results, judgeConcurrency, judgeCompletedRun);
+    await getClient().awaitPendingTraceBatches();
+  }
+
   const experimentName = evalResults.experimentName;
   const client = getClient();
   const [experimentUrl, datasetUrl] = await Promise.all([
@@ -329,12 +412,26 @@ async function main(): Promise<void> {
       efficiency_score:     Number(outputs.efficiency_score ?? 0),
       reasoning:            String(outputs.reasoning ?? ''),
       passed:               Boolean(outputs.passed),
+      agent_input_tokens:   Number(outputs.agent_input_tokens ?? 0),
+      agent_cached_tokens:  Number(outputs.agent_cached_tokens ?? 0),
+      agent_output_tokens:  Number(outputs.agent_output_tokens ?? 0),
+      agent_llm_calls:      Number(outputs.agent_llm_calls ?? 0),
+      rate_limit_retries:   Number(outputs.rate_limit_retries ?? 0),
+      deterministic_actions:Number(outputs.deterministic_actions ?? 0),
     };
     results.push(evalResult);
     if (evalResult.passed) passed++;
   }
 
   const passRate = results.length > 0 ? (passed / results.length) * 100 : 0;
+  const averageAgentInputTokens = results.length > 0
+    ? results.reduce((sum, result) => sum + result.agent_input_tokens, 0) / results.length
+    : 0;
+  const averageAgentLlmCalls = results.length > 0
+    ? results.reduce((sum, result) => sum + result.agent_llm_calls, 0) / results.length
+    : 0;
+  const tokenBudget = Number(process.env.EVAL_MAX_AVG_AGENT_INPUT_TOKENS ?? '1000');
+  const overTokenBudget = tokenBudget > 0 && averageAgentInputTokens > tokenBudget;
 
   const summary: EvalSummary = {
     runAt: new Date().toISOString(),
@@ -350,6 +447,10 @@ async function main(): Promise<void> {
     passRate,
     threshold,
     belowThreshold: passRate < threshold,
+    averageAgentInputTokens,
+    averageAgentLlmCalls,
+    tokenBudget,
+    overTokenBudget,
     results,
   };
 
@@ -361,10 +462,15 @@ async function main(): Promise<void> {
   console.log(`  Failed    : ${results.length - passed}`);
   console.log(`  Timed out : ${summary.timedOut}`);
   console.log(`  Pass rate : ${passRate.toFixed(1)}%  (threshold: ${threshold}%)`);
+  console.log(`  Agent avg : ${averageAgentInputTokens.toFixed(0)} input tokens | ${averageAgentLlmCalls.toFixed(2)} LLM calls`);
   console.log(`\n  Summary written to: ${SUMMARY_PATH}`);
 
   if (passRate < threshold) {
     console.error(`\n❌ Pass rate ${passRate.toFixed(1)}% is below threshold ${threshold}% — failing CI`);
+    process.exit(1);
+  }
+  if (overTokenBudget) {
+    console.error(`\n❌ Average agent input ${averageAgentInputTokens.toFixed(0)} exceeds budget ${tokenBudget} — failing CI`);
     process.exit(1);
   }
 

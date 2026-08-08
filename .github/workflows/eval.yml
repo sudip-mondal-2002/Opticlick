@@ -51,10 +51,18 @@ on:
         description: 'Parallel browser cases (1-6)'
         required: false
         default: '1'
+      judge_concurrency:
+        description: 'Parallel judges after all agents complete (1-8)'
+        required: false
+        default: '3'
       case_timeout_seconds:
         description: 'Per-case hard timeout in seconds'
         required: false
         default: '180'
+      max_avg_agent_input_tokens:
+        description: 'Maximum average agent input tokens per case (0 disables)'
+        required: false
+        default: '1000'
 
 jobs:
   eval:
@@ -107,7 +115,10 @@ jobs:
           EVAL_DIFFICULTY: ${{ inputs.difficulty }}
           EVAL_THRESHOLD: ${{ inputs.threshold }}
           EVAL_MAX_CONCURRENCY: ${{ inputs.max_concurrency }}
+          EVAL_JUDGE_CONCURRENCY: ${{ inputs.judge_concurrency }}
+          EVAL_DEFER_JUDGE: 'true'
           EVAL_CASE_TIMEOUT_SECONDS: ${{ inputs.case_timeout_seconds }}
+          EVAL_MAX_AVG_AGENT_INPUT_TOKENS: ${{ inputs.max_avg_agent_input_tokens }}
           EVAL_AGENT_MODEL: ${{ inputs.agent_model }}
           EVAL_AGENT_MODEL_NAME: ${{ inputs.agent_model_name }}
           EVAL_JUDGE_MODEL: ${{ inputs.judge_model }}

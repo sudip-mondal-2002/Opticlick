@@ -50,6 +50,8 @@ if (!fs.existsSync(summaryPath)) {
     `- LangSmith experiment: ${link(summary.experimentName, summary.experimentUrl)}`,
     `- Agent tokens: **${inputTokens} input** / **${cachedTokens} cached (${cacheRate.toFixed(1)}%)** / **${outputTokens} output**`,
     `- Provider rate-limit retries: **${rateLimits}**`,
+    `- Average agent cost: **${summary.averageAgentInputTokens.toFixed(0)} input tokens/case** / **${summary.averageAgentLlmCalls.toFixed(2)} LLM calls/case**`,
+    `- Token budget: **${summary.tokenBudget} input tokens/case** ${summary.overTokenBudget ? '❌ exceeded' : '✅ met'}`,
     `- Failed: **${summary.failed}** · Timed out: **${summary.timedOut}**`,
     '',
     '<details><summary>Per-case results</summary>',

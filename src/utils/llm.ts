@@ -197,7 +197,10 @@ export async function callModel(
   const systemContent = includeScreenshot
     ? await buildSystemMessage()
     : COMPACT_TEXT_AGENT_INSTRUCTIONS;
-  const boundedHistory = includeScreenshot ? history : history.slice(-2);
+  // Text agents receive a compact state ledger in the current user message.
+  // Replaying prior chat/tool turns multiplied input usage without adding
+  // information and prevented a simple three-step task from fitting in quota.
+  const boundedHistory = includeScreenshot ? history : [];
   const messages: BaseMessage[] = [
     new SystemMessage(systemContent),
     ...buildHistory(boundedHistory),
@@ -213,7 +216,7 @@ export async function callModel(
   // decision map to one provider call and avoids the token/429 cascade.
   const modelWithTools = includeScreenshot
     ? model.bindTools(tools)
-    : model.bindTools(tools, { tool_choice: 'required' });
+    : model.bindTools(tools as typeof TEXT_AGENT_TOOLS[number][], { tool_choice: 'required' as const });
   const { reasoning, thinking, actions, rawToolCalls } = await streamWithRetry(modelWithTools, messages, logFn, config, onThinkingDelta);
   return { reasoning, thinking, actions, done: actions.some((a: AgentAction) => a.type === 'finish'), rawToolCalls };
 }

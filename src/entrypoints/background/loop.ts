@@ -197,6 +197,8 @@ export async function runAgentLoop(
       emptyRetries: 0,
       actionHistory: [],
       retryStep: false,
+      deterministicActions: 0,
+      deterministicAction: false,
       coordinateMap: [],
       pageText: '',
       pageTextHistory: [],

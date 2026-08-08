@@ -21,6 +21,33 @@ export interface ProgrammaticMetrics {
   timed_out: boolean;
   /** True if agentState.status was 'error'. */
   error_occurred: boolean;
+  agent_input_tokens: number;
+  agent_cached_tokens: number;
+  agent_output_tokens: number;
+  agent_llm_calls: number;
+  rate_limit_retries: number;
+  deterministic_actions: number;
+}
+
+export function tokenMetrics(agentOutput: string) {
+  let input = 0;
+  let cached = 0;
+  let output = 0;
+  let calls = 0;
+  for (const match of agentOutput.matchAll(/LLM tokens: input=(\d+), cached=(\d+), output=(\d+)/g)) {
+    input += Number(match[1]);
+    cached += Number(match[2]);
+    output += Number(match[3]);
+    calls++;
+  }
+  return {
+    agent_input_tokens: input,
+    agent_cached_tokens: cached,
+    agent_output_tokens: output,
+    agent_llm_calls: calls,
+    rate_limit_retries: (agentOutput.match(/Rate limited \(attempt/g) ?? []).length,
+    deterministic_actions: (agentOutput.match(/Deterministic navigation:/g) ?? []).length,
+  };
 }
 
 export async function collectMetrics(runResult: RunResult): Promise<ProgrammaticMetrics> {
@@ -35,6 +62,7 @@ export async function collectMetrics(runResult: RunResult): Promise<Programmatic
     finish_reason: runResult.finishReason,
     timed_out: runResult.timedOut,
     error_occurred: runResult.errorOccurred,
+    ...tokenMetrics(runResult.agentOutput),
   };
 }
 
@@ -48,5 +76,11 @@ export function metricsToFeedback(
     { key: 'num_steps', score: metrics.num_steps },
     { key: 'timed_out', score: metrics.timed_out },
     { key: 'error_occurred', score: metrics.error_occurred },
+    { key: 'agent_input_tokens', score: metrics.agent_input_tokens },
+    { key: 'agent_cached_tokens', score: metrics.agent_cached_tokens },
+    { key: 'agent_output_tokens', score: metrics.agent_output_tokens },
+    { key: 'agent_llm_calls', score: metrics.agent_llm_calls },
+    { key: 'rate_limit_retries', score: metrics.rate_limit_retries },
+    { key: 'deterministic_actions', score: metrics.deterministic_actions },
   ];
 }

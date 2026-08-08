@@ -14,6 +14,7 @@ import { formatTodoForPrompt } from './todo';
 import { formatMemoryForPrompt } from './memory';
 import { formatScratchpadForPrompt } from './scratchpad';
 import type { InlineImage } from './llm';
+import { selectRelevantElements, selectRelevantPageText } from './text-agent-context';
 
 // ── History ───────────────────────────────────────────────────────────────────
 
@@ -106,7 +107,9 @@ export function buildUserMessage(
   const { taskPrompt, contextUrl } = extractContextFromPrompt(userPrompt);
 
   if (!includeScreenshot) {
-    const compactText = `# Task\n${taskPrompt}\n\n# Current page\n${pageText || '(no page text available)'}\n\nUse the annotated page-element list below only when interaction is needed.${annotatedElementsBlock(coordinateMap, 18)}\n\nUse the page text directly. Call one appropriate tool now; call finish as soon as all requested facts are known.`;
+    const evidence = selectRelevantPageText(pageText, taskPrompt);
+    const elements = selectRelevantElements(coordinateMap, taskPrompt);
+    const compactText = `Goal: ${taskPrompt}\nState: ${evidence || '(no page evidence)'}${annotatedElementsBlock(elements, 10)}\nChoose one browser action. Finish immediately when the goal is satisfied.`;
     return new HumanMessage({ content: [{ type: 'text', text: compactText }] as any });
   }
 

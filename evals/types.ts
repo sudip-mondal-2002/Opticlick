@@ -54,6 +54,12 @@ export type EvalResult = RunResult &
   JudgeResult & {
     /** task_completed && !timedOut && !errorOccurred */
     passed: boolean;
+    agent_input_tokens: number;
+    agent_cached_tokens: number;
+    agent_output_tokens: number;
+    agent_llm_calls: number;
+    rate_limit_retries: number;
+    deterministic_actions: number;
   };
 
 /** Summary written to evals/results/summary.json after all cases complete. */
@@ -71,5 +77,9 @@ export interface EvalSummary {
   passRate: number;
   threshold: number;
   belowThreshold: boolean;
+  averageAgentInputTokens: number;
+  averageAgentLlmCalls: number;
+  tokenBudget: number;
+  overTokenBudget: boolean;
   results: EvalResult[];
 }

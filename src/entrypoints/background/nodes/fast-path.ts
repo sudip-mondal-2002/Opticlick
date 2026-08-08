@@ -1,0 +1,22 @@
+import { log } from '@/utils/agent-log';
+import { inferDeterministicNavigation } from '@/utils/text-agent-context';
+import type { AgentState } from '../agent-state';
+
+/** Skip the model when the task explicitly names a URL or searchable site. */
+export async function fastPathNode(state: AgentState): Promise<Partial<AgentState>> {
+  const textOnly = (state.model as typeof state.model & { supportsVision?: boolean }).supportsVision === false;
+  if (!textOnly) return { actions: [], rawToolCalls: [], deterministicAction: false };
+
+  const currentUrl = (await chrome.tabs.get(state.tabId)).url ?? '';
+  const destination = inferDeterministicNavigation(state.userPrompt, currentUrl, state.step);
+  if (!destination) return { actions: [], rawToolCalls: [], deterministicAction: false };
+
+  await log(`Deterministic navigation: ${destination}`, 'act');
+  return {
+    actions: [{ type: 'navigate', url: destination }],
+    rawToolCalls: [{ id: `fast-${state.step}`, name: 'navigate', args: { url: destination } }],
+    deterministicAction: true,
+    deterministicActions: (state.deterministicActions ?? 0) + 1,
+    done: false,
+  };
+}

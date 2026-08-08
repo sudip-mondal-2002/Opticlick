@@ -3,6 +3,13 @@ import { dragAndDropTool, parseToolCall } from '@/utils/tools/index';
 import type { AgentAction, TodoItem } from '@/utils/types';
 
 describe('parseToolCall', () => {
+  it('expands the compact browser_action schema', () => {
+    expect(parseToolCall('browser_action', { action: 'navigate', url: 'https://example.com' }))
+      .toEqual({ type: 'navigate', url: 'https://example.com' });
+    expect(parseToolCall('browser_action', { action: 'finish', summary: 'Done' }))
+      .toEqual({ type: 'finish', summary: 'Done' });
+  });
+
   it('returns null for unknown tool name', () => {
     expect(parseToolCall('unknown_tool', {})).toBeNull();
   });
@@ -263,10 +270,10 @@ describe('parseToolCall', () => {
     expect(result.summary).toBe('Task complete');
   });
 
-  it('parses "finish" without summary (undefined)', () => {
+  it('parses "finish" without summary as an empty string', () => {
     const result = parseToolCall('finish', {}) as AgentAction & { type: 'finish' };
     expect(result.type).toBe('finish');
-    expect(result.summary).toBeUndefined();
+    expect(result.summary).toBe('');
   });
 
   it('parses "wait"', () => {

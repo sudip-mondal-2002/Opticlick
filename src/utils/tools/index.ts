@@ -44,45 +44,30 @@ export const AGENT_TOOLS = [
   ...CONTROL_TOOLS,
 ] as const;
 
-// Compact equivalents used only by text models.  Names and argument shapes
-// intentionally match the full tools so parseToolCall remains the sole parser.
-// Keeping descriptions terse materially reduces every uncached Groq request.
-const textClickTool = tool(async () => 'ok', {
-  name: 'click', description: 'Click annotated element ID.',
-  schema: z.object({ targetId: z.number().int().min(1) }),
+// One compact schema replaces six repeated function definitions for text-only
+// providers. parseToolCall expands it into the existing internal action union.
+const textBrowserActionTool = tool(async () => 'ok', {
+  name: 'browser_action',
+  description: 'Perform exactly one browser action.',
+  schema: z.object({
+    action: z.enum(['click', 'type', 'navigate', 'scroll', 'key', 'finish']),
+    targetId: z.number().int().optional(),
+    url: z.string().optional(),
+    text: z.string().optional(),
+    clearField: z.boolean().optional(),
+    direction: z.enum(['up', 'down', 'left', 'right']).optional(),
+    key: z.string().optional(),
+    summary: z.string().optional(),
+  }),
 });
-const textTypeTool = tool(async () => 'ok', {
-  name: 'type', description: 'Type into focused element.',
-  schema: z.object({ text: z.string(), clearField: z.boolean().optional() }),
-});
-const textNavigateTool = tool(async () => 'ok', {
-  name: 'navigate', description: 'Open full HTTP(S) URL.',
-  schema: z.object({ url: z.string() }),
-});
-const textScrollTool = tool(async () => 'ok', {
-  name: 'scroll', description: 'Scroll current page.',
-  schema: z.object({ direction: z.enum(['up', 'down', 'left', 'right']) }),
-});
-const textPressKeyTool = tool(async () => 'ok', {
-  name: 'press_key', description: 'Press one keyboard key.',
-  schema: z.object({ key: z.string() }),
-});
-const textFinishTool = tool(async () => 'ok', {
-  name: 'finish', description: 'Return final answer when task is complete.',
-  schema: z.object({ summary: z.string() }),
+const textFinishActionTool = tool(async () => 'ok', {
+  name: 'browser_action',
+  description: 'Finish with the complete answer.',
+  schema: z.object({ action: z.literal('finish'), summary: z.string() }),
 });
 
-/** Minimal, cache-stable browser tool set for low-TPM text-only providers. */
-export const TEXT_AGENT_TOOLS = [
-  textClickTool,
-  textTypeTool,
-  textNavigateTool,
-  textScrollTool,
-  textPressKeyTool,
-  textFinishTool,
-] as const;
-
-export const TEXT_FINISH_TOOLS = [textFinishTool] as const;
+export const TEXT_AGENT_TOOLS = [textBrowserActionTool] as const;
+export const TEXT_FINISH_TOOLS = [textFinishActionTool] as const;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Tool-call parser
@@ -93,6 +78,17 @@ type TodoUpdateItem = (AgentAction & { type: 'todo_update' })['updates'][number]
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const parsers: Record<string, (args: Record<string, any>) => AgentAction> = {
+  browser_action: (args) => {
+    switch (args.action) {
+      case 'click': return { type: 'click', targetId: args.targetId as number };
+      case 'type': return { type: 'type', text: args.text as string, clearField: args.clearField as boolean | undefined };
+      case 'navigate': return { type: 'navigate', url: args.url as string };
+      case 'scroll': return { type: 'scroll', direction: (args.direction ?? 'down') as ScrollDirection };
+      case 'key': return { type: 'press_key', key: args.key as string };
+      case 'finish': return { type: 'finish', summary: args.summary as string };
+      default: return { type: 'finish', summary: String(args.summary ?? '') };
+    }
+  },
   click: (args) => ({
     type: 'click',
     targetId: args.targetId as number,
@@ -181,7 +177,7 @@ const parsers: Record<string, (args: Record<string, any>) => AgentAction> = {
   }),
   finish: (args) => ({
     type: 'finish',
-    summary: args.summary as string | undefined,
+    summary: String(args.summary ?? ''),
   }),
   wait: (args) => ({
     type: 'wait',

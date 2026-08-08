@@ -16,6 +16,7 @@ import { sleep } from '@/utils/sleep';
 import type { DrawMarksResult } from '@/utils/types';
 import type { AgentState } from '../agent-state';
 import { MAX_STEPS, MAX_EMPTY_RETRIES } from '../agent-state';
+import { selectRelevantPageText } from '@/utils/text-agent-context';
 
 // ── Node: stepSetup ───────────────────────────────────────────────────────────
 
@@ -103,7 +104,7 @@ export async function drawAnnotationsNode(state: AgentState): Promise<Partial<Ag
   const priorUrls = state.visitedUrls ?? [];
   const priorPageText = state.pageTextHistory ?? [];
   const pageTextHistory = currentUrl && !priorUrls.includes(currentUrl)
-    ? [...priorPageText, pageText.slice(0, 700)].slice(-3)
+    ? [...priorPageText, selectRelevantPageText(pageText, state.userPrompt, 450)].slice(-2)
     : priorPageText;
   const visitedUrls = currentUrl && !priorUrls.includes(currentUrl)
     ? [...priorUrls, currentUrl]

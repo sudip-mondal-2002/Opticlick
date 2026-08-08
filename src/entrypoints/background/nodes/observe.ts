@@ -64,8 +64,9 @@ export async function captureAndDestroyNode(state: AgentState): Promise<Partial<
 // ── Node: reason ──────────────────────────────────────────────────────────────
 
 export async function reasonNode(state: AgentState, config: RunnableConfig): Promise<Partial<AgentState>> {
-  const history = await getConversationHistory(state.sessionId);
-  const vfsFiles = await listVFSFiles(state.sessionId);
+  const textOnly = (state.model as typeof state.model & { supportsVision?: boolean }).supportsVision === false;
+  const history = textOnly ? [] : await getConversationHistory(state.sessionId);
+  const vfsFiles = textOnly ? [] : await listVFSFiles(state.sessionId);
   await log('Sending to LLM…', 'observe');
 
   // Adjust prompt when there are no interactable elements
