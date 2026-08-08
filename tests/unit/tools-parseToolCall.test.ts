@@ -22,6 +22,8 @@ describe('parseToolCall', () => {
   it('parses the compact command and params form used by small models', () => {
     expect(parseToolCall('browser_action', { command: 'click', params: { id: 42 } }))
       .toMatchObject({ type: 'click', targetId: 42 });
+    expect(parseToolCall('browser_action', { command: 'click', params: { id: '42' } }))
+      .toMatchObject({ type: 'click', targetId: 42 });
     expect(parseToolCall('browser_action', { command: 'go', params: { url: 'https://example.com' } }))
       .toMatchObject({ type: 'navigate', url: 'https://example.com' });
     expect(parseToolCall('browser_action', { command: 'finish', params: { summary: 'The answer is 1991.' } }))

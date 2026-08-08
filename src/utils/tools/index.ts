@@ -52,7 +52,9 @@ const textBrowserActionTool = tool(async () => 'ok', {
   schema: z.object({
     command: z.enum(['click', 'type', 'go', 'scroll', 'key', 'finish']),
     params: z.object({
-      id: z.number().optional(),
+      // Small OpenAI-compatible models frequently serialize numeric element
+      // IDs as JSON strings. Accept both and normalize in parseToolCall.
+      id: z.union([z.number(), z.string()]).optional(),
       text: z.string().optional(),
       url: z.string().optional(),
       direction: z.enum(['up', 'down', 'left', 'right']).optional(),
