@@ -19,6 +19,20 @@ describe('text agent context', () => {
     expect(result.length).toBeLessThanOrEqual(220);
   });
 
+  it('keeps more fact windows for a bounded multi-page ledger', () => {
+    const page = [
+      'Visited URL: https://one.example',
+      'Bitcoin BTC price is $100.',
+      'Ethereum ETH price is $20.',
+      'Visited URL: https://two.example',
+      'Tesla TSLA price is $5.',
+      'Microsoft MSFT price is $8.',
+    ].join('\n');
+    const result = selectRelevantPageText(page, 'BTC ETH TSLA MSFT prices', 900);
+    expect(result).toContain('Bitcoin BTC');
+    expect(result).toContain('Microsoft MSFT');
+  });
+
   it('prefers matching links and controls', () => {
     const base = { tag: 'a', href: '', inputType: undefined, rect: { x: 0, y: 0, left: 0, top: 0, width: 1, height: 1 } };
     const entries: CoordinateEntry[] = [

@@ -36,8 +36,9 @@ export function selectRelevantPageText(pageText: string, task: string, maxChars 
 
   const selected: Array<{ text: string; index: number }> = [];
   let used = url.length + title.length + 2;
+  const sentenceLimit = maxChars > 500 ? 12 : 6;
   for (const candidate of ranked) {
-    if (selected.length >= 6) break;
+    if (selected.length >= sentenceLimit) break;
     const remaining = maxChars - used;
     if (remaining <= 40) break;
     selected.push({ text: candidate.text.slice(0, remaining), index: candidate.index });
