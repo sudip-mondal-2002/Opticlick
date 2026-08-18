@@ -15,7 +15,7 @@
 import {
   createSession,
   updateSessionMetadata,
-  saveVFSFile,
+  saveGlobalVFSFile,
   getAllMemories,
 } from '@/utils/db';
 import { createAnyModel } from '@/utils/llm';
@@ -77,7 +77,11 @@ export async function runAgentLoop(
   // Seed VFS with any user-attached files
   if (attachments?.length) {
     for (const file of attachments) {
-      await saveVFSFile(sessionId, file.name, file.data, file.mimeType);
+      await saveGlobalVFSFile(
+  file.name,
+  file.data,
+  file.mimeType
+);
     }
     await log(`Loaded ${attachments.length} attached file(s) into VFS`, 'observe');
   }

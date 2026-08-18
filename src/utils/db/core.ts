@@ -1,7 +1,7 @@
 /** Shared IndexedDB handle — open once, reuse across all stores. */
 
 export const DB_NAME = 'OpticlickDB';
-export const DB_VERSION = 5;
+export const DB_VERSION = 6;
 export const SESSIONS_STORE = 'sessions';
 export const CONV_STORE = 'conversations';
 export const CONV_BY_SESSION_INDEX = 'by-session';
@@ -36,10 +36,21 @@ export function openDB(options?: OpenDBOptions): Promise<IDBDatabase> {
         convStore.createIndex(CONV_BY_SESSION_INDEX, 'sessionId', { unique: false });
       }
 
-      if (!db.objectStoreNames.contains(VFS_STORE)) {
-        const vfsStore = db.createObjectStore(VFS_STORE, { keyPath: 'id' });
-        vfsStore.createIndex('by-session', 'sessionId', { unique: false });
-      }
+      let vfsStore: IDBObjectStore;
+
+if (!db.objectStoreNames.contains(VFS_STORE)) {
+  vfsStore = db.createObjectStore(VFS_STORE, { keyPath: 'id' });
+} else {
+  vfsStore = tx.objectStore(VFS_STORE);
+}
+
+if (!vfsStore.indexNames.contains('by-session')) {
+  vfsStore.createIndex('by-session', 'sessionId', { unique: false });
+}
+
+if (!vfsStore.indexNames.contains('by-scope')) {
+  vfsStore.createIndex('by-scope', 'scope', { unique: false });
+}
       if (!db.objectStoreNames.contains(MEMORY_STORE)) {
         db.createObjectStore(MEMORY_STORE, { keyPath: 'key' });
       }

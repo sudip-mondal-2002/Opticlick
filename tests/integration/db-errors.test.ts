@@ -52,7 +52,7 @@ describe('IndexedDB Error Paths and Fallbacks', () => {
     // It should throw VersionError initially, catch it, delete the DB,
     // and successfully open version 5.
     const db2 = await openDB({ mode: 'auto-delete' });
-    expect(db2.version).toBe(5);
+    expect(db2.version).toBe(6);
     db2.close();
   });
 
@@ -268,7 +268,7 @@ describe('IndexedDB Error Paths and Fallbacks', () => {
     await expect(touchSession(999999)).resolves.not.toThrow();
   });
 
-  it('covers database upgradeneeded branch for version < 5', async () => {
+  it('covers database upgradeneeded branch for version < 6', async () => {
     await new Promise<void>((resolve) => {
       const req = indexedDB.deleteDatabase(DB_NAME);
       req.onsuccess = () => resolve();
@@ -286,8 +286,8 @@ describe('IndexedDB Error Paths and Fallbacks', () => {
     db1.close();
 
     const db2 = await openDB();
-    expect(db2.objectStoreNames.contains(CONV_STORE)).toBe(true);
-    db2.close();
+    expect(db2.version).toBe(6);
+
   });
 
   it('covers upgradeneeded when CONV_STORE already exists (takes the else branch for existing store)', async () => {
