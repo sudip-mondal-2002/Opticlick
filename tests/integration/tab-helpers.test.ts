@@ -6,6 +6,8 @@ import {
   waitForInjectableTab,
   waitForTabLoad,
   ensureContentScript,
+  urlsDifferSignificantly,
+  waitForPossibleNavigation,
 } from '@/utils/tab-helpers';
 
 describe('tab-helpers', () => {
@@ -224,6 +226,35 @@ describe('tab-helpers', () => {
       vi.mocked(chrome.tabs.get).mockRejectedValueOnce(new Error('Tab gone'));
 
       await expect(waitForTabLoad(1, 1000, false)).resolves.toBeUndefined();
+    });
+  });
+
+  describe('navigation helpers', () => {
+    it('treats hash-only changes as non-significant', () => {
+      expect(urlsDifferSignificantly('https://a.com/p#one', 'https://a.com/p#two')).toBe(false);
+    });
+
+    it('detects meaningful URL changes', () => {
+      expect(urlsDifferSignificantly('https://a.com/p?q=1', 'https://a.com/p?q=2')).toBe(true);
+      expect(urlsDifferSignificantly('https://a.com/p', 'https://a.com/other')).toBe(true);
+    });
+
+    it('returns true when a loading->complete cycle is observed', async () => {
+      let listener: any;
+      vi.mocked(chrome.tabs.onUpdated.addListener).mockImplementation((l) => {
+        listener = l;
+      });
+      const promise = waitForPossibleNavigation(1, 1000);
+      setTimeout(() => {
+        listener(1, { status: 'loading' });
+        listener(1, { status: 'complete' });
+      }, 20);
+      await expect(promise).resolves.toBe(true);
+    });
+
+    it('returns false when no navigation occurs before timeout', async () => {
+      vi.mocked(chrome.tabs.onUpdated.addListener).mockImplementation(() => {});
+      await expect(waitForPossibleNavigation(1, 20)).resolves.toBe(false);
     });
   });
 

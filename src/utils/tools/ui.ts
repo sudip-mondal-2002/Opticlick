@@ -17,6 +17,7 @@ export const clickTool = tool(
     name: 'click',
     description:
       'Click an annotated element by its numeric ID to focus it. ' +
+      'Navigational links are Ctrl+clicked to open in a new tab; the agent automatically switches to that tab. ' +
       'For file inputs, set uploadFileId to a VFS file ID or filename to inject the file ' +
       'programmatically instead of opening an OS dialog. ' +
       'After clicking, use the type tool to enter text, or press_key to send a keyboard event.',

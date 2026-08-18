@@ -35,9 +35,10 @@ declare global {
 import * as path from 'path';
 import * as os from 'os';
 import * as fs from 'fs';
+import { extensionE2ePrerequisites, EXTENSION_PATH } from './helpers';
 
-const EXTENSION_PATH = path.resolve(__dirname, '../../.output/chrome-mv3');
 const FIXTURE_URL = `file://${path.resolve(__dirname, 'fixtures/upload-target.html')}`;
+const e2e = extensionE2ePrerequisites();
 
 let context: BrowserContext;
 
@@ -118,29 +119,25 @@ async function cdpSetFilesInShadow(page: Page, hostSelector: string, inputId: st
 
 // ── Setup ─────────────────────────────────────────────────────────────────────
 
-beforeAll(async () => {
-  if (!fs.existsSync(EXTENSION_PATH)) {
-    throw new Error(
-      `Extension not built. Run 'npm run build' first.\nExpected: ${EXTENSION_PATH}`,
-    );
-  }
-  const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opticlick-e2e-'));
-  context = await chromium.launchPersistentContext(userDataDir, {
-    // Extensions are disabled in headless mode — Xvfb provides a virtual display in CI.
-    headless: false,
-    args: [
-      '--no-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-gpu',           // reduces overhead when rendering into Xvfb
-      `--disable-extensions-except=${EXTENSION_PATH}`,
-      `--load-extension=${EXTENSION_PATH}`,
-    ],
+describe.skipIf(!e2e.ok)('Extension file upload E2E', () => {
+  beforeAll(async () => {
+    const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'opticlick-e2e-'));
+    context = await chromium.launchPersistentContext(userDataDir, {
+      // Extensions are disabled in headless mode — Xvfb provides a virtual display in CI.
+      headless: false,
+      args: [
+        '--no-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-gpu',
+        `--disable-extensions-except=${EXTENSION_PATH}`,
+        `--load-extension=${EXTENSION_PATH}`,
+      ],
+    });
   });
-});
 
-afterAll(async () => {
-  await context?.close();
-});
+  afterAll(async () => {
+    await context?.close();
+  });
 
 // ── Case 1: Plain visible input ───────────────────────────────────────────────
 
@@ -805,3 +802,5 @@ describe('dispatchHardwareClick (CDP)', () => {
     await page.close();
   });
 });
+
+}); // Extension file upload E2E

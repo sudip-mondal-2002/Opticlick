@@ -688,8 +688,11 @@ Load the unpacked extension from `.output/chrome-mv3/` in `chrome://extensions` 
 ### Testing
 
 ```bash
-# Unit + integration + DOM + e2e tests 
+# Unit + integration + DOM tests (no build or Playwright required)
 npm test
+
+# Real Chromium extension tests (build + Playwright required)
+npm run build && npx playwright install chromium && npm run test:e2e
 
 # Lint
 npm run lint
@@ -699,9 +702,9 @@ npm run lint:fix
 Tests are organized under `tests/`:
 
 - `tests/unit/` — Pure logic: tool parsing, todo mutations, scratchpad, memory formatting, navigation guard
-- `tests/integration/` — Chrome API stubs: CDP input, screenshots, IndexedDB, agent state
+- `tests/integration/` — Chrome API stubs: CDP input, screenshots, IndexedDB, agent state, mocked LLM actions
 - `tests/dom/` — jsdom: element discovery, visibility, occlusion detection
-- `tests/e2e/` — Real Chromium: full agent loop
+- `tests/e2e/` — Real Chromium with loaded extension (requires `npm run build` and Playwright)
 
 ### Environment Variables
 

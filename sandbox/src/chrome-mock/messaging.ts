@@ -94,6 +94,38 @@ export async function ensureContentScriptShim(_tabId: number): Promise<void> {
   }
 }
 
+export function urlsDifferSignificantly(before: string, after: string): boolean {
+  if (!before || !after || before === after) return false;
+  try {
+    const prev = new URL(before);
+    const next = new URL(after);
+    const stableKey = (url: URL) => `${url.origin}${url.pathname}${url.search}`;
+    return stableKey(prev) !== stableKey(next);
+  } catch {
+    return before !== after;
+  }
+}
+
+export function waitForPossibleNavigation(
+  _tabId: number,
+  timeoutMs = 3_000,
+): Promise<boolean> {
+  const iframe = getIframe();
+  if (!iframe) return Promise.resolve(false);
+  return new Promise((resolve) => {
+    let resolved = false;
+    const done = (navigated: boolean) => {
+      if (resolved) return;
+      resolved = true;
+      iframe.removeEventListener('load', onLoad);
+      resolve(navigated);
+    };
+    const onLoad = () => done(true);
+    iframe.addEventListener('load', onLoad, { once: true });
+    setTimeout(() => done(false), timeoutMs);
+  });
+}
+
 // Map exports to expected helper paths
 export const sendToTab = sendToTabShim;
 export const isTabInjectable = isTabInjectableShim;

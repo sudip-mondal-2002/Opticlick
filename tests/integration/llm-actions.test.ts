@@ -1,8 +1,7 @@
 /**
- * Mocked E2E tests for LLM action decisions.
+ * Integration tests for LLM action decisions (mocked Gemini API).
  *
- * These tests mock the Gemini API and verify that the callModel pipeline
- * correctly parses various tool calls and thinking tokens.
+ * Verifies that the callModel pipeline correctly parses tool calls and thinking tokens.
  */
 
 import { describe, it, expect } from 'vitest';

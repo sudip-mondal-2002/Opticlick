@@ -5,6 +5,7 @@ export interface CoordinateEntry {
   text: string;
   /** For <input> elements, the value of the `type` attribute (e.g. "file", "text"). */
   inputType?: string;
+  href?: string;
   rect: {
     x: number;
     y: number;

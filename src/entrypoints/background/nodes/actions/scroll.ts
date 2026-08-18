@@ -1,11 +1,15 @@
 import { appendConversationTurn } from '@/utils/db';
-import { attachDebugger, dispatchScrollWheel } from '@/utils/cdp';
+import { attachDebugger, dispatchScrollWheel, getKeyCode } from '@/utils/cdp';
 import {
   shouldPivot,
   scrollDeltaIsSignificant,
   computeScrollDelta,
   detectLoop,
   MAX_PIVOT_RETRIES,
+  MAX_SCROLL_WHEEL_ATTEMPTS,
+  scrollKeyForDirection,
+  buildPageScrollYExpression,
+  buildScrollPositionAtPointExpression,
 } from '@/utils/navigation-guard';
 import { log } from '@/utils/agent-log';
 import { sendToTab, ensureContentScript } from '@/utils/tab-helpers';
@@ -16,6 +20,29 @@ import type { ActionRecord } from '@/utils/navigation-guard';
 import type { ActionCtx } from './ctx';
 
 type ScrollAction = Extract<AgentAction, { type: 'scroll' }>;
+
+async function readScrollOffset(tabId: number, expression: string): Promise<number> {
+  try {
+    const r = await chrome.debugger.sendCommand({ tabId }, 'Runtime.evaluate', {
+      expression,
+      returnByValue: true,
+    }) as { result?: { value?: number } };
+    return r?.result?.value ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
+async function dispatchScrollKey(tabId: number, key: string): Promise<void> {
+  await attachDebugger(tabId);
+  const code = getKeyCode(key);
+  await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
+    type: 'rawKeyDown', key, windowsVirtualKeyCode: code,
+  });
+  await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchKeyEvent', {
+    type: 'keyUp', key, windowsVirtualKeyCode: code,
+  });
+}
 
 export async function handleScroll(
   action: ScrollAction,
@@ -36,11 +63,29 @@ export async function handleScroll(
     );
   } else {
     const { deltaX, deltaY } = computeScrollDelta(action.direction);
-    let scrollX = 600, scrollY = 400;
+    let scrollX = 600;
+    let scrollY = 400;
     if (scrollTargetId != null) {
       const scrollTarget = coordinateMap.find((c) => c.id === scrollTargetId);
-      if (scrollTarget) { scrollX = scrollTarget.rect.x; scrollY = scrollTarget.rect.y; }
+      if (scrollTarget) {
+        scrollX = scrollTarget.rect.x;
+        scrollY = scrollTarget.rect.y;
+      }
+    } else {
+      try {
+        const center = await chrome.debugger.sendCommand({ tabId }, 'Runtime.evaluate', {
+          expression: '({ x: Math.round(window.innerWidth / 2), y: Math.round(window.innerHeight / 2) })',
+          returnByValue: true,
+        }) as { result?: { value?: { x: number; y: number } } };
+        if (center?.result?.value) {
+          scrollX = center.result.value.x;
+          scrollY = center.result.value.y;
+        }
+      } catch { /* default fallback */ }
     }
+    const scrollPosExpr = scrollTargetId != null
+      ? buildScrollPositionAtPointExpression(scrollX, scrollY)
+      : buildPageScrollYExpression();
     const label = scrollTargetId
       ? `Scrolling ${action.direction} inside element #${scrollTargetId}`
       : `Scrolling page ${action.direction}`;
@@ -48,21 +93,23 @@ export async function handleScroll(
     try {
       try { await sendToTab(tabId, { type: 'UNBLOCK_INPUT' }); } catch { /* */ }
       await attachDebugger(tabId);
-      let beforeY = 0, afterY = 0;
-      try {
-        const r = await chrome.debugger.sendCommand({ tabId }, 'Runtime.evaluate', {
-          expression: 'window.scrollY', returnByValue: true,
-        }) as { result: { value: number } };
-        beforeY = r?.result?.value ?? 0;
-      } catch { /* */ }
-      await dispatchScrollWheel(tabId, scrollX, scrollY, deltaX, deltaY);
-      await sleep(300);
-      try {
-        const r = await chrome.debugger.sendCommand({ tabId }, 'Runtime.evaluate', {
-          expression: 'window.scrollY', returnByValue: true,
-        }) as { result: { value: number } };
-        afterY = r?.result?.value ?? 0;
-      } catch { /* */ }
+      const beforeY = await readScrollOffset(tabId, scrollPosExpr);
+      let afterY = beforeY;
+
+      for (let attempt = 0; attempt < MAX_SCROLL_WHEEL_ATTEMPTS; attempt++) {
+        await dispatchScrollWheel(tabId, scrollX, scrollY, deltaX, deltaY);
+        await sleep(220);
+        afterY = await readScrollOffset(tabId, scrollPosExpr);
+        if (scrollDeltaIsSignificant(beforeY, afterY)) break;
+      }
+
+      if (!scrollDeltaIsSignificant(beforeY, afterY)) {
+        const fallbackKey = scrollKeyForDirection(action.direction);
+        await log(`Wheel scroll had no effect — trying ${fallbackKey}`, 'act');
+        await dispatchScrollKey(tabId, fallbackKey);
+        await sleep(220);
+        afterY = await readScrollOffset(tabId, scrollPosExpr);
+      }
 
       // ── Loop detection ──────────────────────────────────────────────────────
       const loopHint = detectLoop(

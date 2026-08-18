@@ -31,18 +31,24 @@ describe('dispatchScrollWheel', () => {
 
   // ── Event structure ──────────────────────────────────────────────────────
 
-  it('sends exactly one Input.dispatchMouseEvent command', async () => {
+  const isMouseEvent = (c: unknown[]) => c[1] === 'Input.dispatchMouseEvent';
+  const isWheel = (c: unknown[]) =>
+    isMouseEvent(c) && (c[2] as { type?: string }).type === 'mouseWheel';
+
+  it('sends mouseMoved then mouseWheel events', async () => {
     await dispatchScrollWheel(1, 600, 400, 0, 500);
     const mouseCalls = getMockDebugger().sendCommand.mock.calls.filter(
-      (c: unknown[]) => c[1] === 'Input.dispatchMouseEvent',
+      isMouseEvent,
     );
-    expect(mouseCalls).toHaveLength(1);
+    expect(mouseCalls).toHaveLength(2);
+    expect((mouseCalls[0][2] as { type: string }).type).toBe('mouseMoved');
+    expect((mouseCalls[1][2] as { type: string }).type).toBe('mouseWheel');
   });
 
   it('sends a "mouseWheel" event type', async () => {
     await dispatchScrollWheel(1, 600, 400, 0, 500);
     const call = getMockDebugger().sendCommand.mock.calls.find(
-      (c: unknown[]) => c[1] === 'Input.dispatchMouseEvent',
+      isWheel,
     )!;
     expect((call[2] as { type: string }).type).toBe('mouseWheel');
   });
@@ -52,7 +58,7 @@ describe('dispatchScrollWheel', () => {
   it('passes x and y coordinates to the event', async () => {
     await dispatchScrollWheel(1, 123, 456, 0, 500);
     const call = getMockDebugger().sendCommand.mock.calls.find(
-      (c: unknown[]) => c[1] === 'Input.dispatchMouseEvent',
+      isWheel,
     )!;
     const params = call[2] as { x: number; y: number };
     expect(params.x).toBe(123);
@@ -62,7 +68,7 @@ describe('dispatchScrollWheel', () => {
   it('uses default page-center coordinates (600, 400) when passed directly', async () => {
     await dispatchScrollWheel(1, 600, 400, 0, 500);
     const call = getMockDebugger().sendCommand.mock.calls.find(
-      (c: unknown[]) => c[1] === 'Input.dispatchMouseEvent',
+      isWheel,
     )!;
     const params = call[2] as { x: number; y: number };
     expect(params.x).toBe(600);
@@ -74,7 +80,7 @@ describe('dispatchScrollWheel', () => {
   it('passes deltaX and deltaY verbatim', async () => {
     await dispatchScrollWheel(1, 600, 400, 100, -200);
     const call = getMockDebugger().sendCommand.mock.calls.find(
-      (c: unknown[]) => c[1] === 'Input.dispatchMouseEvent',
+      isWheel,
     )!;
     const params = call[2] as { deltaX: number; deltaY: number };
     expect(params.deltaX).toBe(100);
@@ -84,7 +90,7 @@ describe('dispatchScrollWheel', () => {
   it('scroll down: positive deltaY is forwarded as-is', async () => {
     await dispatchScrollWheel(1, 600, 400, 0, 500);
     const call = getMockDebugger().sendCommand.mock.calls.find(
-      (c: unknown[]) => c[1] === 'Input.dispatchMouseEvent',
+      isWheel,
     )!;
     expect((call[2] as { deltaY: number }).deltaY).toBeGreaterThan(0);
   });
@@ -92,7 +98,7 @@ describe('dispatchScrollWheel', () => {
   it('scroll up: negative deltaY is forwarded as-is', async () => {
     await dispatchScrollWheel(1, 600, 400, 0, -500);
     const call = getMockDebugger().sendCommand.mock.calls.find(
-      (c: unknown[]) => c[1] === 'Input.dispatchMouseEvent',
+      isWheel,
     )!;
     expect((call[2] as { deltaY: number }).deltaY).toBeLessThan(0);
   });
@@ -100,7 +106,7 @@ describe('dispatchScrollWheel', () => {
   it('scroll right: positive deltaX, zero deltaY', async () => {
     await dispatchScrollWheel(1, 600, 400, 500, 0);
     const call = getMockDebugger().sendCommand.mock.calls.find(
-      (c: unknown[]) => c[1] === 'Input.dispatchMouseEvent',
+      isWheel,
     )!;
     const params = call[2] as { deltaX: number; deltaY: number };
     expect(params.deltaX).toBeGreaterThan(0);
@@ -110,7 +116,7 @@ describe('dispatchScrollWheel', () => {
   it('scroll left: negative deltaX, zero deltaY', async () => {
     await dispatchScrollWheel(1, 600, 400, -500, 0);
     const call = getMockDebugger().sendCommand.mock.calls.find(
-      (c: unknown[]) => c[1] === 'Input.dispatchMouseEvent',
+      isWheel,
     )!;
     const params = call[2] as { deltaX: number; deltaY: number };
     expect(params.deltaX).toBeLessThan(0);
@@ -120,7 +126,7 @@ describe('dispatchScrollWheel', () => {
   it('zero deltas are forwarded (no-op scroll is valid input)', async () => {
     await dispatchScrollWheel(1, 600, 400, 0, 0);
     const call = getMockDebugger().sendCommand.mock.calls.find(
-      (c: unknown[]) => c[1] === 'Input.dispatchMouseEvent',
+      isWheel,
     )!;
     const params = call[2] as { deltaX: number; deltaY: number };
     expect(params.deltaX).toBe(0);

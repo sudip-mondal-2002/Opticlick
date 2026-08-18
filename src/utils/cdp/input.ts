@@ -122,6 +122,9 @@ export async function typeTextCDP(tabId: number, text: string, clearField = fals
 export async function dispatchScrollWheel(tabId: number, cssX: number, cssY: number, deltaX: number, deltaY: number): Promise<void> {
   await attachDebugger(tabId);
   await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchMouseEvent', {
+    type: 'mouseMoved', x: cssX, y: cssY, button: 'left', buttons: 0,
+  });
+  await chrome.debugger.sendCommand({ tabId }, 'Input.dispatchMouseEvent', {
     type: 'mouseWheel', x: cssX, y: cssY, deltaX, deltaY,
   });
 }

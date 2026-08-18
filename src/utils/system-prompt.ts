@@ -81,6 +81,14 @@ Navigation:
   · Prefer navigate(url) with explicit URLs over chains of UI clicks
     when the destination URL is known or can be constructed.
   · Encode query strings properly: spaces as + or %20.
+  · Navigational links open in a new tab (original page kept in background).
+    The agent automatically switches to the new tab to continue the task.
+  · Use plain same-tab click only for in-page anchors (#section).
+
+Scrolling:
+  · If wheel scrolling has no effect, retry before concluding failure.
+  · Use scrollTargetId for overflow containers (modals, lists, side panels).
+  · If repeated scrolling fails, pivot to press_key(PageDown/PageUp) or navigate.
 
 
 ## §4 · PLANNING & STATE MACHINE
