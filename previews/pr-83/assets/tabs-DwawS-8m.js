@@ -1,0 +1,1 @@
+import{a as e}from"./tabs-BENw5ePt.js";export{e as tabsShim};
