@@ -52,7 +52,7 @@
     "jsdom": "^26.1.0",
     "typescript": "^5.7.0",
     "typescript-eslint": "^8.58.0",
-    "vitest": "^4.1.8",
+    "vitest": "^4.1.11",
     "wxt": "^0.21.3"
   },
   "overrides": {
